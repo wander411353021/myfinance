@@ -48,7 +48,7 @@ def ssf(close, length=None, poles=None, offset=None, **kwargs):
 
 
 # ============================================================
-# 格栅线耦合算法 v16 - 优先级: ssf_l>ssf_m>ssf_s, 长窗口优先, 高于ssf_m时上浮5%
+# 格栅线耦合算法 v17 - 优先级: ssf_l>ssf_m>ssf_s, 长窗口优先, 统一上浮5%
 # ============================================================
 
 @njit
@@ -224,19 +224,10 @@ def _grid_coupling_core(close_arr, ma1, ma2, ma3, volume_arr, n_above, n_below, 
                     break
 
         if found:
-            # --- 后处理: 价格高于ssf_m时上浮5% ---
+            # --- 后处理: 统一上浮5% ---
             # 取消低于ssf_m时强制改成ssf_m的限制
-            
-            # 计算上浮5%后的值
-            adjusted_val = best_grid_val * 1.05
-            
-            # 与ssf_m比较：只有上浮后的值高于ssf_m时才使用上浮值
-            if ma_m_t == ma_m_t and ma_m_t > 0 and adjusted_val > ma_m_t:
-                # 上浮后的值高于ssf_m，使用上浮值
-                result[t] = adjusted_val
-            else:
-                # 否则直接使用原始耦合值
-                result[t] = best_grid_val
+            # 所有耦合值统一上浮5%
+            result[t] = best_grid_val * 1.05
         # 如果 found=False，result[t] 保持为 NaN
 
     return result
@@ -325,10 +316,10 @@ def compute_grid_coupling(df, ma_cols=None,
                           stick_pct=0.06, min_hold=20,
                           extend_days=5):
     """
-    格栅线耦合算法 v16
+    格栅线耦合算法 v17
     优先级: ssf_l > ssf_m > ssf_s (长周期MA优先)
            窗口越长优先级越高
-    后处理1: 耦合值上浮5%（仅当上浮后高于ssf_m时）
+    后处理1: 耦合值统一上浮5%（无条件和位置限制）
     后处理2: 粘性(双重): 偏差<stick_pct 或 持有不足 min_hold 天 → 保持前值
     
     新增过滤机制:
