@@ -48,7 +48,7 @@ def ssf(close, length=None, poles=None, offset=None, **kwargs):
 
 
 # ============================================================
-# 格栅线耦合算法 v8 - 优先级: ssf_l>ssf_m>ssf_s, 长窗口优先, 低于ssf_m封顶ssf_m, 高于ssf_m上浮5%
+# 格栅线耦合算法 v15 - 优先级: ssf_l>ssf_m>ssf_s, 长窗口优先, 低于ssf_m封顶ssf_m, 高于ssf_m上浮5%
 # ============================================================
 
 @njit
@@ -318,13 +318,13 @@ def _apply_stickiness(close_arr, raw_result, ssf_m_arr, stick_pct, min_hold):
 
 def compute_grid_coupling(df, ma_cols=None,
                           n_above=30, n_below=10, step_pct=0.02,
-                          min_window=5, max_window=40,
-                          tight_pct=0.012, min_ratio=0.7,
-                          track_pct=0.03, track_ratio=0.7,
-                          stick_pct=0.06, min_hold=5,
+                          min_window=10, max_window=40,
+                          tight_pct=0.008, min_ratio=0.8,
+                          track_pct=0.03, track_ratio=0.8,
+                          stick_pct=0.06, min_hold=10,
                           extend_days=5):
     """
-    格栅线耦合算法 v14
+    格栅线耦合算法 v15
     优先级: ssf_l > ssf_m > ssf_s (长周期MA优先)
            窗口越长优先级越高
     后处理1: 价格在ssf_m下方运行时，耦合力值封顶为ssf_m
@@ -345,13 +345,13 @@ def compute_grid_coupling(df, ma_cols=None,
     - ma_cols: 均线列名列表，默认['ssf_l','ssf_m','ssf_s']（顺序=优先级）
     - n_above/n_below: 上下方格栅线数量
     - step_pct: 格栅线间距(默认2%)
-    - min_window/max_window: 耦合窗口范围(默认5~40)
-    - tight_pct: 格栅线紧密阈值(默认1.2%)
-    - min_ratio: 格栅线紧密占比阈值(默认70%)
+    - min_window/max_window: 耦合窗口范围(默认10~40，提高最小窗口减少噪音)
+    - tight_pct: 格栅线紧密阈值(默认0.8%，更严格)
+    - min_ratio: 格栅线紧密占比阈值(默认80%，提高质量要求)
     - track_pct: MA跟踪范围(默认3%)
-    - track_ratio: MA跟踪占比阈值(默认70%)
+    - track_ratio: MA跟踪占比阈值(默认80%，更严格)
     - stick_pct: 粘性偏差阈值(默认6%)
-    - min_hold: 最小持有天数(默认5，与min_window一致)
+    - min_hold: 最小持有天数(默认10天，减少频繁切换)
     - extend_days: 自动延续天数(默认3)，ssf_m上方有值后自动沿用N天
 
     返回: list，每天的耦合格栅线值(或MA值)，无耦合为NaN
