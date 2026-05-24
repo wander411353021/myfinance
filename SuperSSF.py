@@ -52,7 +52,7 @@ def ssf(close, length=None, poles=None, offset=None, **kwargs):
 # ============================================================
 
 @njit
-def _grid_coupling_core(close_arr, ma1, ma2, ma3, n_above, n_below, step_pct,
+def _grid_coupling_core(close_arr, ma1, ma2, ma3, volume_arr, n_above, n_below, step_pct,
                          min_window, max_window, tight_pct, min_ratio, track_pct, track_ratio):
     """
     格栅线耦合核心算法(numba加速)
@@ -60,7 +60,9 @@ def _grid_coupling_core(close_arr, ma1, ma2, ma3, n_above, n_below, step_pct,
     后处理: 如果价格在ssf_m下方运行，耦合力值封顶为ssf_m
            如果价格不在ssf_m下方，耦合力值上浮5%
     
-    新增: 高位区域过滤 - 当价格 > ssf_m*1.2 时，要求更高的趋势强度和更严格的匹配条件
+    新增: 
+    1. 高位区域过滤 - 当价格 > ssf_m*1.2 时，直接忽略信号
+    2. 成交量分析的走平过滤 - 只有成交量放大的走平才被视为风险信号
     """
     n = close_arr.shape[0]
     result = np.full(n, np.nan)
@@ -81,8 +83,8 @@ def _grid_coupling_core(close_arr, ma1, ma2, ma3, n_above, n_below, step_pct,
             result[t] = np.nan
             continue
         
-        # --- 上涨后走平检测 ---
-        # 检查是否出现"上涨后走平"的弱势信号
+        # --- 上涨后走平检测 + 成交量分析 ---
+        # 检查是否出现"上涨后走平"的弱势信号（需要成交量配合）
         is_flat_after_rise = False
         check_days = min(10, t)  # 检查最近10天
         if t >= check_days:
@@ -99,9 +101,25 @@ def _grid_coupling_core(close_arr, ma1, ma2, ma3, n_above, n_below, step_pct,
                 has_rise = np.sum(early_changes > 0) / len(early_changes) > 0.6  # 60%的日子在上涨
                 
                 if is_flat and has_rise:
-                    is_flat_after_rise = True
+                    # 进一步分析成交量
+                    # 走平期间的成交量（最近flat_window天）
+                    flat_volumes = volume_arr[t-flat_window+1:t+1]
+                    avg_flat_volume = np.mean(flat_volumes)
+                    
+                    # 上涨期间的成交量（前半段）
+                    rise_volumes = volume_arr[t-len(recent_changes)+1:t-flat_window+1]
+                    if len(rise_volumes) > 0:
+                        avg_rise_volume = np.mean(rise_volumes)
+                        
+                        # 成交量放大判断：走平期间成交量 > 上涨期间成交量 * 1.3
+                        # 说明有出货嫌疑，这是风险信号
+                        is_volume_expanding = (avg_flat_volume > avg_rise_volume * 1.3)
+                        
+                        if is_volume_expanding:
+                            is_flat_after_rise = True
+                        # 如果成交量衰减，说明是惜售/蓄势，不忽略信号
         
-        # 上涨后走平的情况也忽略信号
+        # 上涨后走平且成交量放大的情况才忽略信号
         if is_flat_after_rise:
             result[t] = np.nan
             continue
@@ -306,7 +324,7 @@ def compute_grid_coupling(df, ma_cols=None,
                           stick_pct=0.06, min_hold=5,
                           extend_days=5):
     """
-    格栅线耦合算法 v13
+    格栅线耦合算法 v14
     优先级: ssf_l > ssf_m > ssf_s (长周期MA优先)
            窗口越长优先级越高
     后处理1: 价格在ssf_m下方运行时，耦合力值封顶为ssf_m
@@ -315,12 +333,15 @@ def compute_grid_coupling(df, ma_cols=None,
     
     新增过滤机制:
     1. 高位过滤: 当价格 > ssf_m*1.2 时，直接忽略信号（高位追涨风险大）
-    2. 走平过滤: 检测"上涨后走平"的弱势信号，忽略此类信号
+    2. 成交量分析的走平过滤: 区分不同性质的横盘
        - 走平定义: 最近3天价格变化在1%以内
        - 前期上涨: 最近10天前半段中60%的日子在上涨
+       - 成交量放大判断: 走平期间成交量 > 上涨期间成交量 * 1.3
+       - 只有"上涨后走平且成交量放大"才忽略信号（出货嫌疑）
+       - "上涨后走平但成交量衰减"不忽略信号（惜售/蓄势，是好信号）
 
     参数:
-    - df: DataFrame，需包含close列和均线列
+    - df: DataFrame，需包含close列、volume列和均线列
     - ma_cols: 均线列名列表，默认['ssf_l','ssf_m','ssf_s']（顺序=优先级）
     - n_above/n_below: 上下方格栅线数量
     - step_pct: 格栅线间距(默认2%)
@@ -339,11 +360,12 @@ def compute_grid_coupling(df, ma_cols=None,
         ma_cols = ['ssf_l', 'ssf_m', 'ssf_s']
 
     close_arr = df['close'].values.astype(np.float64)
+    volume_arr = df['volume'].values.astype(np.float64)
     ma_arrays = [df[col].values.astype(np.float64) for col in ma_cols]
     ssf_m_arr = df[ma_cols[1]].values.astype(np.float64)
 
     result_arr = _grid_coupling_core(
-        close_arr, ma_arrays[0], ma_arrays[1], ma_arrays[2],
+        close_arr, ma_arrays[0], ma_arrays[1], ma_arrays[2], volume_arr,
         n_above, n_below, step_pct, min_window, max_window,
         tight_pct, min_ratio, track_pct, track_ratio
     )
