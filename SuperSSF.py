@@ -59,6 +59,8 @@ def _grid_coupling_core(close_arr, ma1, ma2, ma3, n_above, n_below, step_pct,
     优先级: ma_idx越小越高(0=ssf_l,1=ssf_m,2=ssf_s) → 窗口越长越高 → 格栅值越高越好
     后处理: 如果价格在ssf_m下方运行，耦合力值封顶为ssf_m
            如果价格不在ssf_m下方，耦合力值上浮5%
+    
+    新增: 高位区域过滤 - 当价格 > ssf_m*1.2 时，要求更高的趋势强度和更严格的匹配条件
     """
     n = close_arr.shape[0]
     result = np.full(n, np.nan)
@@ -69,6 +71,44 @@ def _grid_coupling_core(close_arr, ma1, ma2, ma3, n_above, n_below, step_pct,
         best_ma_idx = 99       # 越小优先级越高
         best_w = 0             # 越大优先级越高
         best_sub_val = -1e18   # 格栅值越高越好(同优先级时)
+
+        # --- 高位区域检测 ---
+        ma_m_t = ma2[t]
+        is_high_zone = (ma_m_t == ma_m_t and ma_m_t > 0 and close_arr[t] > ma_m_t * 1.2)
+        
+        # 高位区域直接忽略信号
+        if is_high_zone:
+            result[t] = np.nan
+            continue
+        
+        # --- 上涨后走平检测 ---
+        # 检查是否出现"上涨后走平"的弱势信号
+        is_flat_after_rise = False
+        check_days = min(10, t)  # 检查最近10天
+        if t >= check_days:
+            recent_prices = close_arr[t-check_days+1:t+1]
+            recent_changes = np.diff(recent_prices)
+            
+            # 判断走平：最近3天的变化都很小
+            flat_window = min(3, len(recent_changes))
+            is_flat = np.all(np.abs(recent_changes[-flat_window:]) / close_arr[t-1] < 0.01)  # 1%内波动视为走平
+            
+            # 判断前期上涨：前半段有明显上涨
+            if len(recent_changes) >= 5:
+                early_changes = recent_changes[:len(recent_changes)//2]
+                has_rise = np.sum(early_changes > 0) / len(early_changes) > 0.6  # 60%的日子在上涨
+                
+                if is_flat and has_rise:
+                    is_flat_after_rise = True
+        
+        # 上涨后走平的情况也忽略信号
+        if is_flat_after_rise:
+            result[t] = np.nan
+            continue
+        
+        # 正常区域使用标准参数
+        high_zone_min_ratio = min_ratio
+        high_zone_tight_pct = tight_pct
 
         for ma_idx in range(3):
             # 如果当前ma优先级已经低于已有最优，跳过
@@ -92,7 +132,7 @@ def _grid_coupling_core(close_arr, ma1, ma2, ma3, n_above, n_below, step_pct,
                     continue
 
                 G_t = ma_val_t * G_ratio
-                if abs(close_arr[t] - G_t) / G_t >= tight_pct:
+                if abs(close_arr[t] - G_t) / G_t >= high_zone_tight_pct:
                     continue
 
                 for w in range(min(max_window, t + 1), min_window - 1, -1):
@@ -111,10 +151,12 @@ def _grid_coupling_core(close_arr, ma1, ma2, ma3, n_above, n_below, step_pct,
                         if ma_j != ma_j or ma_j <= 0:
                             continue
                         G_j = ma_j * G_ratio
-                        if G_j > 0 and abs(close_arr[j] - G_j) / G_j < tight_pct:
+                        if G_j > 0 and abs(close_arr[j] - G_j) / G_j < high_zone_tight_pct:
                             tight_count += 1
 
-                    if tight_count / w >= min_ratio:
+                    ratio = tight_count / w
+                    # 高位区域需要更高的紧密比例
+                    if ratio >= high_zone_min_ratio:
                         # 优先级比较: ma_idx小优先 → w大优先 → G_t大优先
                         if (not found) or \
                            (ma_idx < best_ma_idx) or \
@@ -148,7 +190,9 @@ def _grid_coupling_core(close_arr, ma1, ma2, ma3, n_above, n_below, step_pct,
                     if abs(close_arr[j] - ma_j) / ma_j < track_pct:
                         track_count += 1
 
-                if track_count / w >= track_ratio:
+                ratio = track_count / w
+                # 高位区域需要更高的跟踪比例
+                if ratio >= high_zone_min_ratio:
                     # MA跟踪输出MA值本身，格栅值=ma_val_t
                     if (not found) or \
                        (ma_idx < best_ma_idx) or \
@@ -164,7 +208,6 @@ def _grid_coupling_core(close_arr, ma1, ma2, ma3, n_above, n_below, step_pct,
         if found:
             # --- 后处理: 低于ssf_m封顶规则（条件性执行）---
             # 仅当检测到有效耦合时才应用封顶/上浮规则
-            ma_m_t = ma2[t]  # ssf_m
             
             # 先计算上浮5%后的值
             adjusted_val = best_grid_val * 1.05
@@ -263,12 +306,18 @@ def compute_grid_coupling(df, ma_cols=None,
                           stick_pct=0.06, min_hold=5,
                           extend_days=5):
     """
-    格栅线耦合算法 v12
+    格栅线耦合算法 v13
     优先级: ssf_l > ssf_m > ssf_s (长周期MA优先)
            窗口越长优先级越高
     后处理1: 价格在ssf_m下方运行时，耦合力值封顶为ssf_m
     后处理2: 价格不在ssf_m下方时，耦合力值上浮5%
     后处理3: 粘性(双重): 偏差<stick_pct 或 持有不足 min_hold 天 → 保持前值
+    
+    新增过滤机制:
+    1. 高位过滤: 当价格 > ssf_m*1.2 时，直接忽略信号（高位追涨风险大）
+    2. 走平过滤: 检测"上涨后走平"的弱势信号，忽略此类信号
+       - 走平定义: 最近3天价格变化在1%以内
+       - 前期上涨: 最近10天前半段中60%的日子在上涨
 
     参数:
     - df: DataFrame，需包含close列和均线列
