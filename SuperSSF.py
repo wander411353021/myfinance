@@ -48,7 +48,7 @@ def ssf(close, length=None, poles=None, offset=None, **kwargs):
 
 
 # ============================================================
-# 格栅线耦合算法 v15 - 优先级: ssf_l>ssf_m>ssf_s, 长窗口优先, 低于ssf_m封顶ssf_m, 高于ssf_m上浮5%
+# 格栅线耦合算法 v16 - 优先级: ssf_l>ssf_m>ssf_s, 长窗口优先, 高于ssf_m时上浮5%
 # ============================================================
 
 @njit
@@ -224,18 +224,19 @@ def _grid_coupling_core(close_arr, ma1, ma2, ma3, volume_arr, n_above, n_below, 
                     break
 
         if found:
-            # --- 后处理: 低于ssf_m封顶规则（条件性执行）---
-            # 仅当检测到有效耦合时才应用封顶/上浮规则
+            # --- 后处理: 价格高于ssf_m时上浮5% ---
+            # 取消低于ssf_m时强制改成ssf_m的限制
             
-            # 先计算上浮5%后的值
+            # 计算上浮5%后的值
             adjusted_val = best_grid_val * 1.05
             
-            # 与ssf_m比较：如果上浮后的值仍低于ssf_m，则封顶为ssf_m
-            if ma_m_t == ma_m_t and ma_m_t > 0 and adjusted_val < ma_m_t:
-                result[t] = ma_m_t
-            else:
-                # 否则使用上浮5%后的值
+            # 与ssf_m比较：只有上浮后的值高于ssf_m时才使用上浮值
+            if ma_m_t == ma_m_t and ma_m_t > 0 and adjusted_val > ma_m_t:
+                # 上浮后的值高于ssf_m，使用上浮值
                 result[t] = adjusted_val
+            else:
+                # 否则直接使用原始耦合值
+                result[t] = best_grid_val
         # 如果 found=False，result[t] 保持为 NaN
 
     return result
@@ -318,18 +319,17 @@ def _apply_stickiness(close_arr, raw_result, ssf_m_arr, stick_pct, min_hold):
 
 def compute_grid_coupling(df, ma_cols=None,
                           n_above=30, n_below=10, step_pct=0.02,
-                          min_window=10, max_window=40,
+                          min_window=5, max_window=40,
                           tight_pct=0.008, min_ratio=0.8,
                           track_pct=0.03, track_ratio=0.8,
-                          stick_pct=0.06, min_hold=10,
+                          stick_pct=0.06, min_hold=20,
                           extend_days=5):
     """
-    格栅线耦合算法 v15
+    格栅线耦合算法 v16
     优先级: ssf_l > ssf_m > ssf_s (长周期MA优先)
            窗口越长优先级越高
-    后处理1: 价格在ssf_m下方运行时，耦合力值封顶为ssf_m
-    后处理2: 价格不在ssf_m下方时，耦合力值上浮5%
-    后处理3: 粘性(双重): 偏差<stick_pct 或 持有不足 min_hold 天 → 保持前值
+    后处理1: 耦合值上浮5%（仅当上浮后高于ssf_m时）
+    后处理2: 粘性(双重): 偏差<stick_pct 或 持有不足 min_hold 天 → 保持前值
     
     新增过滤机制:
     1. 高位过滤: 当价格 > ssf_m*1.2 时，直接忽略信号（高位追涨风险大）
@@ -352,7 +352,6 @@ def compute_grid_coupling(df, ma_cols=None,
     - track_ratio: MA跟踪占比阈值(默认80%，更严格)
     - stick_pct: 粘性偏差阈值(默认6%)
     - min_hold: 最小持有天数(默认10天，减少频繁切换)
-    - extend_days: 自动延续天数(默认3)，ssf_m上方有值后自动沿用N天
 
     返回: list，每天的耦合格栅线值(或MA值)，无耦合为NaN
     """
