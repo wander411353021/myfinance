@@ -162,16 +162,19 @@ def _grid_coupling_core(close_arr, ma1, ma2, ma3, n_above, n_below, step_pct,
                     break
 
         if found:
-            result[t] = best_grid_val
-
-            # --- 后处理: 低于ssf_m封顶规则 ---
-            # 只要当天close < ssf_m，耦合值直接封顶为ssf_m（无条件）
+            # --- 后处理: 低于ssf_m封顶规则（条件性执行）---
+            # 仅当检测到有效耦合时才应用封顶/上浮规则
             ma_m_t = ma2[t]  # ssf_m
-            if ma_m_t == ma_m_t and ma_m_t > 0 and close_arr[t] < ma_m_t:
+            
+            # 先计算上浮5%后的值
+            adjusted_val = best_grid_val * 1.05
+            
+            # 与ssf_m比较：如果上浮后的值仍低于ssf_m，则封顶为ssf_m
+            if ma_m_t == ma_m_t and ma_m_t > 0 and adjusted_val < ma_m_t:
                 result[t] = ma_m_t
             else:
-                # 价格不在ssf_m下方，上浮5%
-                result[t] = result[t] * 1.05
+                # 否则使用上浮5%后的值
+                result[t] = adjusted_val
         # 如果 found=False，result[t] 保持为 NaN
 
     return result
