@@ -5,6 +5,8 @@ import pandas as pd
 import akshare as ak
 import signal
 import time
+import efinance as ef
+import os
 
 # 可以直接提取数据，掘金终端需要打开，接口取数是通过网络请求的方式，效率一般，行情数据可通过subscribe订阅方式
 # 设置token， 查看已有token ID,在用户-秘钥管理里获取
@@ -143,3 +145,35 @@ def get_industry_stocks(symbol):
     industry_cons_df = ak.stock_board_industry_cons_em(symbol=symbol)
     industry_mem = industry_cons_df[["代码","名称","涨跌幅", "振幅", "换手率"]]
     return industry_mem
+
+
+def update_all_stock_info():
+    df = ef.stock.get_realtime_quotes()
+    all_stocks = df[["股票代码", "股票名称"]]
+    all_stocks.columns = ["code", "name"]
+    # 1. 转为字符串并补足 6 位（避免少位数问题）
+    all_stocks["code"] = all_stocks["code"].astype(str).str.zfill(6)
+    # 2. 过滤：只保留以 00、30、60、68 开头的股票
+    #    （即主板、创业板、科创板）
+    mask = (all_stocks["code"].str.startswith(('00', '30', '60', '68')))
+    all_stocks = all_stocks[mask].copy()
+    # 3. 根据代码前缀设定涨跌幅限制
+    def get_limit(code):
+        if code.startswith(('00', '60')):
+            return 10   # 主板 10%
+        elif code.startswith(('30', '68')):
+            return 20   # 创业板/科创板 20%
+        else:
+            return None # 理论上不会执行，因为已过滤
+    all_stocks["limit"] = all_stocks["code"].apply(get_limit)
+    # 4. 按 code 升序排序
+    all_stocks = all_stocks.sort_values(by="code", ascending=True)
+    # 5. 保存到 CSV（code 列会以字符串形式保存，带前导零）
+    all_stocks.to_csv("./result/all_stocks.csv", index=False)
+
+def get_all_stock_info():
+    if not os.path.exists("./result/all_stocks.csv"):
+        update_all_stock_info()
+    # 读取时明确指定 code 为字符串，防止被解析为数字
+    all_stocks = pd.read_csv("./result/all_stocks.csv", dtype={"code": str})
+    return all_stocks

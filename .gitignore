@@ -1,5 +1,7 @@
 .vscode/
 __pycache__/
+.workbuddy/
+.agents/
 
 # Build and Release Folders
 bin-debug/
@@ -15,4 +17,3 @@ bin-release/
 *.air
 *.ipa
 *.apk
-

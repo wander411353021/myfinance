@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; }
+  body { font-family: Consolas, Menlo, monospace; font-size: 14px; }
+  #list { height: 332px; overflow: auto; outline: none; padding: 2px; cursor: pointer; }
+  .row { padding: 3px 8px; border-left: 3px solid transparent; color: #222; }
+  .row.hl { border-left: 3px solid #ff4b4b; background: #ffe9e9; color: #c0392b; }
+  .row .nm { color: #888; margin-left: 10px; }
+  .row.hl .nm { color: #c0392b; }
+</style>
+</head>
+<body>
+<div id="list" tabindex="0"></div>
+<script>
+// ---- Streamlit component protocol (manual handshake, no build step) ----
+function _send(type, data) {
+  window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: type }, data), "*");
+}
+var Streamlit = {
+  ready: function () { _send("streamlit:componentReady", { apiVersion: 1 }); },
+  height: function (h) { _send("streamlit:setFrameHeight", { height: h }); },
+  setValue: function (v) { _send("streamlit:setComponentValue", { value: v }); },
+};
+
+// 每一项为 [code, name]
+var ITEMS = [];
+var LSKEY = "cons_hl";
+var hl = 0;
+var box = document.getElementById("list");
+
+function paint() {
+  for (var i = 0; i < box.children.length; i++) {
+    box.children[i].className = "row" + (i === hl ? " hl" : "");
+  }
+  var el = box.children[hl];
+  if (el) el.scrollIntoView({ block: "nearest" });
+}
+function build() {
+  box.innerHTML = "";
+  ITEMS.forEach(function (it, i) {
+    var code = String(it[0]);
+    var name = it[1] != null ? String(it[1]) : "";
+    var d = document.createElement("div");
+    d.className = "row" + (i === hl ? " hl" : "");
+    d.innerHTML = code + '<span class="nm">' + name + "</span>";
+    // 用 onclick（而非 onmousedown），避免与焦点/失焦时序竞争，保证回传稳定
+    d.onclick = function () { hl = i; lastSent = code; save(); paint(); Streamlit.setValue(code); };
+    box.appendChild(d);
+  });
+  paint();
+}
+function save() { try { localStorage.setItem(LSKEY, String(hl)); } catch (e) {} }
+function move(d) { hl = Math.max(0, Math.min(ITEMS.length - 1, hl + d)); save(); paint(); }
+function onKey(e) {
+  if (e.key === "ArrowDown") { e.preventDefault(); move(1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
+  else if (e.key === "Enter") { e.preventDefault(); if (ITEMS[hl] != null) { lastSent = String(ITEMS[hl][0]); Streamlit.setValue(lastSent); } }
+}
+box.addEventListener("keydown", onKey);
+// 仅在点击列表自身时重新获取焦点；不再劫持全局 click，避免抢走代码输入框焦点
+box.addEventListener("click", function () { box.focus(); });
+
+window.addEventListener("message", function (e) {
+  if (!e.data || e.data.type !== "streamlit:render") return;
+  var args = e.data.args || {};
+  var items = args.items || [];
+  var selected = args.selected != null ? String(args.selected) : "";
+  LSKEY = "cons_hl_" + (args.ident || "");
+  var changed = JSON.stringify(items) !== JSON.stringify(ITEMS);
+  if (changed) {
+    ITEMS = items;
+    build();
+    lastSent = null;  // 列表已重建：交给 selected 权威定位，清除旧交互记忆
+    var idx = -1;
+    for (var i = 0; i < ITEMS.length; i++) {
+      if (String(ITEMS[i][0]) === selected) { idx = i; break; }
+    }
+    hl = (idx >= 0) ? idx : (function () {
+      var s = parseInt(localStorage.getItem(LSKEY) || "0", 10);
+      return (isNaN(s) || s < 0 || s >= ITEMS.length) ? 0 : s;
+    })();
+  } else {
+    // 列表内容未变：优先沿用「用户上一次点击/回车选中的行」(lastSent)，
+    // 避免被滞后的 selected（点击后首帧 code 尚未更新）覆盖造成「先跳回 A 再回 B」的闪烁
+    var hit = -1;
+    if (lastSent != null) {
+      for (var j = 0; j < ITEMS.length; j++) {
+        if (String(ITEMS[j][0]) === String(lastSent)) { hit = j; break; }
+      }
+    }
+    if (hit >= 0) {
+      hl = hit;
+    } else if (hl < 0 || hl >= ITEMS.length) {
+      // 无有效本地高亮：回退到 selected / 首位
+      var k = -1;
+      for (var m = 0; m < ITEMS.length; m++) {
+        if (String(ITEMS[m][0]) === selected) { k = m; break; }
+      }
+      hl = (k >= 0) ? k : 0;
+    }
+  }
+  save();
+  paint();
+  Streamlit.height(360);
+  // 仅当自身可见（所属 expander 已展开）时自动聚焦，避免折叠态的同类列表（如另一处组件）抢占焦点
+  if (box.offsetParent !== null) box.focus();
+});
+
+Streamlit.ready();
+</script>
+</body>
+</html>

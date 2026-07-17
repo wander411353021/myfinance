@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; }
+  body { font-family: Consolas, Menlo, monospace; font-size: 14px; }
+  .wrap { position: relative; width: 100%; }
+  #code {
+    width: 100%; box-sizing: border-box;
+    padding: 6px 8px; font-size: 14px; font-family: Consolas, Menlo, monospace;
+    border: 1px solid #cfd4da; border-radius: 4px; outline: none;
+  }
+  #code:focus { border-color: #ff4b4b; }
+  #dd {
+    position: absolute; left: 0; right: 0; top: 100%; margin-top: 2px;
+    background: #fff; border: 1px solid #e0e0e0; border-radius: 4px;
+    max-height: 240px; overflow: auto; z-index: 1000; display: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  }
+  .opt { padding: 4px 8px; cursor: pointer; white-space: nowrap; color: #222; }
+  .opt .nm { color: #888; margin-left: 10px; }
+  .opt.hl, .opt:hover { background: #ffe9e9; color: #c0392b; }
+  .opt.hl .nm, .opt:hover .nm { color: #c0392b; }
+  .empty { padding: 6px 8px; color: #999; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <input id="code" type="text" autocomplete="off" spellcheck="false" placeholder="输入代码或名称…">
+  <div id="dd"></div>
+</div>
+<script>
+function _send(type, data) {
+  window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: type }, data), "*");
+}
+var Streamlit = {
+  ready: function () { _send("streamlit:componentReady", { apiVersion: 1 }); },
+  height: function (h) { _send("streamlit:setFrameHeight", { height: h }); },
+  setValue: function (v) { _send("streamlit:setComponentValue", { value: v }); },
+};
+
+var ALL = [];          // [[code, name], ...]
+var internal = "";     // 当前输入框文本（内部状态，不触发 rerun）
+var open = false;
+var hi = -1;           // 高亮项索引（针对 filtered）
+var filtered = [];
+var mounted = false;
+var lastCommit = "";   // 上次已回传给 Python 的值，避免重复 setValue
+
+var box = document.getElementById("code");
+var dd = document.getElementById("dd");
+
+function norm(s) { return (s == null ? "" : String(s)).toLowerCase(); }
+
+function compute() {
+  var q = norm(internal);
+  if (!q) { filtered = []; return; }
+  filtered = [];
+  for (var i = 0; i < ALL.length && filtered.length < 30; i++) {
+    var it = ALL[i];
+    var code = String(it[0]);
+    var name = it[1] != null ? String(it[1]) : "";
+    if (norm(code).indexOf(q) >= 0 || norm(name).indexOf(q) >= 0) {
+      filtered.push([code, name]);
+    }
+  }
+}
+
+function renderDD() {
+  dd.innerHTML = "";
+  if (!open || filtered.length === 0) { dd.style.display = "none"; return; }
+  dd.style.display = "block";
+  for (var i = 0; i < filtered.length; i++) {
+    var it = filtered[i];
+    var d = document.createElement("div");
+    d.className = "opt" + (i === hi ? " hl" : "");
+    d.innerHTML = it[0] + '<span class="nm">' + (it[1] != null ? it[1] : "") + "</span>";
+    (function (idx) {
+      d.onmousedown = function (e) { e.preventDefault(); select(idx); };
+      d.onmouseenter = function () { hi = idx; paintHl(); };
+    })(i);
+    dd.appendChild(d);
+  }
+}
+
+function paintHl() {
+  var opts = dd.children;
+  for (var i = 0; i < opts.length; i++) {
+    opts[i].className = "opt" + (i === hi ? " hl" : "");
+  }
+  if (hi >= 0 && opts[hi]) opts[hi].scrollIntoView({ block: "nearest" });
+}
+
+function closeDD() { open = false; hi = -1; dd.style.display = "none"; }
+
+function commit(v, src) {
+  // 仅在值真正变化时才回传，避免无谓的整页 rerun
+  // src: "user"（真人手动改码）/ "force"（板块导航/同行业列表点击经 pending_code 注入）
+  //     一并回传，供 Python 端区分"应清空同行业列表"与"仅同步输入框"
+  v = String(v);
+  if (v !== lastCommit) {
+    lastCommit = v;
+    Streamlit.setValue({ v: v, src: src || "user" });
+  }
+}
+
+function select(idx) {
+  if (idx < 0 || idx >= filtered.length) return;
+  var code = String(filtered[idx][0]);
+  internal = code;
+  box.value = code;
+  closeDD();
+  commit(code, "user");   // 仅填入，不自动出图（保持原按钮触发逻辑）；标记为用户手动提交
+}
+
+// 输入时只更新内部状态 + 候选下拉；绝不 setValue，否则每次按键都会整页 rerun、输入框失焦
+box.addEventListener("input", function () {
+  internal = box.value;
+  compute();
+  open = true;
+  hi = filtered.length > 0 ? 0 : -1;
+  renderDD();
+});
+
+// 失焦（含点击「拉取并出图」按钮）时提交当前文本，供按钮使用
+box.addEventListener("change", function () {
+  commit(box.value, "user");
+});
+
+box.addEventListener("keydown", function (e) {
+  if (e.key === "ArrowDown") {
+    if (!open || filtered.length === 0) return;
+    e.preventDefault();
+    hi = Math.min(filtered.length - 1, hi + 1);
+    paintHl();
+  } else if (e.key === "ArrowUp") {
+    if (!open || filtered.length === 0) return;
+    e.preventDefault();
+    hi = Math.max(0, hi - 1);
+    paintHl();
+  } else if (e.key === "Enter") {
+    if (open && hi >= 0) { e.preventDefault(); select(hi); }
+    // 否则交给「拉取并出图」按钮（不自动加载）
+  } else if (e.key === "Escape") {
+    closeDD();
+  }
+});
+box.addEventListener("blur", function () { setTimeout(closeDD, 150); });
+
+window.addEventListener("message", function (e) {
+  if (!e.data || e.data.type !== "streamlit:render") return;
+  var args = e.data.args || {};
+  if (args.stocks && args.stocks.length) { ALL = args.stocks; }
+  if (!mounted) {
+    box.value = args.value != null ? String(args.value) : "";
+    internal = box.value;
+    lastCommit = box.value;
+    mounted = true;
+  }
+  if (args.force && args.value != null) {
+    // 板块导航一键载入：强制把代码同步进输入框（即使输入框已被用户输入占用）
+    box.value = String(args.value);
+    internal = box.value;
+    lastCommit = box.value;
+    closeDD();
+    commit(String(args.value), "force"); // 让组件回传值追上，避免下一帧被旧值覆盖（标记 force，Python 端不清空列表）
+  }
+  Streamlit.height(64);
+});
+
+Streamlit.ready();
+</script>
+</body>
+</html>
