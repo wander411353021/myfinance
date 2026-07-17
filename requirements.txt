@@ -22,7 +22,7 @@ efinance==0.5.8
 adata==2.9.5
 # gm（掘金量化）：需配合掘金终端 + 账号才能运行；仅 juejing.py 用到，主程序不依赖。
 # 若只用 streamlit_demo / price_segmenter / related_stocks，可注释掉此行。
-gm==3.0.183
+# gm==3.0.183
 
 # ---- 仅旧版脚本使用（price_segmenter_v8/v9 及备份文件；主流程已移除 finshare）----
 finshare==1.1.0
