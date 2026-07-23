@@ -554,8 +554,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     n = len(ohlc); x = np.arange(n); offset = len(df_ohlc) - n  # ohlc 是 df_ohlc 末尾 n 行，offset 为其在原序列中的起始下标（恒 >=0）
 
     fig, axes = plt.subplots(4, 1, figsize=(22, 15),
-                             sharex=True, constrained_layout=True,
-                             gridspec_kw={'height_ratios': [4, 1, 0.9, 1.4]})
+                             sharex=True,
+                             gridspec_kw={'height_ratios': [4, 1.4, 0.9, 1.4]})
     fig.suptitle(f'{name}  Price Segmentation V10 (Level Breakout)', fontsize=14, fontweight='bold')
 
     ax0 = axes[0]; opens = ohlc['open'].values; highs = ohlc['high'].values
@@ -714,7 +714,9 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     _focus_lo, _focus_hi = _y_lo, _y_hi
     ax0.set_ylim(_focus_lo, _focus_hi)
 
-    ax0.set_ylabel('Price', fontsize=10); ax0.grid(True, alpha=0.3); ax0.set_xlim(-1, n)
+    ax0.set_ylabel('Price', fontsize=10); ax0.grid(True, alpha=0.3)
+    # 放宽 x 轴边界：左留 2 根 K 线宽 + 右留 1 根，避免首尾 K 线/成交量柱被窗口边缘裁切
+    ax0.set_xlim(-2, n + 0.5)
     ax0.legend(handles=[
         Patch(facecolor='red', alpha=0.15, label='UP (confirmed)'),
         Patch(facecolor='green', alpha=0.12, label='DOWN (confirmed)'),
@@ -735,10 +737,9 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     ax1 = axes[1]; vol = ohlc['volume'].values; va = result['vol_annotation'].values[offset:offset + n]
     vc = {"VOL_EXPANDING": "#ef5350", "VOL_SHRINKING": "#26a69a", "NEUTRAL": "#9E9E9E"}
     ax1.bar(x, vol, width=bar_w, color=[vc.get(va[k], '#9E9E9E') for k in range(n)], alpha=0.8)
-    # 量轴封顶：避免窗口内成片巨量柱把常规量柱压扁（95 分位为主，中位数×8 兜底）
-    if len(vol) > 0:
-        _vcap = min(np.percentile(vol, 95), np.median(vol) * 8)
-        ax1.set_ylim(0, _vcap)
+    # 量轴：取窗口内实际最大值 * 1.2，完整显示 + 20% 顶空
+    if len(vol) > 0 and vol.max() > 0:
+        ax1.set_ylim(0, vol.max() * 1.2)
     ax1.set_ylabel('Volume', fontsize=9); ax1.grid(True, alpha=0.2)
     ax1.set_title('Volume (red=expanding, green=shrinking)', fontsize=9, loc='left', pad=2)
 
@@ -809,11 +810,10 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     ts2 = max(1, n // 12); dates = ohlc['date'].values
     tp = list(range(0, n, ts2)); tl = [str(dates[i])[:10] for i in tp]
     axes[-1].set_xticks(tp); axes[-1].set_xticklabels(tl, rotation=45, fontsize=7)
+    # tight_layout 在渲染前基于最终内容计算间距，比 constrained_layout 更稳定可靠
+    fig.tight_layout(pad=1.5)
     if save_path:
-        # constrained_layout 已管理间距；大窗口下偶有良性 "constrained_layout not applied" 警告，抑制之
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', message='constrained_layout not applied')
-            plt.savefig(save_path, dpi=120); plt.close()
+        plt.savefig(save_path, dpi=120); plt.close()
     else:
         plt.show(); plt.close()
 
