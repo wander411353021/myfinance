@@ -83,7 +83,7 @@ def compute_and_store(df, tail_days, name):
 # ── 显示（统一在此渲染）──
 def display_last():
     out = st.session_state["last_out"]
-    st.image(st.session_state["last_png"], use_container_width=True)
+    st.image(st.session_state["last_png"], width='stretch')
 
     c_result, bs_signal, bs_reason, bs_strength, all_levels = out
     tail_days = st.session_state.get("last_tail", 150)
@@ -105,7 +105,7 @@ def display_last():
                     "strength": round(float(bs_strength[i]), 3),
                 })
         if rows:
-            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
         else:
             st.info("窗口内无买卖信号。")
 
@@ -119,7 +119,7 @@ def display_last():
             "break_strength": (round(lv["break_strength"], 3)
                                if lv.get("break_strength") is not None else None),
         } for lv in all_levels]
-        st.dataframe(pd.DataFrame(lv_rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(lv_rows), width='stretch', hide_index=True)
 
 
 # ── 页面 ──
@@ -199,7 +199,7 @@ with st.sidebar:
         "显示窗口 tail_days（画最后 N 根）",
         min_value=60, max_value=2000, value=150, step=10,
     )
-    go = st.button("拉取并出图", type="primary", use_container_width=True)
+    go = st.button("拉取并出图", type="primary", width='stretch')
 
 # 板块导航 / 同行业列表点行 / 手动「拉取并出图」都会走到这里
 auto_go = st.session_state.pop("auto_go", False)
@@ -279,7 +279,7 @@ with st.sidebar.expander("关联个股（同行业）", expanded=True):
     st.caption(f"展示当前股票（{code}）「同行业个股」的 [证券代码, 股票名称]。"
                "仅在点击下方按钮时查询；在输入框改码或板块导航点股票会清空本列表，需重新点按钮。"
                "点击列表中的某只即可载入它的主图（不清空本列表）。")
-    if st.button(f"刷新同行业个股 ({code})", use_container_width=True, key="rel_query"):
+    if st.button(f"刷新同行业个股 ({code})", width='stretch', key="rel_query"):
         if not code or len(code) != 6 or not code.isdigit():
             st.error("请先在上方输入有效的 6 位股票代码。")
         else:
