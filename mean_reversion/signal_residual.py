@@ -3,10 +3,21 @@
 核心思想：股价围绕自身短期趋势线回归，先拟合趋势再计算偏离。
 
 算法：
-  1. 对最近 T 日做线性回归: price = a * t + b
+  1. 对最近 N 日做线性回归: price = a * t + b
   2. 残差 = 实际价格 - 回归预测价格
   3. 标准化残差 z_residual = 残差 / 残差标准差
   4. z_residual 越负 → 价格越低于趋势线 → 向上回归预期
+
+参数调优：
+  reg_window=120 (默认):
+    - 大窗口 → 曲线平滑，适合判断中长期趋势
+    - 调大(180-250) → 更平滑，反应更慢，适合大级别判断
+    - 调小(40-60) → 更敏感，反应更快，适合短线回归
+  z 阈值:
+    - |z|>2.0: 强信号（约95%置信区间）
+    - |z|>1.5: 弱信号（约85%置信区间）
+    - 调大(2.5+) → 信号更少但更可靠
+    - 调小(1.0) → 信号更多但噪声增加
 """
 
 import numpy as np
@@ -14,7 +25,7 @@ import numpy as np
 
 def compute_residual_signal(
     closes: np.ndarray,
-    reg_window: int = 60,
+    reg_window: int = 120,
     z_strong_buy: float = -2.0,
     z_weak_buy: float = -1.5,
     z_weak_sell: float = 1.5,
@@ -27,11 +38,18 @@ def compute_residual_signal(
     closes : np.ndarray
         收盘价序列（从旧到新），至少 reg_window 个元素。
     reg_window : int
-        回归窗口，默认 60 个交易日。
+        回归窗口（交易日数）。
+        默认 120（约半年），曲线平滑。
+        调大 → 更平滑、反应更慢，适合大级别趋势偏离。
+        调小(60) → 更敏感、曲线略抖动，适合短线回归。
     z_strong_buy, z_weak_buy : float
-        强/弱买入阈值（负值，价格低于趋势线）。
+        买入阈值（负值）。
+        resudial 低于此值时触发买入。
+        绝对值越大 → 要求偏离越极端 → 信号越少但越可靠。
     z_weak_sell, z_strong_sell : float
-        弱/强卖出阈值（正值，价格高于趋势线）。
+        卖出阈值（正值）。
+        resudial 高于此值时触发卖出注意。
+        绝对值越大 → 要求偏离越极端 → 信号越少。
 
     Returns
     -------
@@ -125,20 +143,32 @@ def compute_reversion_debt(
 ) -> dict:
     """计算上方透支量 (overhang) 与回归负债 (reversion debt)。
 
+    涨得越高 → overhang 越大 → 负债期越长 → 买入阈值越紧。
+    防止在大涨之后过早抄底。
+
     核心逻辑：
       - 价格在回归线上方时，累加每日超出比例 → overhang
       - 价格跌破回归线时，若 overhang > 阈值 → 进入负债期
-      - 负债期内：买入阈值收紧 (z_residual 需要更负)，反弹标记 fake_bounce
+      - 负债期内：买入阈值从 z=-1.5 收紧到 z=-3.0
+      - 负债期内反弹到回归线上方 → fake_bounce = True
       - 负债期长度 = overhang × debt_multiplier (最小 min_debt_bars 天)
-      - 负债期结束后重置
+      - 负债期结束后自动重置
 
     Parameters
     ----------
     closes : np.ndarray  收盘价序列（从旧到新）
-    reg_window : int     滚动回归窗口
-    debt_multiplier : float  每 unit overhang 对应多少负债 bar
-    min_debt_bars : int      最小负债天数
-    overhang_min : float     进入负债的 overhang 阈值
+    reg_window : int     滚动回归窗口，默认 120。
+    debt_multiplier : float
+        每 unit overhang 对应负债天数，默认 50。
+        调大(80-100) → 负债期更长，更保守。
+        调小(20-30)  → 负债期更短，恢复更快。
+    min_debt_bars : int
+        最小负债天数，默认 10。
+        防止 overhang 刚过阈值时负债期过短。
+    overhang_min : float
+        进入负债的 overhang 阈值，默认 0.15 (15%)。
+        调大(0.3+) → 需要更大透支才惩罚，较宽松。
+        调小(0.05) → 少量透支即惩罚，较严格。
 
     Returns
     -------

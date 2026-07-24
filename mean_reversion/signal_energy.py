@@ -25,16 +25,30 @@ def compute_energy_signal(
 ) -> dict:
     """计算能量衰竭信号。
 
+    5 维评分：下行能量 + 减速 + 缩量 + 跌不动 + 收盘近低。
+
     Parameters
     ----------
     closes : np.ndarray  收盘价（从旧到新）
     volumes : np.ndarray 成交量（手，从旧到新）
     highs : np.ndarray   最高价
     lows : np.ndarray    最低价
-    energy_window : int  统计下行能量的窗口，默认 10 日
-    drop_threshold : float  有效下跌阈值，默认 0.5%
-    e_min : float  最小下行能量阈值，默认 0.03
-    volume_ratio : float  成交量萎缩比例阈值，默认 0.8
+    energy_window : int
+        统计下行能量的窗口（交易日数），默认 10。
+        调大(15-20) → 统计更多天数，需更长下跌才触发，信号更稳。
+        调小(5-7)   → 更敏感，短期下跌即可触发。
+    drop_threshold : float
+        有效下跌阈值，默认 0.005 (0.5%)。
+        调大(0.01) → 只统计跌幅 >1% 的阴线，忽略小跌。
+        调小(0.002)→ 微跌也算在内，更敏感。
+    e_min : float
+        最小下行能量阈值，默认 0.03（约 3 个 1% 阴线）。
+        调大(0.05+) → 需要更大下跌才确认，更严格。
+        调小(0.01)  → 少量下跌即可触发。
+    volume_ratio : float
+        成交量萎缩比例阈值，默认 0.8（当日量 < 20日均量 × 0.8）。
+        调大(1.0)  → 缩量条件放松（正常量也可）。
+        调小(0.5)  → 需极度缩量才确认，更严格。
 
     Returns
     -------

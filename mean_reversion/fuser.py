@@ -43,7 +43,7 @@ class SignalResult:
 def compute_signal(
     df: pd.DataFrame,
     code: str = "",
-    reg_window: int = 60,
+    reg_window: int = 120,
     energy_window: int = 10,
     **kwargs
 ) -> SignalResult:
@@ -56,9 +56,23 @@ def compute_signal(
     code : str
         股票代码，仅用于结果标识。
     reg_window : int
-        回归窗口，默认 60。
+        滚动回归窗口（交易日数），默认 120。
+        调大(180-250) → 曲线更平滑，判断大级别趋势偏离。
+        调小(40-60)  → 更敏感，适合短线回归。
     energy_window : int
-        能量窗口，默认 10。
+        能量衰竭统计窗口（交易日数），默认 10。
+        调大(15-20) → 统计更多天数，能量衰竭判断更慢但更稳。
+        调小(5-7)   → 反应更快，信号更早但噪声更多。
+
+    其他参数通过 **kwargs 传入：
+      overhang_min=0.15
+        进入负债期的 overhang 阈值。
+        调大(0.3+) → 更不容易进入负债期（放松惩罚）。
+        调小(0.05) → 更容易进入负债期（更严格）。
+      debt_z_buy=-3.0
+        负债期内的买入 z 阈值。
+        调大(-2.5) → 负债期买入条件放松。
+        调小(-3.5) → 负债期买入条件更严。
 
     Returns
     -------
