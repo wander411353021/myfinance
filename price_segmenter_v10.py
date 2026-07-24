@@ -831,14 +831,14 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                      lookback=15, min_reversal_pct=0.02, confirm_bars=3,
                      save_path=None, fast_mode=False, same_type_merge_gap=20,
                      dur_horizon=120, touch_norm=3,
-                     reg_window=0):
+                     reg_window=120):
     """fast_mode: True=跳过画图，返回 bool（最后一天有买入信号）。
     返回 (c_result, bs_signal, bs_reason, bs_strength, all_levels)；
     bs_strength 为 BrkLvl/BrkLow 的 0~1 分量评分；all_levels 为阻力/支撑位生命周期列表。
 
-    reg_window : int, default 0
-        滚动回归窗口（交易日数）。>0 时在面板0叠加红色虚线回归线。
-        推荐 120（平滑），调大(180-250) 更平滑，调小(40-60) 更敏感。"""
+    reg_window : int, default 120
+        滚动回归窗口（交易日数）。在面板0叠加红色虚线回归线。
+        =0 不显示。调大(180-250) 更平滑，调小(40-60) 更敏感。"""
     close = df_ohlc['close'].values; volume = df_ohlc['volume'].values
     high = df_ohlc['high'].values; low = df_ohlc['low'].values; opn = df_ohlc['open'].values
 
