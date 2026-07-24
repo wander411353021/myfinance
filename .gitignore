@@ -17,3 +17,6 @@ bin-release/
 *.air
 *.ipa
 *.apk
+
+# Results (generated images, etc.)
+result/
