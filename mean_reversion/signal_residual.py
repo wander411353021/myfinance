@@ -111,6 +111,28 @@ def compute_residual_signal(
     }
 
 
+def compute_rolling_regression(closes: np.ndarray, window: int = 120):
+    """计算全量滚动回归预测值。
+
+    对第 i 天，用 closes[i-window+1 : i+1] 做线性回归，返回第 i 天的预测值。
+    前 window-1 天为 NaN。
+
+    用于在 K 线图上叠加平滑回归线。
+
+    Parameters
+    ----------
+    closes : np.ndarray  收盘价序列（从旧到新）
+    window : int         回归窗口，默认 120。
+
+    Returns
+    -------
+    preds : np.ndarray   每日回归预测值（前 window-1 个为 NaN）
+    slopes : np.ndarray  每日回归斜率（前 window-1 个为 NaN）
+    """
+    preds, slopes = _rolling_regression_full(closes, window)
+    return preds, slopes
+
+
 def _rolling_regression_full(closes: np.ndarray, window: int):
     """对全量 closes 做滚动回归，返回每日预测值和斜率。"""
     n = len(closes)

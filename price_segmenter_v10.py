@@ -548,7 +548,8 @@ def compute_buy_sell_signals(df_ohlc, result, dur_horizon=120, touch_norm=3,
 # ============================================================
 def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 tail_days=200, name="", save_path=None,
-                                bs_strength=None, all_levels=None):
+                                bs_strength=None, all_levels=None,
+                                reg_preds=None):
     """4面板: K线 + 成交量 + 买卖信号(柱高=突破分量) + 阻力/支撑位生命周期。"""
     ohlc = df_ohlc.tail(tail_days).copy().reset_index(drop=True)
     n = len(ohlc); x = np.arange(n); offset = len(df_ohlc) - n  # ohlc 是 df_ohlc 末尾 n 行，offset 为其在原序列中的起始下标（恒 >=0）
@@ -599,6 +600,10 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     ax0.plot(x, ma120, color='#7B1FA2', linewidth=1.2, alpha=0.8, label='MA120')
     sm = result['smooth'].values[offset:offset + n]
     ax0.plot(x, sm, color='#1565C0', linewidth=1.0, alpha=0.6, label='EMA')
+    if reg_preds is not None:
+        rp = reg_preds[offset:offset + n]
+        ax0.plot(x, rp, color='#d62728', linewidth=2.0, linestyle='--',
+                 alpha=0.85, label='Regression')
 
     for si, (s, e, p, _) in enumerate(intervals):
         if p == "UP" and e > s:
@@ -732,6 +737,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         Line2D([0], [0], color='#2E7D32', linewidth=0.8, linestyle=':', label='Gap line'),
         Line2D([0], [0], color='#E65100', linewidth=0.8, linestyle=':', label='Key candle'),
         Line2D([0], [0], color='#FF1744', linewidth=0.9, linestyle='-.', label='Resistance'),
+        Line2D([0], [0], color='#d62728', linewidth=2.0, linestyle='--', label='Regression'),
     ], loc='upper left', fontsize=7, ncol=4)
 
     ax1 = axes[1]; vol = ohlc['volume'].values; va = result['vol_annotation'].values[offset:offset + n]
@@ -824,10 +830,15 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
 def run_segmentation(df_ohlc, tail_days=200, name="",
                      lookback=15, min_reversal_pct=0.02, confirm_bars=3,
                      save_path=None, fast_mode=False, same_type_merge_gap=20,
-                     dur_horizon=120, touch_norm=3):
+                     dur_horizon=120, touch_norm=3,
+                     reg_window=0):
     """fast_mode: True=跳过画图，返回 bool（最后一天有买入信号）。
     返回 (c_result, bs_signal, bs_reason, bs_strength, all_levels)；
-    bs_strength 为 BrkLvl/BrkLow 的 0~1 分量评分；all_levels 为阻力/支撑位生命周期列表。"""
+    bs_strength 为 BrkLvl/BrkLow 的 0~1 分量评分；all_levels 为阻力/支撑位生命周期列表。
+
+    reg_window : int, default 0
+        滚动回归窗口（交易日数）。>0 时在面板0叠加红色虚线回归线。
+        推荐 120（平滑），调大(180-250) 更平滑，调小(40-60) 更敏感。"""
     close = df_ohlc['close'].values; volume = df_ohlc['volume'].values
     high = df_ohlc['high'].values; low = df_ohlc['low'].values; opn = df_ohlc['open'].values
 
@@ -840,9 +851,16 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
 
     if fast_mode: return bs_signal[-1] > 0
 
+    # 滚动回归线（reg_window > 0 时启用）
+    reg_preds = None
+    if reg_window > 0:
+        from mean_reversion.signal_residual import compute_rolling_regression
+        reg_preds, _ = compute_rolling_regression(close, window=reg_window)
+
     # if save_path is None:
     #     save_path = f'E:\\\\chip_analyzer_ui\\\\new_algo\\\\result\\\\{name}_price_v10.png'
     plot_price_segmentation_v10(df_ohlc, c_result, bs_signal, bs_reason,
                                 tail_days=tail_days, name=name, save_path=save_path,
-                                bs_strength=bs_strength, all_levels=all_levels)
+                                bs_strength=bs_strength, all_levels=all_levels,
+                                reg_preds=reg_preds)
     return c_result, bs_signal, bs_reason, bs_strength, all_levels

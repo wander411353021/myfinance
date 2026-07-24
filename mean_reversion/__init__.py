@@ -12,9 +12,10 @@
   result = compute_signal(df)
 """
 
-from .signal_residual import compute_residual_signal, compute_reversion_debt
+from .signal_residual import compute_residual_signal, compute_reversion_debt, compute_rolling_regression
 from .signal_energy import compute_energy_signal
 from .fuser import compute_signal, SignalResult
 
 __all__ = ["compute_residual_signal", "compute_reversion_debt",
+           "compute_rolling_regression",
            "compute_energy_signal", "compute_signal", "SignalResult"]
