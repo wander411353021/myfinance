@@ -1,19 +1,23 @@
 """信号融合模块
 
-融合规则：
+基础融合规则（正常状态）：
 
-                  能量衰竭强 (≥4)    能量衰竭中 (3)    能量衰竭弱 (<3)
-残差强回归 (z≤-2)     ★★★ 强烈买入     ★★☆ 买入        ★☆☆ 关注
-残差弱回归 (-2<z≤-1.5)  ★★☆ 买入        ★★☆ 买入        ☆☆☆ 不操作
+                  能量衰竭强 (>=4)    能量衰竭中 (3)    能量衰竭弱 (<3)
+残差强回归 (z<=-2)     ★★★ 强烈买入     ★★☆ 买入        ★☆☆ 关注
+残差弱回归 (-2<z<=-1.5)  ★★☆ 买入        ★★☆ 买入        ☆☆☆ 不操作
 残差正常 (z>-1.5)     ☆☆☆ 不操作       ☆☆☆ 不操作       ☆☆☆ 不操作
+
+负债期调整（上方透支量 >= overhang_min）：
+  - 买入阈值从 z <= -1.5 收紧为 z <= -3.0
+  - z in (-3.0, -1.5] → 被负债压制，不触发买入
+  - 负债期内反弹到回归线上方 → fake_bounce = True
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
 import numpy as np
 import pandas as pd
 
-from .signal_residual import compute_residual_signal
+from .signal_residual import compute_residual_signal, compute_reversion_debt
 from .signal_energy import compute_energy_signal
 
 
@@ -29,6 +33,10 @@ class SignalResult:
     reg_slope: float = 0.0          # 回归斜率
     drop_energy: float = 0.0        # 下行能量
     volume_ratio: float = 0.0       # 量比
+    overhang: float = 0.0           # 上方透支量
+    in_debt: bool = False           # 是否在负债期
+    debt_remaining: int = 0         # 剩余负债天数
+    fake_bounce: bool = False       # 今天是否假反弹
     details: dict = field(default_factory=dict)
 
 
@@ -45,7 +53,6 @@ def compute_signal(
     ----------
     df : pd.DataFrame
         必须含 columns: close, high, low, volume
-        （推荐从 tdx_quant.get_daily_kline_from_tdx 获得）
     code : str
         股票代码，仅用于结果标识。
     reg_window : int
@@ -73,13 +80,20 @@ def compute_signal(
     lows = df["low"].values.astype(np.float64)
     volumes = df["volume"].values.astype(np.float64)
 
-    # 信号A：残差回归
+    # ---- 信号A：残差回归 ----
     res = compute_residual_signal(closes, reg_window=reg_window)
     result.z_residual = res["z_residual"]
     result.reg_slope = res["a"]
     resid_level = res["level"]
 
-    # 信号B：能量衰竭
+    # ---- 上方透支量 / 负债期 ----
+    debt = compute_reversion_debt(closes, reg_window=reg_window)
+    result.overhang = debt["overhang"]
+    result.in_debt = debt["in_debt"]
+    result.debt_remaining = debt["debt_remaining"]
+    result.fake_bounce = debt["fake_bounce"]
+
+    # ---- 信号B：能量衰竭 ----
     ene = compute_energy_signal(closes, volumes, highs, lows,
                                 energy_window=energy_window)
     result.energy_score = ene["energy_score"]
@@ -102,31 +116,40 @@ def compute_signal(
         "near_low": ene["near_low"],
     }
 
-    # ---- 融合 ----
+    # ---- 融合（考虑负债期） ----
     energy_score = ene["energy_score"]
+    overhang_min = kwargs.get("overhang_min", 0.15)
+
+    # 负债期内：调整有效买入级别
+    if debt["in_debt"] and res["z_residual"] > -3.0:
+        # 虽然有偏离 (z <= -1.5) 但不到 -3.0 → 负债压制，不触发
+        effective_level = 0
+    elif debt["in_debt"] and res["z_residual"] <= -3.0:
+        # 负债内但偏离极其严重 (z <= -3.0) → 仍算强回归
+        effective_level = 3
+    else:
+        effective_level = resid_level
 
     # 从融合矩阵推导 confidence
-    if resid_level >= 3 and energy_score >= 4:
-        # 残差强回归 + 能量强衰竭 → 强烈买入
+    if effective_level >= 3 and energy_score >= 4:
         result.signal = "buy"
         result.confidence = 5
-    elif resid_level >= 3 and energy_score >= 3:
+    elif effective_level >= 3 and energy_score >= 3:
         result.signal = "buy"
         result.confidence = 3
-    elif resid_level >= 3 and energy_score >= 2:
+    elif effective_level >= 3 and energy_score >= 2:
         result.signal = "buy"
         result.confidence = 2
-    elif resid_level >= 1 and energy_score >= 3:
+    elif effective_level >= 1 and energy_score >= 3:
         result.signal = "buy"
         result.confidence = 3
-    elif resid_level >= 1 and energy_score >= 2:
+    elif effective_level >= 1 and energy_score >= 2:
         result.signal = "buy"
         result.confidence = 2
-    elif resid_level >= 1 and energy_score >= 4:
+    elif effective_level >= 1 and energy_score >= 4:
         result.signal = "buy"
         result.confidence = 3
     elif resid_level <= -3:
-        # 强向下回归
         result.signal = "sell"
         result.confidence = min(5, abs(resid_level) + energy_score // 2)
     else:
