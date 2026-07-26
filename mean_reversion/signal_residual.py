@@ -30,6 +30,8 @@ def compute_residual_signal(
     z_weak_buy: float = -1.5,
     z_weak_sell: float = 1.5,
     z_strong_sell: float = 2.0,
+    use_log: bool = False,
+    robust_std: bool = True,
 ) -> dict:
     """计算滚动回归残差信号。
 
@@ -67,6 +69,8 @@ def compute_residual_signal(
                 "level": 0}
 
     prices = closes[-reg_window:].astype(np.float64)
+    if use_log:
+        prices = np.log(np.maximum(prices, 1e-8))
     t = np.arange(reg_window, dtype=np.float64)
 
     # 线性回归: price = a * t + b
@@ -83,11 +87,18 @@ def compute_residual_signal(
     # 残差
     predicted_all = a * t + b
     residuals = prices - predicted_all
-    residual_std = np.std(residuals, ddof=1)  # 样本标准差
+    # 稳健 std：剔除当日点，避免当日极值把标准差撑大、稀释 z_residual
+    if robust_std and len(residuals) > 3:
+        residual_std = np.std(residuals[:-1], ddof=1)
+    else:
+        residual_std = np.std(residuals, ddof=1)
 
     # 当日残差
     current_residual = residuals[-1]
     z_residual = current_residual / residual_std if residual_std > 1e-10 else 0.0
+
+    # 回归预测价（还原到价格空间用于展示）
+    predicted_price = np.exp(predicted_all[-1]) if use_log else predicted_all[-1]
 
     # 信号级别判定
     if z_residual <= z_strong_buy:
@@ -106,7 +117,7 @@ def compute_residual_signal(
         "a": round(float(a), 6),
         "b": round(float(b), 4),
         "residual_std": round(float(residual_std), 4),
-        "predicted": round(float(predicted_all[-1]), 4),
+        "predicted": round(float(predicted_price), 4),
         "level": level,
     }
 
@@ -199,6 +210,7 @@ def compute_reversion_debt(
         in_debt        : bool   是否在负债期
         debt_remaining : int    剩余负债天数（0 = 不在期或已到期）
         fake_bounce    : bool   今天是否假反弹（负债期内突破回归线）
+        consec_below   : int    连续低于趋势线的天数（供下跌趋势防护使用）
     """
     n = len(closes)
     if n < reg_window:
@@ -210,6 +222,7 @@ def compute_reversion_debt(
     cum_overhang = 0.0
     debt_count = 0      # 倒计时 (0=不在负债期)
     daily_fake = False
+    consec_below = 0    # 连续低于趋势线的天数（用于下跌趋势防护）
 
     for i in range(1, n):
         if np.isnan(preds[i]):
@@ -224,9 +237,11 @@ def compute_reversion_debt(
                 # 正常累积 overhang
                 excess = (closes[i] - preds[i]) / preds[i]
                 cum_overhang += max(excess, 0)
+            consec_below = 0   # 回到趋势线上 → 重置连续下方计数
         else:
             # ── 价格在回归线下方 ──
             daily_fake = False
+            consec_below += 1
 
             if cum_overhang >= overhang_min and debt_count == 0:
                 # 刚跌破 → 进入负债期
@@ -245,4 +260,5 @@ def compute_reversion_debt(
         "in_debt": debt_count > 0,
         "debt_remaining": debt_count,
         "fake_bounce": daily_fake,
+        "consec_below": int(consec_below),
     }

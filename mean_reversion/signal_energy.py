@@ -6,8 +6,8 @@
   - +1: 下行能量 > 阈值
   - +1: 下跌减速（后半段能量 < 前半段 × 0.5）
   - +1: 缩量确认（成交量 < 20日均量 × 0.8）
-  - +1: 最近一日几乎不跌（跌幅 < 0.5%）
-  - +1: 收盘接近最低（无下影线，确认卖压持续但推不动了）
+  - +1: 止跌确认（最近一日跌幅 < 0.5% 或 未创近期新低）
+  - +1: 锤子线特征（收盘在当日区间上 30%，长下影=抛压耗尽）
 """
 
 import numpy as np
@@ -58,14 +58,15 @@ def compute_energy_signal(
         decelerating : bool  是否减速
         volume_shrink : bool 是否缩量
         stalled      : bool  最近一日是否跌不动
-        near_low     : bool  收盘是否接近最低
+        not_new_low  : bool  当日是否未创近期新低（止跌）
+        hammer_like  : bool  收盘是否靠上（长下影，抛压耗尽）
         level        : int   信号级别: -1卖出 0正常 +1买入 +2强买
     """
     min_required = max(energy_window + 1, 21)  # 至少 21 日（20日均量）
     if len(closes) < min_required:
         return {"energy_score": 0, "drop_energy": 0,
                 "decelerating": False, "volume_shrink": False,
-                "stalled": False, "near_low": False, "level": 0}
+                "stalled": False, "not_new_low": False, "hammer_like": False, "level": 0}
 
     # --- 下行能量 ---
     prices = closes[-(energy_window + 1):].astype(np.float64)
@@ -87,20 +88,24 @@ def compute_energy_signal(
     last_vol = vol[-1]
     volume_shrink = last_vol < ma20_vol * volume_ratio
 
-    # --- 最近一日是否跌不动 ---
+    # --- 止跌确认：最近一日未明显下跌 或 未创近期新低 ---
     last_drop = daily_drops[-1]
     stalled = last_drop < drop_threshold  # 最后一跌小于 0.5%
+    recent_lows = lows[-(energy_window + 1):-1]
+    made_new_low = len(recent_lows) > 0 and float(lows[-1]) <= float(np.min(recent_lows))
+    not_new_low = not made_new_low
+    stop_drop = stalled or not_new_low   # 跌不动 或 不再探新低 → 止跌
 
-    # --- 收盘接近最低（无下影线或下影线很短） ---
+    # --- 锤子线特征：收盘在当日区间上 30%（长下影 = 空方抛压被拒）---
     last_high = float(highs[-1])
     last_low = float(lows[-1])
     last_close = float(closes[-1])
     total_range = last_high - last_low
     if total_range > 1e-10:
-        lower_shadow_ratio = (last_close - last_low) / total_range
-        near_low = lower_shadow_ratio < 0.2  # 收盘在底部20%内
+        upper_part = (last_high - last_close) / total_range
+        hammer_like = upper_part < 0.3   # 收盘靠上、长下影 → 空方力竭
     else:
-        near_low = False
+        hammer_like = False
 
     # --- 评分 ---
     score = 0
@@ -110,9 +115,9 @@ def compute_energy_signal(
         score += 1
     if volume_shrink:
         score += 1
-    if stalled:
+    if stop_drop:
         score += 1
-    if near_low:
+    if hammer_like:
         score += 1
 
     # 信号级别
@@ -131,6 +136,7 @@ def compute_energy_signal(
         "decelerating": bool(decelerating),
         "volume_shrink": bool(volume_shrink),
         "stalled": bool(stalled),
-        "near_low": bool(near_low),
+        "not_new_low": bool(not_new_low),
+        "hammer_like": bool(hammer_like),
         "level": level,
     }

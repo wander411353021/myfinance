@@ -705,18 +705,29 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                      zorder=5, bbox=dict(boxstyle='round,pad=0.12', facecolor='white', edgecolor='#FF1744', alpha=0.8, linewidth=0.5))
 
     # ── 价格轴聚焦：以最近可见收盘价为锚，排除把轴撑爆的远端历史高低点 ──
+    # 关键修复：轴范围必须纳入叠加曲线（MA120 / EMA / 回归线），否则这些线在窗口左侧
+    # 回看 pre-window 历史价时会低于可见 K 线最低价，被裁切到 y 轴外看不见。
     # 仅当极值属“离群”（>4× 或 <0.12× 近期价）才封顶；健康区间（如 5-30）保持原样不被过度收窄。
     # ax3 复用该区间，使两轴范围一致。
     _last_cv = closes[-1]
-    _y_hi = highs.max()
+    # 收集所有可见曲线的 y 值（K线极值 + 叠加均线/回归线），统一参与轴范围计算
+    _overlay = [highs, lows,
+                np.asarray(ma120),
+                np.asarray(sm)]
+    if reg_preds is not None:
+        _overlay.append(np.asarray(rp))
+    _all_y = np.concatenate([a[np.isfinite(a)] for a in _overlay])
+    _y_hi = _all_y.max()
+    _y_lo = _all_y.min()
     if _y_hi > _last_cv * 4:
-        _near = highs[highs <= _last_cv * 4]
+        _near = _all_y[_all_y <= _last_cv * 4]
         _y_hi = _near.max() if _near.size else _last_cv * 4
-    _y_lo = lows.min()
     if _y_lo < _last_cv * 0.12:
-        _near = lows[lows >= _last_cv * 0.12]
+        _near = _all_y[_all_y >= _last_cv * 0.12]
         _y_lo = _near.min() if _near.size else _last_cv * 0.12
-    _focus_lo, _focus_hi = _y_lo, _y_hi
+    # 上下各留 5% 余量，避免曲线贴边（兼顾均线与回归线在窗口边缘的可见性）
+    _pad = (_y_hi - _y_lo) * 0.05
+    _focus_lo, _focus_hi = _y_lo - _pad, _y_hi + _pad
     ax0.set_ylim(_focus_lo, _focus_hi)
 
     ax0.set_ylabel('Price', fontsize=10); ax0.grid(True, alpha=0.3)

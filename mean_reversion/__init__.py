@@ -14,8 +14,10 @@
 
 from .signal_residual import compute_residual_signal, compute_reversion_debt, compute_rolling_regression
 from .signal_energy import compute_energy_signal
-from .fuser import compute_signal, SignalResult
+from .fuser import compute_signal, SignalResult, fuse_signal
+from .backtest import run_backtest, run_backtest_many, summarize
 
 __all__ = ["compute_residual_signal", "compute_reversion_debt",
            "compute_rolling_regression",
-           "compute_energy_signal", "compute_signal", "SignalResult"]
+           "compute_energy_signal", "compute_signal", "SignalResult",
+           "fuse_signal", "run_backtest", "run_backtest_many", "summarize"]
