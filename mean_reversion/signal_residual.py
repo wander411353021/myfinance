@@ -3,8 +3,9 @@
 核心思想：股价围绕自身短期趋势线回归，先拟合趋势再计算偏离。
 
 算法：
-  1. 对最近 N 日做线性回归: price = a * t + b
-  2. 残差 = 实际价格 - 回归预测价格
+  1. 对最近 N 日做对数线性回归: log(price) = a * t + b
+     （对数回归消除复利偏差，大牛股不会误判为"持续超买"）
+  2. 残差 = log(实际价格) - log(回归预测价格)
   3. 标准化残差 z_residual = 残差 / 残差标准差
   4. z_residual 越负 → 价格越低于趋势线 → 向上回归预期
 
@@ -30,10 +31,10 @@ def compute_residual_signal(
     z_weak_buy: float = -1.5,
     z_weak_sell: float = 1.5,
     z_strong_sell: float = 2.0,
-    use_log: bool = False,
+    use_log: bool = True,
     robust_std: bool = True,
 ) -> dict:
-    """计算滚动回归残差信号。
+    """计算滚动回归残差信号（支持对数回归）。
 
     Parameters
     ----------
@@ -52,6 +53,11 @@ def compute_residual_signal(
         卖出阈值（正值）。
         resudial 高于此值时触发卖出注意。
         绝对值越大 → 要求偏离越极端 → 信号越少。
+    use_log : bool
+        是否使用对数回归。True=log(price)回归，消除复利偏差。
+        默认 True。设为 False 则使用绝对价格线性回归。
+    robust_std : bool
+        是否使用稳健标准差（剔除当日点再计算 std）。
 
     Returns
     -------
@@ -122,7 +128,7 @@ def compute_residual_signal(
     }
 
 
-def compute_rolling_regression(closes: np.ndarray, window: int = 120):
+def compute_rolling_regression(closes: np.ndarray, window: int = 120, use_log: bool = True):
     """计算全量滚动回归预测值。
 
     对第 i 天，用 closes[i-window+1 : i+1] 做线性回归，返回第 i 天的预测值。
@@ -134,18 +140,22 @@ def compute_rolling_regression(closes: np.ndarray, window: int = 120):
     ----------
     closes : np.ndarray  收盘价序列（从旧到新）
     window : int         回归窗口，默认 120。
+    use_log : bool       是否使用对数回归，默认 True。
 
     Returns
     -------
     preds : np.ndarray   每日回归预测值（前 window-1 个为 NaN）
     slopes : np.ndarray  每日回归斜率（前 window-1 个为 NaN）
     """
-    preds, slopes = _rolling_regression_full(closes, window)
+    preds, slopes = _rolling_regression_full(closes, window, use_log=use_log)
     return preds, slopes
 
 
-def _rolling_regression_full(closes: np.ndarray, window: int):
-    """对全量 closes 做滚动回归，返回每日预测值和斜率。"""
+def _rolling_regression_full(closes: np.ndarray, window: int, use_log: bool = True):
+    """对全量 closes 做滚动回归，返回每日预测值和斜率。
+
+    use_log=True 时在 log 空间做回归，返回的 preds 为 exp(回归值)（价格空间）。
+    """
     n = len(closes)
     preds = np.full(n, np.nan)
     slopes = np.full(n, np.nan)
@@ -157,11 +167,14 @@ def _rolling_regression_full(closes: np.ndarray, window: int):
 
     for i in range(window - 1, n):
         y = closes[i - window + 1: i + 1].astype(np.float64)
+        if use_log:
+            y = np.log(np.maximum(y, 1e-8))
         sum_y = np.sum(y)
         sum_ty = np.sum(t * y)
         a = (window * sum_ty - sum_t * sum_y) / denom
         b = (sum_y - a * sum_t) / window
-        preds[i] = a * (window - 1) + b
+        pred = a * (window - 1) + b
+        preds[i] = np.exp(pred) if use_log else pred
         slopes[i] = a
 
     return preds, slopes
@@ -169,96 +182,79 @@ def _rolling_regression_full(closes: np.ndarray, window: int):
 
 def compute_reversion_debt(
     closes: np.ndarray,
-    reg_window: int = 60,
-    debt_multiplier: float = 50.0,
-    min_debt_bars: int = 10,
+    reg_window: int = 120,
+    use_log: bool = True,
+    overhang_forget: float = 0.98,
     overhang_min: float = 0.15,
+    max_overhang: float = 5.0,
 ) -> dict:
-    """计算上方透支量 (overhang) 与回归负债 (reversion debt)。
+    """计算上方透支量 (overhang) — 连续衰减版。
 
-    涨得越高 → overhang 越大 → 负债期越长 → 买入阈值越紧。
-    防止在大涨之后过早抄底。
-
-    核心逻辑：
-      - 价格在回归线上方时，累加每日超出比例 → overhang
-      - 价格跌破回归线时，若 overhang > 阈值 → 进入负债期
-      - 负债期内：买入阈值从 z=-1.5 收紧到 z=-3.0
-      - 负债期内反弹到回归线上方 → fake_bounce = True
-      - 负债期长度 = overhang × debt_multiplier (最小 min_debt_bars 天)
-      - 负债期结束后自动重置
+    相比旧版（二分负债期），核心改进：
+      - overhang 每天按 overhang_forget 指数遗忘 → 时间自然消化透支
+      - 没有负债期/非负债期的硬切换 → 连续平滑
+      - 涨得越高 → overhang 增长越快 → 阈值自动越紧
+      - 盘得越久 → overhang 衰减越多 → 阈值慢慢恢复
 
     Parameters
     ----------
     closes : np.ndarray  收盘价序列（从旧到新）
     reg_window : int     滚动回归窗口，默认 120。
-    debt_multiplier : float
-        每 unit overhang 对应负债天数，默认 50。
-        调大(80-100) → 负债期更长，更保守。
-        调小(20-30)  → 负债期更短，恢复更快。
-    min_debt_bars : int
-        最小负债天数，默认 10。
-        防止 overhang 刚过阈值时负债期过短。
+    use_log : bool       是否使用对数回归，默认 True。
+    overhang_forget : float
+        每日 overhang 衰减系数，默认 0.98。
+        调小(0.95) → 遗忘更快，透支更快消化。
+        调大(0.99) → 遗忘更慢，透支影响更久。
+        半衰期 ≈ ln(0.5)/ln(forget)：
+          0.98 → ~34 天
+          0.95 → ~14 天
+          0.99 → ~69 天
     overhang_min : float
-        进入负债的 overhang 阈值，默认 0.15 (15%)。
-        调大(0.3+) → 需要更大透支才惩罚，较宽松。
-        调小(0.05) → 少量透支即惩罚，较严格。
+        最低生效阈值，低于此值认为无影响。默认 0.15 (15%)。
+        调大(0.3) → 更宽松，小透支不处罚。
+        调小(0.05) → 更严格。
+    max_overhang : float
+        overhang 上限，默认 5.0。
+        防止单次大涨造成过度累积。
+        调大(10.0) → 允许更大透支积累。
+        调小(2.0)  → 上限更低，阈值恢复更快。
 
     Returns
     -------
     dict:
-        overhang       : float  当前累积透支量
-        in_debt        : bool   是否在负债期
-        debt_remaining : int    剩余负债天数（0 = 不在期或已到期）
-        fake_bounce    : bool   今天是否假反弹（负债期内突破回归线）
-        consec_below   : int    连续低于趋势线的天数（供下跌趋势防护使用）
+        overhang     : float  当前透支量（连续值，已指数衰减，有上限）
+        consec_below : int    连续低于趋势线的天数
     """
     n = len(closes)
     if n < reg_window:
-        return {"overhang": 0.0, "in_debt": False,
-                "debt_remaining": 0, "fake_bounce": False}
+        return {"overhang": 0.0, "consec_below": 0}
 
-    preds, _ = _rolling_regression_full(closes, reg_window)
+    preds, _ = _rolling_regression_full(closes, reg_window, use_log=use_log)
 
     cum_overhang = 0.0
-    debt_count = 0      # 倒计时 (0=不在负债期)
-    daily_fake = False
-    consec_below = 0    # 连续低于趋势线的天数（用于下跌趋势防护）
+    consec_below = 0
 
     for i in range(1, n):
         if np.isnan(preds[i]):
             continue
 
+        # 每日衰减（无论上方还是下方，时间都在消化透支）
+        cum_overhang *= overhang_forget
+
         if closes[i] > preds[i]:
-            # ── 价格在回归线上方 ──
-            if debt_count > 0:
-                # 负债期内反弹 → 标记假突破
-                daily_fake = True
-            else:
-                # 正常累积 overhang
-                excess = (closes[i] - preds[i]) / preds[i]
-                cum_overhang += max(excess, 0)
-            consec_below = 0   # 回到趋势线上 → 重置连续下方计数
+            # 上方：累积透支（有上限 cap）
+            excess = (closes[i] - preds[i]) / preds[i]
+            cum_overhang += max(excess, 0)
+            cum_overhang = min(cum_overhang, max_overhang)  # cap
+            consec_below = 0
         else:
-            # ── 价格在回归线下方 ──
-            daily_fake = False
+            # 下方：透支自然衰减（forget 已在上面应用）
             consec_below += 1
 
-            if cum_overhang >= overhang_min and debt_count == 0:
-                # 刚跌破 → 进入负债期
-                debt_count = int(cum_overhang * debt_multiplier)
-                debt_count = max(debt_count, min_debt_bars)
+    if cum_overhang < overhang_min:
+        cum_overhang = 0.0
 
-            if debt_count > 0:
-                debt_count -= 1
-                if debt_count == 0:
-                    # 负债期结束 → 重置
-                    cum_overhang = 0.0
-
-    # 当前状态
     return {
         "overhang": round(float(cum_overhang), 4),
-        "in_debt": debt_count > 0,
-        "debt_remaining": debt_count,
-        "fake_bounce": daily_fake,
         "consec_below": int(consec_below),
     }

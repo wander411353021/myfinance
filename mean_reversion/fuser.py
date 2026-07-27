@@ -1,16 +1,15 @@
-"""信号融合模块
+"""信号融合模块（连续衰减版）
 
-基础融合规则（正常状态）：
+融合规则：
+  1. 残差回归给出 z_residual（已使用对数回归，消除复利偏差）
+  2. Overhang 连续衰减，平滑调整买入阈值：
+       adjusted_weak_buy  = z_weak_buy  - overhang * overhang_penalty
+       adjusted_strong_buy = z_strong_buy - overhang * overhang_penalty
+  3. 能量衰竭评分作为辅助确认
 
-                  能量衰竭强 (>=4)    能量衰竭中 (3)    能量衰竭弱 (<3)
-残差强回归 (z<=-2)     ★★★ 强烈买入     ★★☆ 买入        ★☆☆ 关注
-残差弱回归 (-2<z<=-1.5)  ★★☆ 买入        ★★☆ 买入        ☆☆☆ 不操作
-残差正常 (z>-1.5)     ☆☆☆ 不操作       ☆☆☆ 不操作       ☆☆☆ 不操作
-
-负债期调整（上方透支量 >= overhang_min）：
-  - 买入阈值从 z <= -1.5 收紧为 z <= -3.0
-  - z in (-3.0, -1.5] → 被负债压制，不触发买入
-  - 负债期内反弹到回归线上方 → fake_bounce = True
+负债期移除说明（从二分改为连续）：
+  旧版：in_debt + debt_remaining + fake_bounce（硬切换）
+  新版：overhang 每日指数衰减，阈值连续滑动（无硬切换）
 """
 
 from dataclasses import dataclass, field
@@ -28,44 +27,45 @@ class SignalResult:
     date: str = ""
     signal: str = "neutral"         # "buy" | "neutral" | "sell"
     confidence: int = 0             # 1-5: 1弱 2关注 3买入 4强买入 5强烈买入
-    z_residual: float = 0.0         # 残差偏离度
+    z_residual: float = 0.0         # 残差偏离度（经对数回归计算）
     energy_score: int = 0           # 能量衰竭评分 0-5
-    reg_slope: float = 0.0          # 回归斜率
+    reg_slope: float = 0.0          # 回归斜率（log空间）
     drop_energy: float = 0.0        # 下行能量
     volume_ratio: float = 0.0       # 量比
-    overhang: float = 0.0           # 上方透支量
-    in_debt: bool = False           # 是否在负债期
-    debt_remaining: int = 0         # 剩余负债天数
-    fake_bounce: bool = False       # 今天是否假反弹
-    downtrend_guard: bool = False   # 是否触发下跌趋势防护（连续低于趋势线）
-    stop_loss_pct: float = 0.0      # 建议止损比例（负值，如 -0.08 表 -8%）
-    position_pct: float = 0.0       # 建议仓位上限（0~1）
+    overhang: float = 0.0           # 上方透支量（连续衰减，非二分）
+    downtrend_guard: bool = False   # 是否触发下跌趋势防护
+    adjusted_z_buy: float = -1.5    # 经 overhang 调整后的实际买入阈值
+    stop_loss_pct: float = 0.0      # 建议止损比例
+    position_pct: float = 0.0       # 建议仓位上限 (0~1)
     details: dict = field(default_factory=dict)
 
 
-def fuse_signal(effective_level: int, energy_score: int, resid_level: int):
-    """纯函数：由有效回归级别 / 能量评分 / 原始残差级别推导 (signal, confidence)。
+def fuse_signal(
+    effective_level: int,
+    energy_score: int,
+    resid_level: int,
+) -> tuple:
+    """纯函数：由有效回归级别 / 能量评分推导 (signal, confidence)。
 
-    confidence 1-5：1=弱 2=关注 3=买入 4=强买入 5=强烈买入
-    与 docs/mean_reversion_algo.md 的融合矩阵一致，且 1-5 各级均可达。
+    Returns (signal_str, confidence_int)
     """
-    if effective_level >= 3:            # 强回归 (z<=-2 / 负债内 z<=debt_z_buy)
+    if effective_level >= 3:
         if energy_score >= 4:
             return "buy", 5
-        elif energy_score == 3:
+        elif energy_score >= 3:
             return "buy", 4
         elif energy_score >= 1:
-            return "neutral", 2         # 关注
-        else:
-            return "neutral", 1         # 关注(弱)
-    elif effective_level >= 1:          # 弱回归 (-2<z<=-1.5)
-        if energy_score >= 3:
-            return "buy", 3
-        elif energy_score == 2:
-            return "neutral", 2         # 关注
+            return "neutral", 2
         else:
             return "neutral", 1
-    elif resid_level <= -3:             # 强超买 → 卖
+    elif effective_level >= 1:
+        if energy_score >= 3:
+            return "buy", 3
+        elif energy_score >= 2:
+            return "neutral", 2
+        else:
+            return "neutral", 1
+    elif resid_level <= -3:
         return "sell", min(5, 3 + energy_score // 2)
     return "neutral", 0
 
@@ -79,6 +79,8 @@ def compute_signal(
 ) -> SignalResult:
     """对一只股票的日线 DataFrame 计算均值回归信号。
 
+    默认使用对数回归 + 连续 overhang 衰减。
+
     Parameters
     ----------
     df : pd.DataFrame
@@ -90,28 +92,22 @@ def compute_signal(
         调大(180-250) → 曲线更平滑，判断大级别趋势偏离。
         调小(40-60)  → 更敏感，适合短线回归。
     energy_window : int
-        能量衰竭统计窗口（交易日数），默认 10。
-        调大(15-20) → 统计更多天数，能量衰竭判断更慢但更稳。
-        调小(5-7)   → 反应更快，信号更早但噪声更多。
+        能量衰竭统计窗口，默认 10。
+        调大(15-20) → 更稳定，调小(5-7) → 更敏感。
 
-    其他参数通过 **kwargs 传入（均真正生效）：
+    其他参数通过 **kwargs 传入：
+      overhang_forget=0.99
+        每日 overhang 衰减系数。
+        调小(0.98) → 遗忘更快，透支更快消化。
+        调大(0.995) → 遗忘更慢。
+      overhang_penalty=0.5
+        overhang 对买入阈值的惩罚斜率。
+        调大(1.0) → 每个 unit overhang 将阈值收紧 1σ。
+        调小(0.2) → 惩罚更轻。
       overhang_min=0.15
-        进入负债期的 overhang 阈值（转发给 compute_reversion_debt）。
-        调大(0.3+) → 更不容易进入负债期（放松惩罚）。
-        调小(0.05) → 更容易进入负债期（更严格）。
-      debt_z_buy=-3.0
-        负债期内的买入 z 阈值（融合逻辑直接使用，此前为硬编码）。
-        调大(-2.5) → 负债期买入条件放松。
-        调小(-3.5) → 负债期买入条件更严。
+        overhang 最低生效阈值。
       max_below_bars=15
-        下跌趋势防护：价格连续低于自身趋势线达到该天数 → 压制弱/中回归买点。
-        设 0 可关闭该防护。
-      stop_loss_pct=-0.08 / position_pct=0.3
-        仅作为建议写入 SignalResult（不强制下单），供上层执行器参考。
-
-    Returns
-    -------
-    SignalResult
+        下跌趋势防护：连续低于趋势线达到该天数 → 压制弱买点。
     """
     result = SignalResult(code=code)
 
@@ -129,23 +125,27 @@ def compute_signal(
     lows = df["low"].values.astype(np.float64)
     volumes = df["volume"].values.astype(np.float64)
 
-    # ---- 信号A：残差回归 ----
-    res = compute_residual_signal(closes, reg_window=reg_window)
+    # ---- 参数读取 ----
+    overhang_forget = kwargs.get("overhang_forget", 0.98)
+    overhang_penalty = kwargs.get("overhang_penalty", 0.3)
+    overhang_min = kwargs.get("overhang_min", 0.15)
+    max_below_bars = kwargs.get("max_below_bars", 15)
+
+    # ---- 信号A：对数残差回归 (use_log=True) ----
+    res = compute_residual_signal(closes, reg_window=reg_window, use_log=True)
     result.z_residual = res["z_residual"]
     result.reg_slope = res["a"]
     resid_level = res["level"]
 
-    # ---- 上方透支量 / 负债期 ----
+    # ---- Overhang 连续衰减 ----
     debt = compute_reversion_debt(
         closes, reg_window=reg_window,
-        debt_multiplier=kwargs.get("debt_multiplier", 50.0),
-        min_debt_bars=kwargs.get("min_debt_bars", 10),
-        overhang_min=kwargs.get("overhang_min", 0.15),
+        use_log=True,
+        overhang_forget=overhang_forget,
+        overhang_min=overhang_min,
+        max_overhang=kwargs.get("max_overhang", 5.0),
     )
     result.overhang = debt["overhang"]
-    result.in_debt = debt["in_debt"]
-    result.debt_remaining = debt["debt_remaining"]
-    result.fake_bounce = debt["fake_bounce"]
 
     # ---- 信号B：能量衰竭 ----
     ene = compute_energy_signal(closes, volumes, highs, lows,
@@ -171,35 +171,37 @@ def compute_signal(
         "hammer_like": ene["hammer_like"],
     }
 
-    # ---- 融合（考虑负债期 + 下跌趋势防护） ----
-    energy_score = ene["energy_score"]
+    # ---- 连续阈值调整 ----
+    # overhang 越大 → adjusted_z_buy 越负 → 买入要求越严
+    adjusted_weak = -1.5 - debt["overhang"] * overhang_penalty
+    adjusted_strong = -2.0 - debt["overhang"] * overhang_penalty
+    result.adjusted_z_buy = round(float(adjusted_weak), 4)
 
-    # 可调参数（从 kwargs 读取，真正生效）
-    debt_z_buy = kwargs.get("debt_z_buy", -3.0)
-    max_below_bars = kwargs.get("max_below_bars", 15)
-
-    # 负债期内：调整有效买入级别
-    if debt["in_debt"] and res["z_residual"] > debt_z_buy:
-        # 有偏离但不到 debt_z_buy → 负债压制，不触发买入
-        effective_level = 0
-    elif debt["in_debt"] and res["z_residual"] <= debt_z_buy:
-        # 负债内但偏离极其严重 → 仍算强回归（capitulation 买点）
+    if res["z_residual"] <= adjusted_strong:
         effective_level = 3
+    elif res["z_residual"] <= adjusted_weak:
+        effective_level = 1
     else:
-        effective_level = resid_level
-
-    # 下跌趋势防护：连续低于自身趋势线过久，且毫无反转确认 → 压制买点。
-    # 但若已出现衰竭确认（锤子线 / 未创新低），则放行（capitulation 买点）。
-    downtrend_guard = max_below_bars > 0 and debt.get("consec_below", 0) >= max_below_bars
-    has_exhaustion = ene["hammer_like"] or ene["not_new_low"]
-    if downtrend_guard and (not has_exhaustion) and effective_level < 3:
         effective_level = 0
 
-    # ---- 融合矩阵 ----
-    result.signal, result.confidence = fuse_signal(effective_level, energy_score, resid_level)
+    # 下跌趋势防护
+    downtrend_guard = (
+        max_below_bars > 0
+        and debt.get("consec_below", 0) >= max_below_bars
+        and effective_level == 1
+        and not (ene["hammer_like"] or ene["not_new_low"])
+    )
+    if downtrend_guard:
+        effective_level = 0
+
     result.downtrend_guard = downtrend_guard
 
-    # 交易纪律建议（参数化，不强制下单）
+    # ---- 融合 ----
+    result.signal, result.confidence = fuse_signal(
+        effective_level, ene["energy_score"], resid_level
+    )
+
+    # 交易纪律建议
     result.stop_loss_pct = kwargs.get("stop_loss_pct", -0.08)
     result.position_pct = kwargs.get("position_pct", 0.3)
 
