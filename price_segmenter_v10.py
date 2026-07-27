@@ -549,7 +549,9 @@ def compute_buy_sell_signals(df_ohlc, result, dur_horizon=120, touch_norm=3,
 def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 tail_days=200, name="", save_path=None,
                                 bs_strength=None, all_levels=None,
-                                reg_preds=None):
+                                reg_preds=None, reg_preds_long=None,
+                                hide_ma=True,
+                                reg_win=120, reg_win_long=250):
     """4面板: K线 + 成交量 + 买卖信号(柱高=突破分量) + 阻力/支撑位生命周期。"""
     ohlc = df_ohlc.tail(tail_days).copy().reset_index(drop=True)
     n = len(ohlc); x = np.arange(n); offset = len(df_ohlc) - n  # ohlc 是 df_ohlc 末尾 n 行，offset 为其在原序列中的起始下标（恒 >=0）
@@ -596,14 +598,21 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                     facecolor=c, edgecolor=c, linewidth=0.4))
 
     fc = df_ohlc['close'].values
-    ma120 = pd.Series(fc).rolling(120, min_periods=1).mean().values[-tail_days:]
-    ax0.plot(x, ma120, color='#7B1FA2', linewidth=1.2, alpha=0.8, label='MA120')
-    sm = result['smooth'].values[offset:offset + n]
-    ax0.plot(x, sm, color='#1565C0', linewidth=1.0, alpha=0.6, label='EMA')
+    if not hide_ma:
+        ma120 = pd.Series(fc).rolling(120, min_periods=1).mean().values[-tail_days:]
+        ax0.plot(x, ma120, color='#7B1FA2', linewidth=1.2, alpha=0.8, label='MA120')
+        sm = result['smooth'].values[offset:offset + n]
+        ax0.plot(x, sm, color='#1565C0', linewidth=1.0, alpha=0.6, label='EMA')
+    # 长周期回归线
+    if reg_preds_long is not None:
+        rpl = reg_preds_long[offset:offset + n]
+        ax0.plot(x, rpl, color='#1565C0', linewidth=1.5, linestyle='-',
+                 alpha=0.7, label=f'Reg Long ({reg_win_long}d)')
+    # 中周期回归线
     if reg_preds is not None:
         rp = reg_preds[offset:offset + n]
         ax0.plot(x, rp, color='#d62728', linewidth=2.0, linestyle='--',
-                 alpha=0.85, label='Regression')
+                 alpha=0.85, label=f'Reg ({reg_win}d)')
 
     for si, (s, e, p, _) in enumerate(intervals):
         if p == "UP" and e > s:
@@ -711,11 +720,13 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     # ax3 复用该区间，使两轴范围一致。
     _last_cv = closes[-1]
     # 收集所有可见曲线的 y 值（K线极值 + 叠加均线/回归线），统一参与轴范围计算
-    _overlay = [highs, lows,
-                np.asarray(ma120),
-                np.asarray(sm)]
+    _overlay = [highs, lows]
+    if not hide_ma:
+        _overlay += [np.asarray(ma120), np.asarray(sm)]
     if reg_preds is not None:
         _overlay.append(np.asarray(rp))
+    if reg_preds_long is not None:
+        _overlay.append(np.asarray(rpl))
     _all_y = np.concatenate([a[np.isfinite(a)] for a in _overlay])
     _y_hi = _all_y.max()
     _y_lo = _all_y.min()
@@ -740,8 +751,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         Patch(facecolor='cyan', alpha=0.15, label='DOWN (pending)'),
         Line2D([0], [0], color='#B71C1C', linewidth=1.0, linestyle='--', label='UP zone high'),
         Line2D([0], [0], color='#1B5E20', linewidth=1.0, linestyle='--', label='DOWN zone low'),
-        Line2D([0], [0], color='#7B1FA2', linewidth=1.2, label='MA120'),
-        Line2D([0], [0], color='#1565C0', linewidth=1.0, label='EMA'),
+        Line2D([0], [0], color='#d62728', linewidth=2.0, linestyle='--', label=f'Reg ({reg_win}d)'),
+        Line2D([0], [0], color='#1565C0', linewidth=1.5, linestyle='-', label=f'Reg Long ({reg_win_long}d)'),
         Line2D([0], [0], marker='v', color='r', linestyle='None', markersize=6, label='PEAK'),
         Line2D([0], [0], marker='^', color='g', linestyle='None', markersize=6, label='TROUGH'),
         Patch(facecolor='#1B5E20', alpha=0.30, label='Gap'),
@@ -842,14 +853,18 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                      lookback=15, min_reversal_pct=0.02, confirm_bars=3,
                      save_path=None, fast_mode=False, same_type_merge_gap=20,
                      dur_horizon=120, touch_norm=3,
-                     reg_window=120):
+                     reg_window=120, reg_window_long=250,
+                     hide_ma=True):
     """fast_mode: True=跳过画图，返回 bool（最后一天有买入信号）。
     返回 (c_result, bs_signal, bs_reason, bs_strength, all_levels)；
     bs_strength 为 BrkLvl/BrkLow 的 0~1 分量评分；all_levels 为阻力/支撑位生命周期列表。
 
     reg_window : int, default 120
-        滚动回归窗口（交易日数）。在面板0叠加红色虚线回归线。
-        =0 不显示。调大(180-250) 更平滑，调小(40-60) 更敏感。"""
+        中期回归窗口（交易日数），红色虚线。=0 不显示。
+    reg_window_long : int, default 250
+        长期回归窗口（交易日数），蓝色虚线。=0 不显示。
+    hide_ma : bool, default True
+        是否隐藏 MA120 和 EMA 线。"""
     close = df_ohlc['close'].values; volume = df_ohlc['volume'].values
     high = df_ohlc['high'].values; low = df_ohlc['low'].values; opn = df_ohlc['open'].values
 
@@ -862,16 +877,19 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
 
     if fast_mode: return bs_signal[-1] > 0
 
-    # 滚动回归线（reg_window > 0 时启用）
-    reg_preds = None
+    # 滚动回归线
+    reg_preds = None; reg_preds_long = None
     if reg_window > 0:
         from mean_reversion.signal_residual import compute_rolling_regression
         reg_preds, _ = compute_rolling_regression(close, window=reg_window)
+    if reg_window_long > 0:
+        from mean_reversion.signal_residual import compute_rolling_regression
+        reg_preds_long, _ = compute_rolling_regression(close, window=reg_window_long)
 
-    # if save_path is None:
-    #     save_path = f'E:\\\\chip_analyzer_ui\\\\new_algo\\\\result\\\\{name}_price_v10.png'
     plot_price_segmentation_v10(df_ohlc, c_result, bs_signal, bs_reason,
                                 tail_days=tail_days, name=name, save_path=save_path,
                                 bs_strength=bs_strength, all_levels=all_levels,
-                                reg_preds=reg_preds)
+                                reg_preds=reg_preds, reg_preds_long=reg_preds_long,
+                                hide_ma=hide_ma,
+                                reg_win=reg_window, reg_win_long=reg_window_long)
     return c_result, bs_signal, bs_reason, bs_strength, all_levels
