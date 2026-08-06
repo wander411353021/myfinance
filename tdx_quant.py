@@ -15,7 +15,7 @@ def get_daily_kline_from_tdx(code, end_date):
         'volume': [float(b.volume_lots) for b in adj.bars],
     })
     df = df[df['close'] > 0].reset_index(drop=True)
-    df['date'] = pd.to_datetime(df['date'])
+    df['date'] = pd.to_datetime(df['date']).dt.normalize()  # 去 15:00:00 收盘时间戳,统一为纯日期(00:00:00)
     return df
 
 """
