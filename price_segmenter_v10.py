@@ -551,14 +551,16 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 bs_strength=None, all_levels=None,
                                 reg_preds=None, reg_preds_long=None,
                                 hide_ma=True,
-                                reg_win=120, reg_win_long=250):
-    """4面板: K线 + 成交量 + 买卖信号(柱高=突破分量) + 阻力/支撑位生命周期。"""
+                                reg_win=120, reg_win_long=250,
+                                panic_info=None):
+    """5面板: K线 + 成交量 + 买卖信号(柱高=突破分量) + 阻力/支撑位生命周期 + 极速杀跌反转signal。
+    panic_info: panic_reversal.signal() 返回的 dict(含 signal 状态与门控明细),None 则面板显示提示。"""
     ohlc = df_ohlc.tail(tail_days).copy().reset_index(drop=True)
     n = len(ohlc); x = np.arange(n); offset = len(df_ohlc) - n  # ohlc 是 df_ohlc 末尾 n 行，offset 为其在原序列中的起始下标（恒 >=0）
 
-    fig, axes = plt.subplots(4, 1, figsize=(22, 15),
+    fig, axes = plt.subplots(5, 1, figsize=(22, 17),
                              sharex=True,
-                             gridspec_kw={'height_ratios': [4, 1.4, 0.9, 1.4]})
+                             gridspec_kw={'height_ratios': [4, 1.4, 0.9, 1.4, 1.1]})
     fig.suptitle(f'{name}  Price Segmentation V10 (Level Breakout)', fontsize=14, fontweight='bold')
 
     ax0 = axes[0]; opens = ohlc['open'].values; highs = ohlc['high'].values
@@ -834,6 +836,47 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     ax3.set_title('Resistance/Support Level Lifecycle  (★ formed · ▽ upper-shadow test · ▲ lower-shadow test · ● broken w/ strength)',
                   fontsize=8, loc='left', pad=2)
 
+
+    # ── Panic-Reversal Signal Panel (5th panel: per-stock 5d drop bars, share x-axis with K-line) ──
+    ax4 = axes[4]
+    ax4.set_facecolor('#FAFAFA')
+    _cl4 = ohlc['close'].values.astype(np.float64)
+    ret5 = np.zeros(n)
+    for _i in range(5, n):
+        ret5[_i] = _cl4[_i] / _cl4[_i - 5] - 1.0
+    rcolors = ['#E8403F' if v <= -0.18 else '#90A4AE' for v in ret5]
+    ax4.bar(x, ret5, width=0.65, color=rcolors, alpha=0.85)
+    ax4.axhline(-0.18, color='#C0392B', lw=1.2, ls='--')
+    ax4.axhline(0, color='#AAAAAA', lw=0.8)
+    ax4.text(n - 1, -0.19, '5d drop <= -18% (panic event)', fontsize=8, color='#C0392B', ha='right')
+    # 事件日/确认日标注(单只股票,来自 signal())
+    _pi4 = panic_info or {}
+    _dts = ohlc['date'].dt.strftime('%Y%m%d').values
+    pt4, cf4 = _pi4.get('panic_t'), _pi4.get('confirm')
+    if pt4:
+        _i = np.where(_dts == str(pt4))[0]
+        if len(_i):
+            ax4.scatter([_i[0]], [ret5[_i[0]]], color='#C0392B', s=80, zorder=6, marker='v')
+    if cf4:
+        _i = np.where(_dts == str(cf4))[0]
+        if len(_i):
+            ax4.scatter([_i[0]], [ret5[_i[0]]], color='#2ECC40', s=70, zorder=6, marker='o')
+    sig4 = _pi4.get('signal', 'N/A')
+    if sig4 == 'BUY':
+        ax4.annotate('BUY', xy=(n - 1, ret5[-1]), xytext=(8, 8),
+                     textcoords='offset points', fontsize=13, fontweight='bold', color='#27AE60')
+    elif sig4 == 'WATCH':
+        ax4.annotate('WATCH', xy=(n - 1, ret5[-1]), xytext=(8, 8),
+                     textcoords='offset points', fontsize=11, fontweight='bold', color='#E67E22')
+    elif sig4 == 'NONE':
+        ax4.text(n - 1, ret5[-1] + 0.02, 'NONE', fontsize=10, fontweight='bold',
+                 color='#7F8C8D', ha='right')
+    ax4.set_ylim(float(np.min(ret5)) * 1.35, max(0.08, float(np.max(ret5)) * 1.3))
+    ax4.set_ylabel('5d ret', fontsize=9)
+    ax4.grid(True, alpha=0.2)
+    ax4.set_title('Panic-Reversal Signal  (red bar = 5d drop <=-18% event; v=event, o=confirm)',
+                  fontsize=9, loc='left', pad=2)
+
     # ── 统一 x 轴日期刻度（落在最底层面板）──
     ts2 = max(1, n // 12); dates = ohlc['date'].values
     tp = list(range(0, n, ts2)); tl = [str(dates[i])[:10] for i in tp]
@@ -854,7 +897,8 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                      save_path=None, fast_mode=False, same_type_merge_gap=20,
                      dur_horizon=120, touch_norm=3,
                      reg_window=120, reg_window_long=250,
-                     hide_ma=True):
+                     hide_ma=True,
+                     code=None, end_date=None, panic_index=None):
     """fast_mode: True=跳过画图，返回 bool（最后一天有买入信号）。
     返回 (c_result, bs_signal, bs_reason, bs_strength, all_levels)；
     bs_strength 为 BrkLvl/BrkLow 的 0~1 分量评分；all_levels 为阻力/支撑位生命周期列表。
@@ -886,10 +930,29 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
         from mean_reversion.signal_residual import compute_rolling_regression
         reg_preds_long, _ = compute_rolling_regression(close, window=reg_window_long)
 
+    # 极速杀跌反转 signal(可选:传 code 自动计算,panic_index 可预传缓存)
+    panic_info = None
+    if code is None and name:
+        import re
+        m = re.search(r'(s[hz]\d{6}|\d{6})', str(name))   # 从 name 解析代码
+        if m:
+            c = m.group(1)
+            if c.isdigit():                                # 纯6位数字 → 推断交易所前缀
+                c = ('sh' if c[0] in '69' else 'sz') + c
+            code = c
+    if code is not None:
+        try:
+            from panic_reversal import signal as _panic_signal
+            panic_info = _panic_signal(code, end_date=end_date)
+        except Exception as _e:
+            panic_info = {'code': code, 'signal': 'ERR', 'date': str(end_date or ''),
+                          'reason': 'signal calc failed: %s' % _e}
+
     plot_price_segmentation_v10(df_ohlc, c_result, bs_signal, bs_reason,
                                 tail_days=tail_days, name=name, save_path=save_path,
                                 bs_strength=bs_strength, all_levels=all_levels,
                                 reg_preds=reg_preds, reg_preds_long=reg_preds_long,
                                 hide_ma=hide_ma,
-                                reg_win=reg_window, reg_win_long=reg_window_long)
+                                reg_win=reg_window, reg_win_long=reg_window_long,
+                                panic_info=panic_info)
     return c_result, bs_signal, bs_reason, bs_strength, all_levels
