@@ -763,14 +763,14 @@ def _compute_atr14(highs, lows, closes):
     return atr
 
 
-def compute_strength(closes, highs=None, lows=None, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=7, decay_factor=0.75):
+def compute_strength(closes, highs=None, lows=None, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=5, decay_factor=0.75):
     """死区滤波强度变换 v4.8b(波幅 + 收盘位移方向 + 方向死区 + 回归线门控 + 翻转确认 + 死区衰减延续)。
 
     演进:
       v1 收盘位移/ATR → v2 波幅/收盘位置 → v3 atan饱和 → v4 波幅/收盘位移方向
       v4.1 + dir_atr 方向死区 → v4.2 + reg_preds 回归线门控
       v4.5~v4.7 + confirm_flip/flip_strong/min_main 分级翻转确认(连续阳中无独立阴)
-      v4.8 + decay_days/decay_factor:死区日延续前一方向并衰减(前 decay_days=7 根,
+      v4.8 + decay_days/decay_factor:死区日延续前一方向并衰减(前 decay_days=5 根,
             强度=last_s×decay_factor^k);衰减结束归零,不做最小值保底(v4.9 的
             min_decay 已回撤)
 

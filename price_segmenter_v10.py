@@ -850,7 +850,10 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         _sh4 = df_ohlc['high'].values.astype(np.float64)
         _sl4 = df_ohlc['low'].values.astype(np.float64)
         _rg4 = None
-        if reg_preds is not None:
+        # 回归线门控优先用 250 日(reg_preds_long)——低于长期回归线时反转不可信
+        if reg_preds_long is not None:
+            _rg4 = np.asarray(reg_preds_long, dtype=np.float64)
+        elif reg_preds is not None:
             _rg4 = np.asarray(reg_preds, dtype=np.float64)
         strength4 = _pr.compute_strength(_sc4, _sh4, _sl4, win=strength_win, dir_atr=dir_atr,
                                          reg_preds=_rg4)
