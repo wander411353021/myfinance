@@ -763,7 +763,7 @@ def _compute_atr14(highs, lows, closes):
     return atr
 
 
-def compute_strength(closes, highs=None, lows=None, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=5, decay_factor=0.75):
+def compute_strength(closes, highs=None, lows=None, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=5, decay_factor=0.75, min_decay=2.0):
     """死区滤波强度变换 v4.8b(波幅 + 收盘位移方向 + 方向死区 + 回归线门控 + 翻转确认 + 死区衰减延续)。
 
     演进:
@@ -807,9 +807,12 @@ def compute_strength(closes, highs=None, lows=None, k=2.0, alpha=2.0, m=30.0, at
             continue
         d = closes[i] - closes[i - win]
         if abs(d) < dir_atr * atr[i]:
-            # 死区日:延续前一方向并衰减(衰减结束归零,不做保底)
-            if cur != 0 and dead_streak < decay_days:
-                strength[i] = cur * abs(last_s) * (decay_factor ** (dead_streak + 1))
+            # 死区日:延续前一方向并衰减;衰减结束后方向未变 → 用最低值保底(方向永续可见)
+            if cur != 0:
+                if dead_streak < decay_days:
+                    strength[i] = cur * abs(last_s) * (decay_factor ** (dead_streak + 1))
+                else:
+                    strength[i] = cur * min_decay
                 dead_streak += 1
             else:
                 strength[i] = 0.0
@@ -817,9 +820,12 @@ def compute_strength(closes, highs=None, lows=None, k=2.0, alpha=2.0, m=30.0, at
         dead_streak = 0
         raw_dir = 1 if d > 0 else -1
         if reg_preds is not None and np.isfinite(reg_preds[i]) and closes[i] < reg_preds[i] and raw_dir > 0:
-            # 回归线下方的正柱(反转)不可信 → 不显示反转;若有主方向,画衰减延续柱(避免大柱后突现0)
-            if cur != 0 and dead_streak < decay_days:
-                strength[i] = cur * abs(last_s) * (decay_factor ** (dead_streak + 1))
+            # 回归线下方的正柱(反转)不可信 → 不显示反转;若有主方向,画衰减延续柱/最低值保底
+            if cur != 0:
+                if dead_streak < decay_days:
+                    strength[i] = cur * abs(last_s) * (decay_factor ** (dead_streak + 1))
+                else:
+                    strength[i] = cur * min_decay
                 dead_streak += 1
             else:
                 strength[i] = 0.0

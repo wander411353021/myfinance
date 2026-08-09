@@ -868,7 +868,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     for _i in range(n):
         if has_str and np.isfinite(strength4[_i]) and abs(strength4[_i]) >= 1e-9:
             ax4.bar(x[_i], strength4[_i], width=0.65,
-                    color='#E8403F' if strength4[_i] < 0 else '#2ECC40', alpha=0.85)
+                    color='#E8403F' if strength4[_i] > 0 else '#2ECC40', alpha=0.85)
     ax4.axhline(0, color='#AAAAAA', lw=0.8)
     # 事件日/确认日标注(单只股票,来自 signal())
     _pi4 = panic_info or {}
@@ -896,7 +896,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     ax4.set_ylim(-30, 30)
     ax4.set_ylabel('Strength', fontsize=9)
     ax4.grid(True, alpha=0.2)
-    ax4.set_title('Panic-Reversal Signal (deadzone-filtered strength v4, +/-30; green=up, red=down; v=event, o=confirm)',
+    ax4.set_title('Panic-Reversal Signal (deadzone-filtered strength v4, +/-30; red=up, green=down; v=event, o=confirm)',
                   fontsize=9, loc='left', pad=2)
 
     # ── 统一 x 轴日期刻度（落在最底层面板）──

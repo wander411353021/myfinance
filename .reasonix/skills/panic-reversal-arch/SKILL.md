@@ -11,7 +11,7 @@ description: 极速杀跌反转模型与 V10 第5面板 strength 柱架构速查
   - `signal(code, end_date=None, drop_pct=0.18, vol_ratio=1.2, bull_slope_min=0.05, confirm_days=3, below_reg=True)`
     - 实盘信号接口(单只,无未来函数);判定用**固定 18% 跌度**(83% 胜率档),未用 strength
   - `detect_panic_events(df, code, drop_pct=0.15, ...)` — 事件研究主函数(默认 15% 档)
-  - `compute_strength(closes, highs, lows, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=5, decay_factor=0.75)`
+  - `compute_strength(closes, highs, lows, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=5, decay_factor=0.75, min_decay=2.0)`
     - **第5面板 strength 柱最终版 v4.8**(无未来函数)
   - `despeckle_strength(strength, min_seg=3)` — ⚠️ 用到右侧(未来)柱段,**存在未来函数**,
     仅事后可视化,面板默认 despeckle=False,绝不用于 signal()
@@ -32,8 +32,8 @@ raw     = amp / ATR14                                  # 波幅是几个单日�
           立即翻转(恐慌起点);否则需连续 confirm_flip(2) 根反向才翻转
 u       = max(0, raw - k)^alpha                          k=2.0, alpha=2.0
 有柱日   = 方向 * atan(u)/(π/2) * m                     m=30(峰值 ±30)
-死区日   = 延续前方向衰减: cur*|last_s|*decay_factor^k (decay_days=5, factor=0.75),
-          衰减结束归零(无最小值保底)
+死区/门控日 = 延续前方向衰减: cur*|last_s|*decay_factor^k (decay_days=5, factor=0.75);
+          衰减结束若方向未变 → 最低值保底 cur*min_decay(min_decay=2.0,方向永续可见)
 ```
 
 ## 演进史(重要,理解为什么是现在这样)
@@ -51,7 +51,7 @@ u       = max(0, raw - k)^alpha                          k=2.0, alpha=2.0
 | v4.7 | + min_main 主段长度 | 连续同色段中无独立反向柱(反向孤立=0) |
 | v4.8 | + decay_days/decay_factor 死区衰减延续 | 死区日延续前方向衰减,视觉连贯 |
 | v4.8b | 门控日也画衰减延续柱 | 大柱后反弹被门控硬置0,视觉突兀(603986 案例) |
-| (回撤) | v4.9 的 min_decay 最小值保底已撤 | 用户决定"衰减完就归零,不做保底" |
+| v4.9 | + min_decay 最低值保底(衰减结束后方向未变→±2.0) | 长段空白判别不了方向;用户最终确认要保底 |
 
 ## 无未来函数边界(铁律)
 
