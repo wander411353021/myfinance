@@ -552,7 +552,10 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 reg_preds=None, reg_preds_long=None,
                                 hide_ma=True,
                                 reg_win=120, reg_win_long=250,
-                                panic_info=None):
+                                panic_info=None,
+                                strength_win=10,
+                                dir_atr=2.0,
+                                despeckle=False):
     """5面板: K线 + 成交量 + 买卖信号(柱高=突破分量) + 阻力/支撑位生命周期 + 极速杀跌反转signal。
     panic_info: panic_reversal.signal() 返回的 dict(含 signal 状态与门控明细),None 则面板显示提示。"""
     ohlc = df_ohlc.tail(tail_days).copy().reset_index(drop=True)
@@ -840,41 +843,57 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     # ── Panic-Reversal Signal Panel (5th panel: per-stock 5d drop bars, share x-axis with K-line) ──
     ax4 = axes[4]
     ax4.set_facecolor('#FAFAFA')
-    _cl4 = ohlc['close'].values.astype(np.float64)
-    ret5 = np.zeros(n)
-    for _i in range(5, n):
-        ret5[_i] = _cl4[_i] / _cl4[_i - 5] - 1.0
-    rcolors = ['#E8403F' if v <= -0.18 else '#90A4AE' for v in ret5]
-    ax4.bar(x, ret5, width=0.65, color=rcolors, alpha=0.85)
-    ax4.axhline(-0.18, color='#C0392B', lw=1.2, ls='--')
+    # v4 strength 柱(死区滤波:波幅/ATR + 收盘位移方向,±30 饱和压缩)
+    try:
+        import panic_reversal as _pr
+        _sc4 = df_ohlc['close'].values.astype(np.float64)
+        _sh4 = df_ohlc['high'].values.astype(np.float64)
+        _sl4 = df_ohlc['low'].values.astype(np.float64)
+        _rg4 = None
+        if reg_preds is not None:
+            _rg4 = np.asarray(reg_preds, dtype=np.float64)
+        strength4 = _pr.compute_strength(_sc4, _sh4, _sl4, win=strength_win, dir_atr=dir_atr,
+                                         reg_preds=_rg4)
+        # despeckle_strength 用到右侧(未来)柱段判断,存在未来函数,默认关闭,
+        # 仅用于事后可视化参考,绝不用于 signal()/实盘判定。
+        if despeckle:
+            strength4 = _pr.despeckle_strength(strength4)   # 在完整序列上同化后再切片
+        strength4 = strength4[offset:offset + n]
+        has_str = True
+    except Exception:
+        strength4 = np.zeros(n); has_str = False
+    for _i in range(n):
+        if has_str and np.isfinite(strength4[_i]) and abs(strength4[_i]) >= 1e-9:
+            ax4.bar(x[_i], strength4[_i], width=0.65,
+                    color='#E8403F' if strength4[_i] < 0 else '#2ECC40', alpha=0.85)
     ax4.axhline(0, color='#AAAAAA', lw=0.8)
-    ax4.text(n - 1, -0.19, '5d drop <= -18% (panic event)', fontsize=8, color='#C0392B', ha='right')
     # 事件日/确认日标注(单只股票,来自 signal())
     _pi4 = panic_info or {}
     _dts = ohlc['date'].dt.strftime('%Y%m%d').values
     pt4, cf4 = _pi4.get('panic_t'), _pi4.get('confirm')
-    if pt4:
+    if pt4 and has_str:
         _i = np.where(_dts == str(pt4))[0]
         if len(_i):
-            ax4.scatter([_i[0]], [ret5[_i[0]]], color='#C0392B', s=80, zorder=6, marker='v')
-    if cf4:
+            ax4.scatter([_i[0]], [min(strength4[_i[0]], -2.0)], color='#C0392B', s=80, zorder=6, marker='v')
+    if cf4 and has_str:
         _i = np.where(_dts == str(cf4))[0]
         if len(_i):
-            ax4.scatter([_i[0]], [ret5[_i[0]]], color='#2ECC40', s=70, zorder=6, marker='o')
+            ax4.scatter([_i[0]], [min(strength4[_i[0]], -2.0)], color='#2ECC40', s=70, zorder=6, marker='o')
     sig4 = _pi4.get('signal', 'N/A')
+    _y4 = float(strength4[-1]) if has_str and np.isfinite(strength4[-1]) else 0.0
     if sig4 == 'BUY':
-        ax4.annotate('BUY', xy=(n - 1, ret5[-1]), xytext=(8, 8),
+        ax4.annotate('BUY', xy=(n - 1, _y4), xytext=(8, 8),
                      textcoords='offset points', fontsize=13, fontweight='bold', color='#27AE60')
     elif sig4 == 'WATCH':
-        ax4.annotate('WATCH', xy=(n - 1, ret5[-1]), xytext=(8, 8),
+        ax4.annotate('WATCH', xy=(n - 1, _y4), xytext=(8, 8),
                      textcoords='offset points', fontsize=11, fontweight='bold', color='#E67E22')
     elif sig4 == 'NONE':
-        ax4.text(n - 1, ret5[-1] + 0.02, 'NONE', fontsize=10, fontweight='bold',
+        ax4.text(n - 1, -28.0, 'NONE', fontsize=10, fontweight='bold',
                  color='#7F8C8D', ha='right')
-    ax4.set_ylim(float(np.min(ret5)) * 1.35, max(0.08, float(np.max(ret5)) * 1.3))
-    ax4.set_ylabel('5d ret', fontsize=9)
+    ax4.set_ylim(-30, 30)
+    ax4.set_ylabel('Strength', fontsize=9)
     ax4.grid(True, alpha=0.2)
-    ax4.set_title('Panic-Reversal Signal  (red bar = 5d drop <=-18% event; v=event, o=confirm)',
+    ax4.set_title('Panic-Reversal Signal (deadzone-filtered strength v4, +/-30; green=up, red=down; v=event, o=confirm)',
                   fontsize=9, loc='left', pad=2)
 
     # ── 统一 x 轴日期刻度（落在最底层面板）──

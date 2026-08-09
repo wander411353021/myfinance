@@ -745,3 +745,102 @@ def signal(code, end_date=None, drop_pct=0.18, vol_ratio=1.2,
         'reason': ('All OK: bull + panic-event + below-120d-reg + confirm' if sig == 'BUY'
                    else ('Missing: ' + '; '.join(lacks) if lacks else 'No recent panic event')),
     }
+
+
+def _compute_atr14(highs, lows, closes):
+    """ATR(14):Wilder 平滑,返回与输入等长的数组(前13个为 NaN)。"""
+    n = len(closes)
+    tr = np.zeros(n)
+    tr[0] = highs[0] - lows[0]
+    for i in range(1, n):
+        tr[i] = max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1]))
+    atr = np.full(n, np.nan)
+    if n < 14:
+        return atr
+    atr[13] = np.mean(tr[:14])
+    for i in range(14, n):
+        atr[i] = (atr[i-1] * 13 + tr[i]) / 14
+    return atr
+
+
+def compute_strength(closes, highs=None, lows=None, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=7, decay_factor=0.75):
+    """死区滤波强度变换 v4.8b(波幅 + 收盘位移方向 + 方向死区 + 回归线门控 + 翻转确认 + 死区衰减延续)。
+
+    演进:
+      v1 收盘位移/ATR → v2 波幅/收盘位置 → v3 atan饱和 → v4 波幅/收盘位移方向
+      v4.1 + dir_atr 方向死区 → v4.2 + reg_preds 回归线门控
+      v4.5~v4.7 + confirm_flip/flip_strong/min_main 分级翻转确认(连续阳中无独立阴)
+      v4.8 + decay_days/decay_factor:死区日延续前一方向并衰减(前 decay_days=7 根,
+            强度=last_s×decay_factor^k);衰减结束归零,不做最小值保底(v4.9 的
+            min_decay 已回撤)
+
+      - amp = win日波幅 = max(high[i-win+1..i]) - min(low[i-win+1..i])
+      - raw  = amp / ATR14
+      - 有柱日: |净位移| >= dir_atr*ATR,方向=sign(close[i]-close[i-win]),
+        回归线下正柱置0,长段(>=min_main)反向需 confirm_flip 确认,
+        短段强反向(净位移占比>=flip_strong)立即翻转;
+        strength = 方向 * atan(max(0,raw-k)^alpha)/(pi/2) * m
+      - 死区日: cur!=0 且连续死区 < decay_days → 衰减延续柱 cur*|last_s|*decay_factor^k;
+        之后归零
+      - 无未来函数(全部仅依赖历史,可用截断一致性测试验证)
+    """
+    import math as _math
+    closes = np.asarray(closes, dtype=float)
+    n = len(closes)
+    amp = np.full(n, np.nan)
+    for i in range(win - 1, n):
+        amp[i] = np.max(highs[i - win + 1:i + 1]) - np.min(lows[i - win + 1:i + 1])
+    if atr is None:
+        if highs is None or lows is None:
+            raise ValueError("需传 highs/lows 或预计算 atr")
+        atr = _compute_atr14(np.asarray(highs, dtype=float), np.asarray(lows, dtype=float), closes)
+    strength = np.full(n, np.nan)
+    cur = 0
+    rev = 0
+    main_len = 0
+    last_s = 0.0
+    dead_streak = 0
+    for i in range(win, n):
+        if not (np.isfinite(atr[i]) and atr[i] > 0 and np.isfinite(amp[i])):
+            continue
+        if closes[i - win] <= 0:
+            continue
+        d = closes[i] - closes[i - win]
+        if abs(d) < dir_atr * atr[i]:
+            # 死区日:延续前一方向并衰减(衰减结束归零,不做保底)
+            if cur != 0 and dead_streak < decay_days:
+                strength[i] = cur * abs(last_s) * (decay_factor ** (dead_streak + 1))
+                dead_streak += 1
+            else:
+                strength[i] = 0.0
+            continue
+        dead_streak = 0
+        raw_dir = 1 if d > 0 else -1
+        if reg_preds is not None and np.isfinite(reg_preds[i]) and closes[i] < reg_preds[i] and raw_dir > 0:
+            # 回归线下方的正柱(反转)不可信 → 不显示反转;若有主方向,画衰减延续柱(避免大柱后突现0)
+            if cur != 0 and dead_streak < decay_days:
+                strength[i] = cur * abs(last_s) * (decay_factor ** (dead_streak + 1))
+                dead_streak += 1
+            else:
+                strength[i] = 0.0
+            continue
+        if cur == 0:
+            cur = raw_dir; rev = 0; main_len = 1
+        elif raw_dir == cur:
+            rev = 0; main_len += 1
+        else:
+            if main_len < min_main and abs(d) / closes[i - win] >= flip_strong:
+                cur = raw_dir; rev = 0; main_len = 1  # 恐慌起点立即翻转
+            else:
+                rev += 1
+                if rev >= confirm_flip:
+                    cur = raw_dir; rev = 0; main_len = 1
+                else:
+                    main_len += 1
+        u = max(0.0, amp[i] / atr[i] - k) ** alpha
+        v = cur * (np.arctan(u) / (_math.pi / 2.0)) * m
+        strength[i] = v
+        last_s = v
+    return strength
+
+
