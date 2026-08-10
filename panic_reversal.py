@@ -769,7 +769,7 @@ def _compute_atr14(highs, lows, closes):
         atr[i] = (atr[i-1] * 13 + tr[i]) / 14
     return atr
 
-def compute_strength(closes, highs=None, lows=None, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=5, decay_factor=0.75, min_decay=2.0):
+def compute_strength(closes, highs=None, lows=None, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=5, decay_factor=0.75, min_decay=2.0, reg_decay=0.10, short_win=5, short_drop=0.08):
     """死区滤波强度变换 v4.8b(波幅 + 收盘位移方向 + 方向死区 + 回归线门控 + 翻转确认 + 死区衰减延续)。
 
     演进:
@@ -813,19 +813,42 @@ def compute_strength(closes, highs=None, lows=None, k=2.0, alpha=2.0, m=30.0, at
             continue
         d = closes[i] - closes[i - win]
         if abs(d) < dir_atr * atr[i]:
-            # 死区日:延续前一方向并衰减;衰减结束后方向未变 → 用最低值保底(方向永续可见)
+            # 死区日:先查短期骤变(5日涨跌≥8%)——补充死区里的真实信号并翻转方向
+            short_ret = closes[i] / closes[i - short_win] - 1.0 if i >= short_win else 0.0
+            if abs(short_ret) >= short_drop:
+                cur = 1 if short_ret > 0 else -1
+                rev = 0; main_len = 1; dead_streak = 0
+                u = max(0.0, amp[i] / atr[i] - k) ** alpha
+                v = cur * (np.arctan(u) / (_math.pi / 2.0)) * m
+                strength[i] = v if abs(v) >= min_decay else cur * min_decay
+                last_s = strength[i]
+                continue
+            # 死区日:延续前一方向并衰减;衰减结束后保底(min_decay),方向死守 cur(稳定)
             if cur != 0:
                 if dead_streak < decay_days:
                     strength[i] = cur * abs(last_s) * (decay_factor ** (dead_streak + 1))
                 else:
-                    strength[i] = cur * min_decay
+                    strength[i] = cur * min_decay  # 保底死守当前方向(稳定,不产生杂毛)
                 dead_streak += 1
             else:
                 strength[i] = 0.0
             continue
         dead_streak = 0
         raw_dir = 1 if d > 0 else -1
-        if reg_preds is not None and np.isfinite(reg_preds[i]) and closes[i] < reg_preds[i] and raw_dir > 0:
+        # 5日骤变(≥short_drop)独立检查:无论与 cur 同向/反向都按骤变方向处理
+        # (解决 5日暴跌但 10日净位移为正时被 cur 染色成阳的问题)
+        short_ret = closes[i] / closes[i - short_win] - 1.0 if i >= short_win else 0.0
+        if abs(short_ret) >= short_drop:
+            cur = 1 if short_ret > 0 else -1
+            rev = 0; main_len = 1; dead_streak = 0
+            u = max(0.0, amp[i] / atr[i] - k) ** alpha
+            v = cur * (np.arctan(u) / (_math.pi / 2.0)) * m
+            strength[i] = v if abs(v) >= min_decay else cur * min_decay
+            last_s = v
+            continue
+        reg_gate = (reg_preds[i] * (1.0 - reg_decay)
+                    if reg_preds is not None and np.isfinite(reg_preds[i]) else None)
+        if reg_gate is not None and closes[i] < reg_gate and raw_dir > 0:
             # 回归线下方的正柱(反转)不可信 → 不显示反转;若有主方向,画衰减延续柱/最低值保底
             if cur != 0:
                 if dead_streak < decay_days:
@@ -841,7 +864,14 @@ def compute_strength(closes, highs=None, lows=None, k=2.0, alpha=2.0, m=30.0, at
         elif raw_dir == cur:
             rev = 0; main_len += 1
         else:
-            if main_len < min_main and abs(d) / closes[i - win] >= flip_strong:
+            # 5日骤变(≥short_drop)→ 立即翻转,不等确认(暴跌/暴涨第一天就变色)
+            short_ret = closes[i] / closes[i - short_win] - 1.0 if i >= short_win else 0.0
+            if abs(short_ret) >= short_drop:
+                cur = raw_dir; rev = 0; main_len = 1
+            # 站上回归线(门控解除)的翻阳 → 立即生效(避免大阳被染成阴)
+            elif reg_gate is not None and closes[i] >= reg_gate and raw_dir > 0:
+                cur = raw_dir; rev = 0; main_len = 1
+            elif main_len < min_main and abs(d) / closes[i - win] >= flip_strong:
                 cur = raw_dir; rev = 0; main_len = 1  # 恐慌起点立即翻转
             else:
                 rev += 1
