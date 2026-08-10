@@ -555,15 +555,21 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 panic_info=None,
                                 strength_win=10,
                                 dir_atr=2.0,
-                                despeckle=False):
+                                despeckle=False,
+                                hide_mid_panels=True):
     """5面板: K线 + 成交量 + 买卖信号(柱高=突破分量) + 阻力/支撑位生命周期 + 极速杀跌反转signal。
     panic_info: panic_reversal.signal() 返回的 dict(含 signal 状态与门控明细),None 则面板显示提示。"""
     ohlc = df_ohlc.tail(tail_days).copy().reset_index(drop=True)
     n = len(ohlc); x = np.arange(n); offset = len(df_ohlc) - n  # ohlc 是 df_ohlc 末尾 n 行，offset 为其在原序列中的起始下标（恒 >=0）
 
-    fig, axes = plt.subplots(5, 1, figsize=(22, 17),
-                             sharex=True,
-                             gridspec_kw={'height_ratios': [4, 1.4, 0.9, 1.4, 1.1]})
+    if hide_mid_panels:
+        fig, axes = plt.subplots(3, 1, figsize=(22, 13),
+                                 sharex=True,
+                                 gridspec_kw={'height_ratios': [4, 1.4, 1.1]})
+    else:
+        fig, axes = plt.subplots(5, 1, figsize=(22, 17),
+                                 sharex=True,
+                                 gridspec_kw={'height_ratios': [4, 1.4, 0.9, 1.4, 1.1]})
     fig.suptitle(f'{name}  Price Segmentation V10 (Level Breakout)', fontsize=14, fontweight='bold')
 
     ax0 = axes[0]; opens = ohlc['open'].values; highs = ohlc['high'].values
@@ -776,72 +782,74 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     ax1.set_ylabel('Volume', fontsize=9); ax1.grid(True, alpha=0.2)
     ax1.set_title('Volume (red=expanding, green=shrinking)', fontsize=9, loc='left', pad=2)
 
-    # ── 信号面板（ax2）：柱高编码突破分量；顶端圆点大小随分量增大 ──
-    ax2 = axes[2]
-    bsl = bs_signal[offset:offset + n]; brl = bs_reason[offset:offset + n]
-    bstr = (bs_strength[offset:offset + n] if bs_strength is not None
-            else np.zeros(n, dtype=float))
-    bc2 = {1: '#42A5F5', 0: 'none', -1: '#FF7043'}
-    heights = np.array([0.0 if bsl[k] == 0
-                        else (bsl[k] * (0.4 + 0.6 * bstr[k]) if bstr[k] > 0 else bsl[k] * 0.5)
-                        for k in range(n)])
-    ax2.bar(x, heights, width=bar_w * 2,
-            color=[bc2.get(bsl[k], 'none') for k in range(n)], alpha=0.9)
-    for i in range(n):
-        s = bsl[i]
-        if s == 0: continue
-        st = bstr[i]
-        if st > 0:
-            tip = s * (0.4 + 0.6 * st)
-            ax2.scatter(i, tip + 0.06 * s, s=20 + 90 * st,
-                        color=bc2.get(s, 'gray'), alpha=0.9, zorder=6)
-        ax2.text(i, s * 1.28, brl[i], fontsize=5.0, color=bc2.get(s, 'gray'),
-                 ha='center', va='top', rotation=90, zorder=5)
-    ax2.set_ylim(-1.45, 1.45)
-    ax2.set_title('Buy/Sell Signals (V10: Level Breakout) — bar height & dot size = breakout conviction (strength)',
-                  fontsize=8, loc='left', pad=2)
+    ax2 = axes[2] if not hide_mid_panels else None
+    if ax2 is not None:
+        # ── 信号面板（ax2）：柱高编码突破分量；顶端圆点大小随分量增大 ──
+        bsl = bs_signal[offset:offset + n]; brl = bs_reason[offset:offset + n]
+        bstr = (bs_strength[offset:offset + n] if bs_strength is not None
+                else np.zeros(n, dtype=float))
+        bc2 = {1: '#42A5F5', 0: 'none', -1: '#FF7043'}
+        heights = np.array([0.0 if bsl[k] == 0
+                            else (bsl[k] * (0.4 + 0.6 * bstr[k]) if bstr[k] > 0 else bsl[k] * 0.5)
+                            for k in range(n)])
+        ax2.bar(x, heights, width=bar_w * 2,
+                color=[bc2.get(bsl[k], 'none') for k in range(n)], alpha=0.9)
+        for i in range(n):
+            s = bsl[i]
+            if s == 0: continue
+            st = bstr[i]
+            if st > 0:
+                tip = s * (0.4 + 0.6 * st)
+                ax2.scatter(i, tip + 0.06 * s, s=20 + 90 * st,
+                            color=bc2.get(s, 'gray'), alpha=0.9, zorder=6)
+            ax2.text(i, s * 1.28, brl[i], fontsize=5.0, color=bc2.get(s, 'gray'),
+                     ha='center', va='top', rotation=90, zorder=5)
+        ax2.set_ylim(-1.45, 1.45)
+        ax2.set_title('Buy/Sell Signals (V10: Level Breakout) — bar height & dot size = breakout conviction (strength)',
+                      fontsize=8, loc='left', pad=2)
 
-    # ── 阻力/支撑位生命周期面板（ax3）：★形成 · ▽/▲测试 · ●突破 ──
-    ax3 = axes[3]
-    # 只显示落在 ax0 聚焦价格区间内的价位（_focus_lo/_focus_hi），
-    # 使 ax3 的 y 轴与 ax0 一致，过滤掉远古未突破的高/低位（如把轴撑到 50 的阻力）
-    _lo, _hi = _focus_lo, _focus_hi
-    if all_levels:
-        for lv in all_levels:
-            fp = lv['price']; kind = lv.get('kind', 'RES')
-            if fp < _lo or fp > _hi:
-                continue
-            fi = lv['form_idx'] - offset
-            bi = lv.get('break_idx')
-            end = (bi - offset) if bi is not None else (n - 1)
-            if end < 0 or fi > n - 1: continue
-            xs = max(fi, 0); xe = min(end, n - 1)
-            col = '#B71C1C' if kind == 'RES' else '#1B5E20'
-            ax3.hlines(fp, xs - 0.5, xe + 0.5, colors=col,
-                       linewidths=1.0, linestyles='-' if bi is not None else '--',
-                       alpha=0.55, zorder=2)
-            for tt in lv.get('tests', []):
-                ttx = tt - offset
-                if 0 <= ttx < n:
-                    ax3.plot(ttx, fp, marker=('v' if kind == 'RES' else '^'),
-                             color=col, markersize=3, alpha=0.55, zorder=3)
-            if 0 <= fi < n:
-                ax3.plot(fi, fp, marker='*', color=col, markersize=8, zorder=4)
-            if bi is not None and 0 <= (bi - offset) < n:
-                bix = bi - offset
-                ax3.plot(bix, fp, marker='o', color=col, markersize=6, zorder=5)
-                ax3.annotate(f"s={lv.get('break_strength', 0):.2f}", (bix, fp),
-                             textcoords='offset points', xytext=(4, 2),
-                             fontsize=5, color=col, zorder=6)
-    ax3.plot(x, fc[offset:offset + n], color='#37474F', linewidth=0.9, alpha=0.6, zorder=1)
-    ax3.set_ylim(_focus_lo, _focus_hi)
-    ax3.set_ylabel('Level Price', fontsize=9); ax3.grid(True, alpha=0.2)
-    ax3.set_title('Resistance/Support Level Lifecycle  (★ formed · ▽ upper-shadow test · ▲ lower-shadow test · ● broken w/ strength)',
-                  fontsize=8, loc='left', pad=2)
+    ax3 = axes[3] if not hide_mid_panels else None
+    if ax3 is not None:
+        # ── 阻力/支撑位生命周期面板（ax3）：★形成 · ▽/▲测试 · ●突破 ──
+        # 只显示落在 ax0 聚焦价格区间内的价位（_focus_lo/_focus_hi），
+        # 使 ax3 的 y 轴与 ax0 一致，过滤掉远古未突破的高/低位（如把轴撑到 50 的阻力）
+        _lo, _hi = _focus_lo, _focus_hi
+        if all_levels:
+            for lv in all_levels:
+                fp = lv['price']; kind = lv.get('kind', 'RES')
+                if fp < _lo or fp > _hi:
+                    continue
+                fi = lv['form_idx'] - offset
+                bi = lv.get('break_idx')
+                end = (bi - offset) if bi is not None else (n - 1)
+                if end < 0 or fi > n - 1: continue
+                xs = max(fi, 0); xe = min(end, n - 1)
+                col = '#B71C1C' if kind == 'RES' else '#1B5E20'
+                ax3.hlines(fp, xs - 0.5, xe + 0.5, colors=col,
+                           linewidths=1.0, linestyles='-' if bi is not None else '--',
+                           alpha=0.55, zorder=2)
+                for tt in lv.get('tests', []):
+                    ttx = tt - offset
+                    if 0 <= ttx < n:
+                        ax3.plot(ttx, fp, marker=('v' if kind == 'RES' else '^'),
+                                 color=col, markersize=3, alpha=0.55, zorder=3)
+                if 0 <= fi < n:
+                    ax3.plot(fi, fp, marker='*', color=col, markersize=8, zorder=4)
+                if bi is not None and 0 <= (bi - offset) < n:
+                    bix = bi - offset
+                    ax3.plot(bix, fp, marker='o', color=col, markersize=6, zorder=5)
+                    ax3.annotate(f"s={lv.get('break_strength', 0):.2f}", (bix, fp),
+                                 textcoords='offset points', xytext=(4, 2),
+                                 fontsize=5, color=col, zorder=6)
+        ax3.plot(x, fc[offset:offset + n], color='#37474F', linewidth=0.9, alpha=0.6, zorder=1)
+        ax3.set_ylim(_focus_lo, _focus_hi)
+        ax3.set_ylabel('Level Price', fontsize=9); ax3.grid(True, alpha=0.2)
+        ax3.set_title('Resistance/Support Level Lifecycle  (★ formed · ▽ upper-shadow test · ▲ lower-shadow test · ● broken w/ strength)',
+                      fontsize=8, loc='left', pad=2)
 
 
     # ── Panic-Reversal Signal Panel (5th panel: per-stock 5d drop bars, share x-axis with K-line) ──
-    ax4 = axes[4]
+    ax4 = axes[2] if hide_mid_panels else axes[4]
     ax4.set_facecolor('#FAFAFA')
     # v4 strength 柱(死区滤波:波幅/ATR + 收盘位移方向,±30 饱和压缩)
     try:
@@ -884,11 +892,18 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             ax4.scatter([_i[0]], [min(strength4[_i[0]], -2.0)], color='#2ECC40', s=70, zorder=6, marker='o')
     sig4 = _pi4.get('signal', 'N/A')
     _y4 = float(strength4[-1]) if has_str and np.isfinite(strength4[-1]) else 0.0
+    _st4v = _pi4.get('strength_t')
+    _pt4s = _pi4.get('panic_t')
+    _suf = ''
+    if _pt4s:
+        _suf += ' @' + str(_pt4s)[-8:]
+    if _st4v is not None:
+        _suf += ' str=%.1f' % float(_st4v)
     if sig4 == 'BUY':
-        ax4.annotate('BUY', xy=(n - 1, _y4), xytext=(8, 8),
+        ax4.annotate('BUY' + _suf, xy=(n - 1, _y4), xytext=(8, 8),
                      textcoords='offset points', fontsize=13, fontweight='bold', color='#27AE60')
     elif sig4 == 'WATCH':
-        ax4.annotate('WATCH', xy=(n - 1, _y4), xytext=(8, 8),
+        ax4.annotate('WATCH' + _suf, xy=(n - 1, _y4), xytext=(8, 8),
                      textcoords='offset points', fontsize=11, fontweight='bold', color='#E67E22')
     elif sig4 == 'NONE':
         ax4.text(n - 1, -28.0, 'NONE', fontsize=10, fontweight='bold',

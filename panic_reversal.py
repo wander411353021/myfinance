@@ -663,23 +663,24 @@ PANIC_POOL = (POOL[::4][:20] + EXTRA_POOL[::3][:20]
               + EXTRA2_POOL[::4][:10] + EXTRA3_POOL[::4][:10])
 
 
-def signal(code, end_date=None, drop_pct=0.18, vol_ratio=1.2,
-           bull_slope_min=0.05, confirm_days=3, below_reg=True):
-    """实盘信号接口(仅单只股票数据,无市场恐慌指数依赖)。
+def signal(code, end_date=None, drop_pct=0.10, vol_ratio=1.2,
+           bull_slope_min=0.05, confirm_days=3, below_reg=True,
+           strength_thr=12.0):
+    """实盘信号接口(仅单只股票数据,无市场恐慌指数依赖,无未来函数)。
 
     全部只用判定日及以前数据(无未来函数)。返回 dict:
       signal: 'BUY'|'WATCH'|'NONE'|'NODATA'
-        BUY  = 牛市门控 ✓ + 最近恐慌事件(5日跌≥18%+放量+跌穿均线) + 反转确认 ✓
-        WATCH= 有恐慌但缺确认/牛市门控(给出缺什么)
-        NONE = 当前无恐慌事件
+        BUY  = 牛市门控 ✓ + 最近恐慌事件 + 反转确认 ✓
       bull/bull_ok: 250日年化斜率与是否>阈值
       below_reg:    当前收盘是否跌穿120日回归线
       panic_t/confirm: 最近恐慌事件日与反转确认日
+      strength_t: 恐慌事件日的 strength 值(显示用)
 
-    默认 drop_pct=0.18(跌幅≥18% 档):全样本胜率 83.3%(299池/最近两年),
-    排除系统性事件后 72.7%;比 15% 档(80.4%/68%)更稳,信号更少。
-    (市场恐慌指数逻辑已移除,后续需要时再加;回测增强仍可用
-     run_backtest 的 panic_min 参数,不影响本接口速度)
+    恐慌事件判定(v4.9 双重要求,299池/最近两年 验证胜率 83.8%,n=80):
+      5日跌幅 >= drop_pct(默认10%) 且 strength(事件日) <= -strength_thr(默认12)
+      strength = compute_strength(10日波幅/ATR14 + 方向状态),隐含"10日净位移为负"
+      的过滤——5日急跌但10日前更低的弱信号被排除(这类信号胜率仅74%)
+    strength_thr=0 或 None → 回退纯跌幅判定(旧逻辑)
     """
     df = _load_df(code, end_date)
     if df is None:
@@ -701,12 +702,17 @@ def signal(code, end_date=None, drop_pct=0.18, vol_ratio=1.2,
     reg120, _ = compute_rolling_regression(closes, window=120, use_log=True)
     below_reg_ok = bool(np.isfinite(reg120[t]) and closes[t] < reg120[t])
 
-    # 最近恐慌事件(向前扫 10 天,与 detect 同条件:5日跌+放量+跌穿均线)
+    # v4.9 strength 序列(双重要求用;默认参数,纯因果)
+    strength = compute_strength(closes, highs, lows) if strength_thr else None
+
+    # 最近恐慌事件(向前扫 10 天:5日跌 + 放量 + 跌穿均线 + strength 双重要求)
     vol_ma20 = pd.Series(vols).rolling(20).mean().values
     panic_t = None
     for i in range(t, max(5, t - 10) - 1, -1):
         ret5 = closes[i] / closes[i - 5] - 1.0
         if ret5 > -drop_pct:
+            continue
+        if strength_thr and not (np.isfinite(strength[i]) and strength[i] <= -strength_thr):
             continue
         v5 = vols[i - 4:i + 1].mean()
         v20 = vols[i - 19:i + 1].mean() if i >= 20 else vols[:i + 1].mean()
@@ -733,7 +739,7 @@ def signal(code, end_date=None, drop_pct=0.18, vol_ratio=1.2,
         if not bull_ok:
             lacks.append('bull gate fail (slope %.3f <= %.3f)' % (bull, bull_slope_min))
         if confirm is None:
-            lacks.append('no reversal confirm')
+            lacks.append('no volume-confirm (bullish engulf) in %dd' % (confirm_days + 1))
         sig = 'BUY' if not lacks else 'WATCH'
 
     return {
@@ -741,6 +747,7 @@ def signal(code, end_date=None, drop_pct=0.18, vol_ratio=1.2,
         'bull': round(bull, 3), 'bull_ok': bull_ok,
         'below_reg': below_reg_ok,
         'panic_t': dates[panic_t] if panic_t is not None else None,
+        'strength_t': round(float(strength[panic_t]), 1) if (panic_t is not None and strength is not None) else None,
         'confirm': confirm,
         'reason': ('All OK: bull + panic-event + below-120d-reg + confirm' if sig == 'BUY'
                    else ('Missing: ' + '; '.join(lacks) if lacks else 'No recent panic event')),
@@ -761,7 +768,6 @@ def _compute_atr14(highs, lows, closes):
     for i in range(14, n):
         atr[i] = (atr[i-1] * 13 + tr[i]) / 14
     return atr
-
 
 def compute_strength(closes, highs=None, lows=None, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=5, decay_factor=0.75, min_decay=2.0):
     """死区滤波强度变换 v4.8b(波幅 + 收盘位移方向 + 方向死区 + 回归线门控 + 翻转确认 + 死区衰减延续)。

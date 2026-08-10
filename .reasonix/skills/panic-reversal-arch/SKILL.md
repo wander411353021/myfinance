@@ -8,8 +8,9 @@ description: 极速杀跌反转模型与 V10 第5面板 strength 柱架构速查
 ## 核心文件与函数(当前版)
 
 - `panic_reversal.py`:
-  - `signal(code, end_date=None, drop_pct=0.18, vol_ratio=1.2, bull_slope_min=0.05, confirm_days=3, below_reg=True)`
-    - 实盘信号接口(单只,无未来函数);判定用**固定 18% 跌度**(83% 胜率档),未用 strength
+  - `signal(code, end_date=None, drop_pct=0.10, vol_ratio=1.2, bull_slope_min=0.05, confirm_days=3, below_reg=True, strength_thr=12.0)`
+    - 实盘信号接口(单只,无未来函数);恐慌判定=**5日跌≥10% AND strength≤-12 双重要求**
+      (299池复测胜率 83.8%,n=80);strength_thr=0/None 回退纯跌幅旧逻辑
   - `detect_panic_events(df, code, drop_pct=0.15, ...)` — 事件研究主函数(默认 15% 档)
   - `compute_strength(closes, highs, lows, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=5, decay_factor=0.75, min_decay=2.0)`
     - **第5面板 strength 柱最终版 v4.8**(无未来函数)
@@ -63,8 +64,11 @@ u       = max(0, raw - k)^alpha                          k=2.0, alpha=2.0
 
 ## 关键验证数据(299 池/最近两年)
 
-- 固定 18% 跌度 + 放量1.2 + 牛市门控 + 破线 + 确认:胜率 83.3%(n=30)
-- strength 阈值单独做信号仅 60~65%(波幅大但净跌小);需叠加固定跌度才回 80%
+- signal 双重要求(跌≥10% + strength≤-12 + 放量 + 破线120 + 确认):胜率 83.8%(n=80)
+- 旧固定 18% 档:胜率 88.0%(n=25,事件少 1/3)
+- strength 单独做信号仅 59~64%(波幅大但净跌小,假信号)
+- 关键:区分度来自 strength 的方向状态(10日净位移为负),不是幅度(跌≥10%的事件波幅都≥3ATR);
+  300251 1/06(5日跌11.3%但10日前更低)属弱信号(74%区间),被 strength 过滤是设计使然
 - 死区滤波视觉价值 > 独立信号价值(柱覆盖率 ~27-37%,反向孤立柱=0)
 
 ## 常用命令
