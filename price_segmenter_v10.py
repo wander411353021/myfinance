@@ -625,6 +625,25 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         ax0.plot(x, rp, color='#d62728', linewidth=2.0, linestyle='--',
                  alpha=0.85, label=f'Reg ({reg_win}d)')
 
+    # 阴柱期转阳目标价线(仅阴柱日有值,阳柱/无柱日 NaN——阶梯线,突破该价次日转阳)
+    try:
+        import panic_reversal as _pr
+        _fc = df_ohlc['close'].values.astype(np.float64)
+        _fh = df_ohlc['high'].values.astype(np.float64)
+        _fl = df_ohlc['low'].values.astype(np.float64)
+        _fo = df_ohlc['open'].values.astype(np.float64)
+        _frg = None
+        if reg_preds_long is not None:
+            _frg = np.asarray(reg_preds_long, dtype=np.float64)
+        elif reg_preds is not None:
+            _frg = np.asarray(reg_preds, dtype=np.float64)
+        _tp = _pr.compute_turn_positive_prices(_fc, _fh, _fl, opens=_fo, reg_preds=_frg)
+        tp_win = _tp[offset:offset + n]
+        ax0.plot(x, tp_win, drawstyle='steps-post', color='#1565C0', linewidth=2.6,
+                 linestyle='--', alpha=0.95, label='Turn-Up Target')
+    except Exception:
+        pass
+
     for si, (s, e, p, _) in enumerate(intervals):
         if p == "UP" and e > s:
             ax0.hlines(highs[s:e + 1].max(), s - 0.5, e + 0.5, colors='#B71C1C',
@@ -863,8 +882,9 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             _rg4 = np.asarray(reg_preds_long, dtype=np.float64)
         elif reg_preds is not None:
             _rg4 = np.asarray(reg_preds, dtype=np.float64)
+        _so4 = df_ohlc['open'].values.astype(np.float64)
         strength4 = _pr.compute_strength(_sc4, _sh4, _sl4, win=strength_win, dir_atr=dir_atr,
-                                         reg_preds=_rg4)
+                                         reg_preds=_rg4, opens=_so4)
         # despeckle_strength 用到右侧(未来)柱段判断,存在未来函数,默认关闭,
         # 仅用于事后可视化参考,绝不用于 signal()/实盘判定。
         if despeckle:

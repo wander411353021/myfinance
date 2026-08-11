@@ -12,8 +12,10 @@ description: 极速杀跌反转模型与 V10 第5面板 strength 柱架构速查
     - 实盘信号接口(单只,无未来函数);恐慌判定=**5日跌≥10% AND strength≤-12 双重要求**
       (299池复测胜率 83.8%,n=80);strength_thr=0/None 回退纯跌幅旧逻辑
   - `detect_panic_events(df, code, drop_pct=0.15, ...)` — 事件研究主函数(默认 15% 档)
-  - `compute_strength(closes, highs, lows, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=5, decay_factor=0.75, min_decay=2.0)`
+  - `compute_strength(closes, highs, lows, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=5, decay_factor=0.75, min_decay=2.0, reg_decay=0.10, short_win=5, short_drop=0.08, opens=None)`
     - **第5面板 strength 柱最终版 v4.8**(无未来函数)
+  - `compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_atr=2.0, short_win=5, short_drop=0.08, reg_decay=0.10, reg_preds=None, atr=None, strength=None, min_band=0.10)`
+    - 阴柱期"转阳触发价"序列(阳柱/无柱日=NaN);V10 panel0 画蓝粗虚线目标价
   - `despeckle_strength(strength, min_seg=3)` — ⚠️ 用到右侧(未来)柱段,**存在未来函数**,
     仅事后可视化,面板默认 despeckle=False,绝不用于 signal()
   - `_compute_atr14(highs, lows, closes)` — Wilder ATR(14),前 13 个 NaN
@@ -27,14 +29,16 @@ description: 极速杀跌反转模型与 V10 第5面板 strength 柱架构速查
 amp     = win日波幅 = max(high[i-win+1..i]) - min(low[i-win+1..i])   win=10
 raw     = amp / ATR14                                  # 波幅是几个单日波动
 有柱日   = |10日净位移| >= dir_atr*ATR14 (dir_atr=2.0),方向 = sign(净位移)
-回归线门控: V10 面板传 reg_preds_long(250日回归线,缺省回退120日);close < reg250 时,正柱(反转)不显示——
-           若有主方向且衰减期内 → 画衰减延续柱(非硬0)
-翻转确认: 与当前方向相反时——短段(<min_main=3)且净位移占比>=flip_strong(8%)
-          立即翻转(恐慌起点);否则需连续 confirm_flip(2) 根反向才翻转
+回归线门控: reg_gate = reg_preds × (1-reg_decay=0.9);close < reg_gate 时正柱(反转)不显示,
+           画衰减延续柱/保底(V10 面板传 reg_preds_long=250日,缺省回退120日)
+5日骤变(short_win=5, short_drop=8%): 独立检查(同向/反向都触发)——
+           骤跌立即翻阴;骤涨翻阳需 站上回归线(C) 且 当天非阴线(B,需传 opens)
+翻转确认: ①骤变 ②站上回归线翻阳 ③短段(<min_main=3)强反向(净位移占比>=8%)
+          立即翻转;否则需 confirm_flip(2) 根确认(1天延迟)
 u       = max(0, raw - k)^alpha                          k=2.0, alpha=2.0
 有柱日   = 方向 * atan(u)/(π/2) * m                     m=30(峰值 ±30)
 死区/门控日 = 延续前方向衰减: cur*|last_s|*decay_factor^k (decay_days=5, factor=0.75);
-          衰减结束若方向未变 → 最低值保底 cur*min_decay(min_decay=2.0,方向永续可见)
+          衰减结束 → 保底 cur*min_decay(±2.0,死守 cur,不跟K线)
 ```
 
 ## 演进史(重要,理解为什么是现在这样)
@@ -53,6 +57,22 @@ u       = max(0, raw - k)^alpha                          k=2.0, alpha=2.0
 | v4.8 | + decay_days/decay_factor 死区衰减延续 | 死区日延续前方向衰减,视觉连贯 |
 | v4.8b | 门控日也画衰减延续柱 | 大柱后反弹被门控硬置0,视觉突兀(603986 案例) |
 | v4.9 | + min_decay 最低值保底(衰减结束后方向未变→±2.0) | 长段空白判别不了方向;用户最终确认要保底 |
+| v4.9+ | + reg_decay=0.10(门控线=reg×0.9) | reg250 太严,接近回归线的反弹不压 |
+| v4.9+ | + 站上回归线翻阳立即(不等2根) | 300476 9/30 大阳被染阴,延迟不合理 |
+| v4.9+ | + 5日骤变(±8%)独立检查 | 5日暴跌但10日方向正被染阳(000066 10/15) |
+| v4.9+ | 骤涨翻阳需站上回归线+当天非阴线(C+B) | 688099 4/14 阴K阳柱(骤涨+8%但reg下) |
+| v4.9+ | opens 参数(骤涨阳线条件) | signal/V10 已传 opens |
+
+## 转阳触发价(compute_turn_positive_prices)— V10 panel0 蓝粗虚线
+
+- 用途:阴柱期间在 K 线上画一条"目标/压制价",突破该价 = 次日大概率转阳(买入条件单参考);阳柱期无(纯 NaN 不画)
+- 第 i 天(阴柱)触发价 = min(常规路径, 骤变路径) 再优化:
+  - 常规路径 = max(close[i-win] + dir_atr×ATR[i], 门控线 reg×0.9)
+  - 骤变路径 = max(close[i-short_win]×(1+short_drop), 门控线)
+- 优化①:触发价不低于当日收盘(方向已满足时=现价,压制语义)——688552 5/19 根因:暴跌后 10 日前参照价过低,min(常规,骤变)选到低价路径出现"压制价<现价"
+- 优化②:滞回 min_band=10%:新候选与当前显示值差 <10% 时保持前值(抑制 close[i-10]/close[i-5] 换参照抖动;688552 变动率 17%→9%,段数 39→21)
+- 只依赖第 i 天及之前数据,无未来函数
+- V10 绘制:ax0 `plot(x, tp_win, drawstyle='steps-post', color='#1565C0', linewidth=2.6, ls='--', label='Turn-Up Target')`;完整序列算完再切片(offset:offset+n)
 
 ## 无未来函数边界(铁律)
 
@@ -71,11 +91,18 @@ u       = max(0, raw - k)^alpha                          k=2.0, alpha=2.0
   300251 1/06(5日跌11.3%但10日前更低)属弱信号(74%区间),被 strength 过滤是设计使然
 - 死区滤波视觉价值 > 独立信号价值(柱覆盖率 ~27-37%,反向孤立柱=0)
 
+## 已知遗留(2026-08 用户选择暂不处理)
+
+- 非骤变"波幅大但10日方向转负"的有柱日(如 000066 6/05,5日仅+2.1%),方向仍跟随旧 cur
+  (confirm 延迟染色)——用户"先接受,后面再说"
+- 死区保底死守 cur:窄幅阴跌期保底阳(000400 8/27~9/04),与"保底跟K线"权衡后选稳定
+
 ## 常用命令
 
 ```
 python panic_reversal.py grid          # 参数网格(84只)
 python panic_reversal.py one sz300437  # 单只检测+画图
-# streamlit: streamlit run streamlit_demo.py(走 run_segmentation,默认 strength_win=10 dir_atr=2.0 decay_days=5;门控=250日回归线)
+# streamlit: streamlit run streamlit_demo.py(走 run_segmentation,默认 strength_win=10 dir_atr=2.0 decay_days=5;门控=250日回归线;目标价线自动在 panel0)
+# 触发价图:plot_price_segmentation_v10(..., reg_preds_long=250日回归线) 即自动画蓝粗虚线(阴柱期)
 # 注意:修改 panic_reversal.py/price_segmenter_v10.py 后必须重启 streamlit 进程才生效
 ```
