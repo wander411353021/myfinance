@@ -900,16 +900,7 @@ def compute_strength(closes, highs=None, lows=None, k=2.0, alpha=2.0, m=30.0, at
 
 def compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_atr=2.0,
                                  short_win=5, short_drop=0.08, reg_decay=0.10,
-                                 reg_preds=None, atr=None, strength=None, drop_band=0.04,
-                                 adaptive=True):
-    # 波动率自适应(低ATR放大目标价,抑制死水假信号):
-    #   atr_ratio=ATR/close 在 1%~4% 间线性映射:
-    #     常规路径倍数 2.0 → 1.5(高波动)~4.0(低波动/死水)
-    #     骤变路径百分比 8% → 6%(高波动)~12%(低波动)
-    def _adaptive(r):
-        t = min(max((0.04 - r) / 0.03, 0.0), 1.0)  # 1%→1.0, 4%→0.0
-        return 1.5 + 2.5 * t, 0.06 + 0.06 * t
-
+                                 reg_preds=None, atr=None, strength=None, min_band=0.10):
     """逐日计算"阴柱期转阳触发价"(仅阴柱日有值,阳柱/无柱日为 NaN)。
 
     第 i 天为阴柱时,refs[i] = 第 i+1 天转阳所需的最低参考价(买入条件单):
@@ -917,13 +908,9 @@ def compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_at
       骤变路径: max(close[i-short_win] * (1+short_drop), reg_gate)  5日骤涨 + 站上门控线
       参考价   = min(常规, 骤变)   (两条路径任一达标即转阳)
     优化:①参考价不低于当日收盘(方向已满足时=现价,压制语义);
-         ②只降不升 + 下降滞回 drop_band=4%:目标价上升/持平/小幅下降保持前值(反弹
-           高点滚入参照窗口不拉高压制线),下降超4%才降一档(阶梯稀疏、趋势跟随);
+         ②滞回 min_band=10%:与前一目标价差 <10% 时保持前值(抑制换参照抖动);
          ③延续:进入阳柱/无柱期后目标价继续显示,直到出现阳K(close>open,
-           需传 opens)盘中触及(high>=目标价)才结束——持续的"压制线",突破才消失;
-         ④波动率自适应 adaptive=True:低ATR(死水)放大目标价(k 1.5→4.0倍ATR,
-           骤变 6%→12%),高ATR 放松——死水期小阳线不再轻易触发(600550 低ATR期
-           目标价距离 6.1%→放大,假信号减少)。
+           需传 opens)盘中触及(high>=目标价)才结束——持续的"压制线",突破才消失。
     reg_gate = reg_preds * (1-reg_decay);无 reg_preds 时门控不设(-inf)
     用途:阴柱期间在 K 线上画出持续的目标价,阳柱期间延续至被突破(画图辅助,非信号)。
     """
@@ -943,32 +930,24 @@ def compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_at
     for i in range(lo, n):
         if np.isfinite(strength[i]) and strength[i] < 0:
             # 阴柱日:重新计算目标价
-            k_atr, pct = (_adaptive(atr[i] / closes[i]) if adaptive else (dir_atr, short_drop))
-            p_dir = closes[i - win] + k_atr * atr[i]
-            p_short = closes[i - short_win] * (1.0 + pct)
+            p_dir = closes[i - win] + dir_atr * atr[i]
+            p_short = closes[i - short_win] * (1.0 + short_drop)
             gate = (reg_preds[i] * (1.0 - reg_decay)
                     if reg_preds is not None and np.isfinite(reg_preds[i]) else -np.inf)
             cand = min(max(p_dir, gate), max(p_short, gate))
-            # 目标价只降不升(压制语义):上升/持平/小幅下降(<drop_band)都保持 prev——
-            # 下跌中反弹高点滚入 10日/5日参照窗口不会拉高压制线
-            # (600550 11/19 10日前=反弹高点9.91→候选10.92,被保持8.86;11/21 同理12.01被保持)
-            # 下降超 drop_band(4%)才降一档 → 阶梯稀疏不密集,趋势跟随
-            if np.isfinite(prev) and cand >= prev * (1.0 - drop_band):
-                cand = prev
-            cand = max(cand, closes[i])  # 压制语义最后做:目标价不低于现价(硬约束不被滞回破坏)
+            cand = max(cand, closes[i])  # 压制语义:目标价不低于现价(方向已满足时=现价)
+            if np.isfinite(prev) and abs(cand - prev) < min_band * prev:
+                cand = prev  # 滞回:小幅变动保持前值,抑制抖动
             refs[i] = cand
             active = cand  # (重新)激活目标价
             prev = cand
         elif np.isfinite(active):
             # 阳柱/无柱日:延续显示目标价,直到阳K(盘中触及)突破
-            show = max(active, closes[i])  # 延续期也不低于现价(价格越过目标价→贴现价,只差阳K确认)
-            hit = (highs_a is not None and highs_a[i] >= show
+            hit = (highs_a is not None and highs_a[i] >= active
                    and (opens_a is None or closes[i] > opens_a[i]))
             if hit:
                 refs[i] = np.nan
                 active = np.nan  # 达到价格,结束
-                prev = np.nan  # ⚠️ 段落结束必须重置滞回参照:否则新段落被旧值"只降不升"
-                               # 锁低→贴现→现价线(600550 8/19 起点 8.93=现价,失去意义)
             else:
-                refs[i] = show  # 未突破 → 继续显示(线=max(目标价,现价))
+                refs[i] = active  # 未突破 → 继续显示
     return refs
