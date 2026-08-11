@@ -14,7 +14,7 @@ description: 极速杀跌反转模型与 V10 第5面板 strength 柱架构速查
   - `detect_panic_events(df, code, drop_pct=0.15, ...)` — 事件研究主函数(默认 15% 档)
   - `compute_strength(closes, highs, lows, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=5, decay_factor=0.75, min_decay=2.0, reg_decay=0.10, short_win=5, short_drop=0.08, opens=None)`
     - **第5面板 strength 柱最终版 v4.8**(无未来函数)
-  - `compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_atr=2.0, short_win=5, short_drop=0.08, reg_decay=0.10, reg_preds=None, atr=None, strength=None, min_band=0.10)`
+  - `compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_atr=2.0, short_win=5, short_drop=0.08, reg_decay=0.10, reg_preds=None, atr=None, strength=None, drop_band=0.04, adaptive=True)`
     - 阴柱期"转阳触发价"序列(阳柱/无柱日=NaN);V10 panel0 画蓝粗虚线目标价
   - `despeckle_strength(strength, min_seg=3)` — ⚠️ 用到右侧(未来)柱段,**存在未来函数**,
     仅事后可视化,面板默认 despeckle=False,绝不用于 signal()
@@ -63,17 +63,22 @@ u       = max(0, raw - k)^alpha                          k=2.0, alpha=2.0
 | v4.9+ | 骤涨翻阳需站上回归线+当天非阴线(C+B) | 688099 4/14 阴K阳柱(骤涨+8%但reg下) |
 | v4.9+ | opens 参数(骤涨阳线条件) | signal/V10 已传 opens |
 
-## 转阳触发价(compute_turn_positive_prices)— V10 panel0 蓝粗虚线
+## 转阳触发价(compute_turn_positive_prices)— V10 panel0 蓝粗虚线【2026-08-11 固化】
 
-- 用途:阴柱期间在 K 线上画一条"目标/压制价",突破该价 = 次日大概率转阳(买入条件单参考);**阳柱期延续显示,直到真突破才消失**
-- 第 i 天(阴柱)触发价 = min(常规路径, 骤变路径) 再优化:
-  - 常规路径 = max(close[i-win] + dir_atr×ATR[i], 门控线 reg×0.9)
-  - 骤变路径 = max(close[i-short_win]×(1+short_drop), 门控线)
-- 优化①:触发价不低于当日收盘(方向已满足时=现价,压制语义)——688552 5/19 根因:暴跌后 10 日前参照价过低,min(常规,骤变)选到低价路径出现"压制价<现价"
-- 优化②:滞回 min_band=10%:新候选与当前显示值差 <10% 时保持前值(抑制 close[i-10]/close[i-5] 换参照抖动;688552 变动率 17%→9%,段数 39→21)
-- **优化③延续(核心语义)**:阴柱日计算/更新目标价并激活;阳柱/无柱日延续显示最后值,直到出现**阳K(close>open,需传 opens)盘中触及(high≥目标价)**才结束;结束前一直显示(601138 10/14~10/24 持续 70.85,10/27 high=72.60 突破才消失)
+- 签名:`compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_atr=2.0, short_win=5, short_drop=0.08, reg_decay=0.10, reg_preds=None, atr=None, strength=None, drop_band=0.04, adaptive=True)`
+- 用途:阴柱期间在 K 线上画"目标/压制价",突破该价 = 次日大概率转阳(买入条件单参考);**阳柱期延续显示,直到真突破才消失**
+- 第 i 天(阴柱)候选 = min(常规路径, 骤变路径):
+  - 常规路径 = close[i-win] + k×ATR[i](k=波动率自适应倍数)
+  - 骤变路径 = close[i-short_win]×(1+pct)(pct=自适应百分比)
+  - 门控线 = reg_preds×0.9;两条路径都 max(门控线)
+- **波动率自适应(adaptive=True)**:atr_ratio=ATR/close 在 1%~4% 线性映射 → k=1.5(高波动)~4.0(低波动/死水),pct=6%(高)~12%(低);死水期目标价拉远抑制假信号(600550 低ATR 距离 6.1%→8.4%)
+- **只降不升 + 下降滞回(drop_band=4%)**:上升/持平/小幅下降保持前值——下跌中反弹高点滚入 10日/5日参照窗口不拉高压制线(600550 11/19 反弹高点 9.91→候选 10.92 被保持);下降超 4% 才降一档(阶梯稀疏、趋势跟随)
+- **段落结束重置 prev**:阳K突破结束(active=NaN)时同时 prev=NaN——否则新段落被旧值"只降不升"锁低→贴现→现价线(600550 8/19 起点 8.93=现价失去意义;修复后 8/05 起点 9.63)
+- **延续语义(核心)**:阳柱/无柱日延续显示最后值(show=max(active, close)),直到**阳K(close>open,需传 opens)盘中触及(high≥show)**才结束(601138 10/14~10/24 持续,10/27 突破消失)
+- **贴现**:目标价不低于当日收盘(方向已满足时=现价,表示"就差阳K确认")
 - 只依赖第 i 天及之前数据,无未来函数(active/prev 为历史累计状态)
 - V10 绘制:ax0 `plot(x, tp_win, drawstyle='steps-post', color='#1565C0', linewidth=2.6, ls='--', label='Turn-Up Target')`;完整序列算完再切片(offset:offset+n)
+- ⚠️ 已试过并还原:max_gap 距离上限(目标价≤现价×1.10)用户不满意,还原(2026-08-11)
 - ⚠️ 历史教训:2026-08 曾因替换脚本 docstring 断言失败导致延续逻辑未写入文件(assert 在 write 前抛错),用户反馈"结束太突然"实为旧版 bug——改 panic_reversal.py 后必须实际验证行为,不能只看 py_compile
 
 ## 无未来函数边界(铁律)
