@@ -907,10 +907,12 @@ def compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_at
       常规路径: max(close[i-win] + dir_atr*ATR[i],  reg_gate)   10日净位移转正且出柱 + 站上门控线
       骤变路径: max(close[i-short_win] * (1+short_drop), reg_gate)  5日骤涨 + 站上门控线
       参考价   = min(常规, 骤变)   (两条路径任一达标即转阳)
-    优化:参考价不低于当日收盘(方向已满足时=现价,压制语义);
-         滞回 min_band=10%:与前一目标价差 <10% 时保持前值(抑制换参照抖动)。
+    优化:①参考价不低于当日收盘(方向已满足时=现价,压制语义);
+         ②滞回 min_band=10%:与前一目标价差 <10% 时保持前值(抑制换参照抖动);
+         ③延续:进入阳柱/无柱期后目标价继续显示,直到出现阳K(close>open,
+           需传 opens)盘中触及(high>=目标价)才结束——持续的"压制线",突破才消失。
     reg_gate = reg_preds * (1-reg_decay);无 reg_preds 时门控不设(-inf)
-    用途:阴柱期间在 K 线上画出持续的目标价,阳柱期间无(画图辅助,非信号)。
+    用途:阴柱期间在 K 线上画出持续的目标价,阳柱期间延续至被突破(画图辅助,非信号)。
     """
     closes = np.asarray(closes, dtype=float)
     n = len(closes)
@@ -922,18 +924,30 @@ def compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_at
     refs = np.full(n, np.nan)
     lo = max(win, short_win) + 1
     prev = np.nan
+    active = np.nan  # 当前生效的目标价(阴柱期算得,延续到被阳K突破才结束)
+    highs_a = np.asarray(highs, dtype=float) if highs is not None else None
+    opens_a = np.asarray(opens, dtype=float) if opens is not None else None
     for i in range(lo, n):
-        if not (np.isfinite(strength[i]) and strength[i] < 0):
-            prev = np.nan  # 阳柱/无柱 → 重置滞回
-            continue
-        p_dir = closes[i - win] + dir_atr * atr[i]
-        p_short = closes[i - short_win] * (1.0 + short_drop)
-        gate = (reg_preds[i] * (1.0 - reg_decay)
-                if reg_preds is not None and np.isfinite(reg_preds[i]) else -np.inf)
-        cand = min(max(p_dir, gate), max(p_short, gate))
-        cand = max(cand, closes[i])  # 压制语义:目标价不低于现价(方向已满足时=现价)
-        if np.isfinite(prev) and abs(cand - prev) < min_band * prev:
-            cand = prev  # 滞回:小幅变动保持前值,抑制抖动
-        refs[i] = cand
-        prev = cand
+        if np.isfinite(strength[i]) and strength[i] < 0:
+            # 阴柱日:重新计算目标价
+            p_dir = closes[i - win] + dir_atr * atr[i]
+            p_short = closes[i - short_win] * (1.0 + short_drop)
+            gate = (reg_preds[i] * (1.0 - reg_decay)
+                    if reg_preds is not None and np.isfinite(reg_preds[i]) else -np.inf)
+            cand = min(max(p_dir, gate), max(p_short, gate))
+            cand = max(cand, closes[i])  # 压制语义:目标价不低于现价(方向已满足时=现价)
+            if np.isfinite(prev) and abs(cand - prev) < min_band * prev:
+                cand = prev  # 滞回:小幅变动保持前值,抑制抖动
+            refs[i] = cand
+            active = cand  # (重新)激活目标价
+            prev = cand
+        elif np.isfinite(active):
+            # 阳柱/无柱日:延续显示目标价,直到阳K(盘中触及)突破
+            hit = (highs_a is not None and highs_a[i] >= active
+                   and (opens_a is None or closes[i] > opens_a[i]))
+            if hit:
+                refs[i] = np.nan
+                active = np.nan  # 达到价格,结束
+            else:
+                refs[i] = active  # 未突破 → 继续显示
     return refs
