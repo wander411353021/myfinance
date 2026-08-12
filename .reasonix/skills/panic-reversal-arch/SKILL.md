@@ -14,8 +14,8 @@ description: 极速杀跌反转模型与 V10 第5面板 strength 柱架构速查
   - `detect_panic_events(df, code, drop_pct=0.15, ...)` — 事件研究主函数(默认 15% 档)
   - `compute_strength(closes, highs, lows, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=5, decay_factor=0.75, min_decay=2.0, reg_decay=0.10, short_win=5, short_drop=0.08, opens=None)`
     - **第5面板 strength 柱最终版 v4.8**(无未来函数)
-  - `compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_atr=2.0, short_win=5, short_drop=0.08, reg_decay=0.10, reg_preds=None, atr=None, strength=None, min_band=0.05)`
-    - 阴柱期"转阳触发价"序列;V10 panel0 蓝粗虚线;**段内严格单向滞回 + 段落结束重置**(2026-08-11 现行)
+  - `compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_atr=2.0, short_win=5, short_drop=0.08, reg_decay=0.10, reg_preds=None, atr=None, strength=None, min_band=0.05, gate_prox=0.85)`
+    - 阴柱期"转阳触发价"序列;V10 panel0 蓝粗虚线;**严格单向滞回 + 段落重置 + gate近距垫底 + 阳柱日也可降档**(2026-08-11 现行)
   - `despeckle_strength(strength, min_seg=3)` — ⚠️ 用到右侧(未来)柱段,**存在未来函数**,
     仅事后可视化,面板默认 despeckle=False,绝不用于 signal()
   - `_compute_atr14(highs, lows, closes)` — Wilder ATR(14),前 13 个 NaN
@@ -73,10 +73,14 @@ u       = max(0, raw - k)^alpha                          k=2.0, alpha=2.0
   - 常规路径 = max(close[i-win] + dir_atr×ATR[i], 门控线 reg×0.9)
   - 骤变路径 = max(close[i-short_win]×(1+short_drop), 门控线)
 - 优化①:触发价不低于当日收盘(方向已满足时=现价,压制语义)——688552 5/19 根因:暴跌后 10 日前参照价过低,min(常规,骤变)选到低价路径出现"压制价<现价"
-- 优化②**严格单向滞回 min_band=5%**:段内上升/持平/小幅下降(<5%)保持前值——下跌中反弹高点
+- 优化②**严格单向滞回 min_band=5%**:上升/持平/小幅下降(<5%)保持前值——下跌中反弹高点
   滚入 10日/5日参照窗口不拉高压制线(600550 4/09 10日前8.55 抬到9.59 被保持);下降超5%才跟随
-- **优化③延续(核心语义)**:阴柱日计算/更新目标价并激活(active);阳柱/无柱日延续显示最后值(active),
-  直到出现**阳K(close>open,需传 opens)盘中触及(high≥active)**才结束(601138 10/14~10/24 持续,10/27 突破消失)
+- **优化⑤gate 近距垫底 gate_prox=0.85**:价格距门控线 >15% 时 gate 不参与 max(目标价跟随价格
+  降档,避免长期阴跌中 gate 钳住目标价于高位——002249 2019-08 价格2.57 vs gate3.2 距离27%不降);
+  接近时恢复钳制
+- **优化③延续(核心语义)**:阴柱日计算/更新目标价并激活(active);阳柱/无柱日**同样重算候选——
+  必要时降档(下降超5%跟随),上升保持**,直到出现**阳K(close>open,需传 opens)盘中触及(high≥目标价)**
+  才结束(601138 10/14~10/24 持续,10/27 突破消失;300171 12/29 目标价16.02 更贴价格,01/05 提前突破)
 - **优化④段落结束重置 prev**:阳K突破结束(active=NaN)时同时 prev=NaN——新段落从新候选开始,
   避免"全局只降不升"(每段起点都比上段低;600550 用户反馈"变成每一次都比上一次低")
 - 只依赖第 i 天及之前数据,无未来函数(active/prev 为历史累计状态)
@@ -90,6 +94,8 @@ u       = max(0, raw - k)^alpha                          k=2.0, alpha=2.0
   (≈ 重新引入段落重置,但用 min_band=0.05 而非 drop_band=0.04;不要波动率自适应)
 - 试过被否:min_band=0.02(下降滞回2%,600550 4月段 3 档太密"效果不好")、双向滞回、
   max_gap 距离上限(10%)、全局只降不升(段落不重置,"每一次都比上一次低")
+- 用户确认保留:gate_prox=0.85(002249 8月 gate 钳制)、阳柱日必要时降档(300171 12月段
+  价格跌但候选降得慢,阳柱期也等降档而非死等突破)
 - 教训:用户偏好——段内挡上升(反弹不追)、下降能跟随但不密、段落切换重置起点;
   先小步验证再固化,避免大改
 - ⚠️ 历史教训:曾因替换脚本 docstring 断言失败导致逻辑未写入文件(assert 在 write 前抛错),

@@ -956,8 +956,18 @@ def compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_at
             active = cand  # (重新)激活目标价
             prev = cand
         elif np.isfinite(active):
-            # 阳柱/无柱日:延续显示目标价,直到阳K(盘中触及)突破
-            hit = (highs_a is not None and highs_a[i] >= active
+            # 阳柱/无柱日:必要时降档(候选降超5%跟随,同阴柱日),上升保持,阳K触及结束
+            p_dir = closes[i - win] + dir_atr * atr[i]
+            p_short = closes[i - short_win] * (1.0 + short_drop)
+            gate = (reg_preds[i] * (1.0 - reg_decay)
+                    if reg_preds is not None and np.isfinite(reg_preds[i]) else -np.inf)
+            if gate > 0 and closes[i] < gate * gate_prox:
+                gate = -np.inf
+            cand = min(max(p_dir, gate), max(p_short, gate))
+            cand = max(cand, closes[i])  # 贴现:不低于现价
+            if cand >= active * (1.0 - min_band):
+                cand = active  # 上升/持平/小幅下降保持(严格单向)
+            hit = (highs_a is not None and highs_a[i] >= cand
                    and (opens_a is None or closes[i] > opens_a[i]))
             if hit:
                 refs[i] = np.nan
@@ -965,5 +975,7 @@ def compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_at
                 prev = np.nan  # ⚠️ 段落结束重置单向滞回参照:新段落从新候选开始,
                                # 否则全局只降不升(每段起点都比上段低,600550 用户反馈)
             else:
-                refs[i] = active  # 未突破 → 继续显示
+                refs[i] = cand  # 未突破 → 显示(必要时已降档)
+                active = cand
+                prev = cand
     return refs
