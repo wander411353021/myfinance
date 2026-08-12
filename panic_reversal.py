@@ -819,6 +819,7 @@ def compute_strength(closes, highs=None, lows=None, k=2.0, alpha=2.0, m=30.0, at
                 reg_gate0 = (reg_preds[i] * (1.0 - reg_decay)
                              if reg_preds is not None and np.isfinite(reg_preds[i]) else None)
                 flip_ok = (short_ret < 0) or (
+                    d > 0 and  # 骤涨翻阳需10日方向已转正(下跌中继反弹不翻阳,002249 2/12/3/06)
                     (reg_gate0 is None or closes[i] >= reg_gate0) and
                     (opens is None or closes[i] >= opens[i]))
                 if flip_ok:
@@ -848,6 +849,7 @@ def compute_strength(closes, highs=None, lows=None, k=2.0, alpha=2.0, m=30.0, at
         short_ret = closes[i] / closes[i - short_win] - 1.0 if i >= short_win else 0.0
         if abs(short_ret) >= short_drop:
             flip_ok = (short_ret < 0) or (
+                raw_dir > 0 and  # 骤涨翻阳需10日方向已转正(下跌中继反弹不翻阳,002249 2/12/3/06)
                 (reg_gate is None or closes[i] >= reg_gate) and
                 (opens is None or closes[i] >= opens[i]))
             if flip_ok:
@@ -900,7 +902,8 @@ def compute_strength(closes, highs=None, lows=None, k=2.0, alpha=2.0, m=30.0, at
 
 def compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_atr=2.0,
                                  short_win=5, short_drop=0.08, reg_decay=0.10,
-                                 reg_preds=None, atr=None, strength=None, min_band=0.10):
+                                 reg_preds=None, atr=None, strength=None, min_band=0.05,
+                                 gate_prox=0.85):
     """逐日计算"阴柱期转阳触发价"(仅阴柱日有值,阳柱/无柱日为 NaN)。
 
     第 i 天为阴柱时,refs[i] = 第 i+1 天转阳所需的最低参考价(买入条件单):
@@ -908,9 +911,12 @@ def compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_at
       骤变路径: max(close[i-short_win] * (1+short_drop), reg_gate)  5日骤涨 + 站上门控线
       参考价   = min(常规, 骤变)   (两条路径任一达标即转阳)
     优化:①参考价不低于当日收盘(方向已满足时=现价,压制语义);
-         ②滞回 min_band=10%:与前一目标价差 <10% 时保持前值(抑制换参照抖动);
+         ②严格单向滞回 min_band=5%:上升/持平/小幅下降(<5%)保持前值(反弹高点滚入
+           参照不拉高压制线);下降超5%才跟随(不挡下跌趋势);
          ③延续:进入阳柱/无柱期后目标价继续显示,直到出现阳K(close>open,
-           需传 opens)盘中触及(high>=目标价)才结束——持续的"压制线",突破才消失。
+           需传 opens)盘中触及(high>=目标价)才结束——持续的"压制线",突破才消失;
+         ⑤门控线近距垫底 gate_prox=0.85:价格距门控线>15% 时 gate 不垫底(目标价跟随价格
+           降档,避免长期阴跌中 gate 钳住目标价于高位——002249 2019-08);接近时恢复钳制。
     reg_gate = reg_preds * (1-reg_decay);无 reg_preds 时门控不设(-inf)
     用途:阴柱期间在 K 线上画出持续的目标价,阳柱期间延续至被突破(画图辅助,非信号)。
     """
@@ -934,10 +940,18 @@ def compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_at
             p_short = closes[i - short_win] * (1.0 + short_drop)
             gate = (reg_preds[i] * (1.0 - reg_decay)
                     if reg_preds is not None and np.isfinite(reg_preds[i]) else -np.inf)
+            # B:门控线只在"接近"时垫底——价格距门控线 >(1-gate_prox)时 gate 不参与 max,
+            # 让目标价跟随价格降档(002249 2019-08 长期阴跌,gate≈3.2 钳住目标价 3.28,
+            # 价格 2.57 距离 27% 却无法降档;close<gate×0.85 时不垫底)
+            if gate > 0 and closes[i] < gate * gate_prox:
+                gate = -np.inf
             cand = min(max(p_dir, gate), max(p_short, gate))
             cand = max(cand, closes[i])  # 压制语义:目标价不低于现价(方向已满足时=现价)
-            if np.isfinite(prev) and abs(cand - prev) < min_band * prev:
-                cand = prev  # 滞回:小幅变动保持前值,抑制抖动
+            # 严格单向(用户选3):上升/持平/小幅下降(<min_band)都保持前值——下跌中反弹
+            # 高点滚入 10日/5日参照窗口不拉高压制线(600550 4/09 10日前8.55 抬到9.59 被保持8.95);
+            # 下降超 min_band(5%)才跟随(不挡下跌趋势)
+            if np.isfinite(prev) and cand >= prev * (1.0 - min_band):
+                cand = prev
             refs[i] = cand
             active = cand  # (重新)激活目标价
             prev = cand
@@ -948,6 +962,8 @@ def compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_at
             if hit:
                 refs[i] = np.nan
                 active = np.nan  # 达到价格,结束
+                prev = np.nan  # ⚠️ 段落结束重置单向滞回参照:新段落从新候选开始,
+                               # 否则全局只降不升(每段起点都比上段低,600550 用户反馈)
             else:
                 refs[i] = active  # 未突破 → 继续显示
     return refs

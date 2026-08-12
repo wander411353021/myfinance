@@ -14,8 +14,8 @@ description: 极速杀跌反转模型与 V10 第5面板 strength 柱架构速查
   - `detect_panic_events(df, code, drop_pct=0.15, ...)` — 事件研究主函数(默认 15% 档)
   - `compute_strength(closes, highs, lows, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=5, decay_factor=0.75, min_decay=2.0, reg_decay=0.10, short_win=5, short_drop=0.08, opens=None)`
     - **第5面板 strength 柱最终版 v4.8**(无未来函数)
-  - `compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_atr=2.0, short_win=5, short_drop=0.08, reg_decay=0.10, reg_preds=None, atr=None, strength=None, min_band=0.10)`
-    - 阴柱期"转阳触发价"序列(阳柱/无柱日=NaN);V10 panel0 画蓝粗虚线目标价
+  - `compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_atr=2.0, short_win=5, short_drop=0.08, reg_decay=0.10, reg_preds=None, atr=None, strength=None, min_band=0.05)`
+    - 阴柱期"转阳触发价"序列;V10 panel0 蓝粗虚线;**段内严格单向滞回 + 段落结束重置**(2026-08-11 现行)
   - `despeckle_strength(strength, min_seg=3)` — ⚠️ 用到右侧(未来)柱段,**存在未来函数**,
     仅事后可视化,面板默认 despeckle=False,绝不用于 signal()
   - `_compute_atr14(highs, lows, closes)` — Wilder ATR(14),前 13 个 NaN
@@ -32,7 +32,9 @@ raw     = amp / ATR14                                  # 波幅是几个单日�
 回归线门控: reg_gate = reg_preds × (1-reg_decay=0.9);close < reg_gate 时正柱(反转)不显示,
            画衰减延续柱/保底(V10 面板传 reg_preds_long=250日,缺省回退120日)
 5日骤变(short_win=5, short_drop=8%): 独立检查(同向/反向都触发)——
-           骤跌立即翻阴;骤涨翻阳需 站上回归线(C) 且 当天非阴线(B,需传 opens)
+           骤跌立即翻阴;骤涨翻阳需 **10日方向已转正(raw_dir>0,死区日 d>0)** 且 站上回归线(C)
+           且 当天非阴线(B,需传 opens)——2026-08-11 加约束:下跌中继的孤立反弹不翻阳
+           (002249 2/12/3/06 孤立阳柱→消失;688552 4月受影响日均为阴K,零实际影响)
 翻转确认: ①骤变 ②站上回归线翻阳 ③短段(<min_main=3)强反向(净位移占比>=8%)
           立即翻转;否则需 confirm_flip(2) 根确认(1天延迟)
 u       = max(0, raw - k)^alpha                          k=2.0, alpha=2.0
@@ -62,6 +64,7 @@ u       = max(0, raw - k)^alpha                          k=2.0, alpha=2.0
 | v4.9+ | + 5日骤变(±8%)独立检查 | 5日暴跌但10日方向正被染阳(000066 10/15) |
 | v4.9+ | 骤涨翻阳需站上回归线+当天非阴线(C+B) | 688099 4/14 阴K阳柱(骤涨+8%但reg下) |
 | v4.9+ | opens 参数(骤涨阳线条件) | signal/V10 已传 opens |
+| v4.9+ | 骤涨翻阳 + 10日方向转正约束 | 002249 下跌中继孤立阳(2/12/3/06)不合理;688552 受影响日均为阴K 零影响 |
 
 ## 转阳触发价(compute_turn_positive_prices)— V10 panel0 蓝粗虚线
 
@@ -70,11 +73,27 @@ u       = max(0, raw - k)^alpha                          k=2.0, alpha=2.0
   - 常规路径 = max(close[i-win] + dir_atr×ATR[i], 门控线 reg×0.9)
   - 骤变路径 = max(close[i-short_win]×(1+short_drop), 门控线)
 - 优化①:触发价不低于当日收盘(方向已满足时=现价,压制语义)——688552 5/19 根因:暴跌后 10 日前参照价过低,min(常规,骤变)选到低价路径出现"压制价<现价"
-- 优化②:滞回 min_band=10%:新候选与当前显示值差 <10% 时保持前值(抑制 close[i-10]/close[i-5] 换参照抖动;688552 变动率 17%→9%,段数 39→21)
-- **优化③延续(核心语义)**:阴柱日计算/更新目标价并激活;阳柱/无柱日延续显示最后值,直到出现**阳K(close>open,需传 opens)盘中触及(high≥目标价)**才结束;结束前一直显示(601138 10/14~10/24 持续 70.85,10/27 high=72.60 突破才消失)
+- 优化②**严格单向滞回 min_band=5%**:段内上升/持平/小幅下降(<5%)保持前值——下跌中反弹高点
+  滚入 10日/5日参照窗口不拉高压制线(600550 4/09 10日前8.55 抬到9.59 被保持);下降超5%才跟随
+- **优化③延续(核心语义)**:阴柱日计算/更新目标价并激活(active);阳柱/无柱日延续显示最后值(active),
+  直到出现**阳K(close>open,需传 opens)盘中触及(high≥active)**才结束(601138 10/14~10/24 持续,10/27 突破消失)
+- **优化④段落结束重置 prev**:阳K突破结束(active=NaN)时同时 prev=NaN——新段落从新候选开始,
+  避免"全局只降不升"(每段起点都比上段低;600550 用户反馈"变成每一次都比上一次低")
 - 只依赖第 i 天及之前数据,无未来函数(active/prev 为历史累计状态)
 - V10 绘制:ax0 `plot(x, tp_win, drawstyle='steps-post', color='#1565C0', linewidth=2.6, ls='--', label='Turn-Up Target')`;完整序列算完再切片(offset:offset+n)
-- ⚠️ 历史教训:2026-08 曾因替换脚本 docstring 断言失败导致延续逻辑未写入文件(assert 在 write 前抛错),用户反馈"结束太突然"实为旧版 bug——改 panic_reversal.py 后必须实际验证行为,不能只看 py_compile
+
+### 已 revert 的实验(2026-08-11)
+
+- commit `1564e99`(v2:波动率自适应 adaptive + 只降不升 drop_band=0.04)→ `b0ef192` Revert
+  (还原范围:波动率自适应、只降不升、段落重置、延续日贴现值、max_gap 距离上限)
+- 还原后用户继续试错,最终定版:**严格单向滞回 min_band=5% + 段落结束重置 prev + 延续语义**
+  (≈ 重新引入段落重置,但用 min_band=0.05 而非 drop_band=0.04;不要波动率自适应)
+- 试过被否:min_band=0.02(下降滞回2%,600550 4月段 3 档太密"效果不好")、双向滞回、
+  max_gap 距离上限(10%)、全局只降不升(段落不重置,"每一次都比上一次低")
+- 教训:用户偏好——段内挡上升(反弹不追)、下降能跟随但不密、段落切换重置起点;
+  先小步验证再固化,避免大改
+- ⚠️ 历史教训:曾因替换脚本 docstring 断言失败导致逻辑未写入文件(assert 在 write 前抛错),
+  用户反馈"结束太突然"实为旧版 bug——改 panic_reversal.py 后必须实际验证行为,不能只看 py_compile
 
 ## 无未来函数边界(铁律)
 

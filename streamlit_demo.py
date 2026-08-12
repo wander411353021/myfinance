@@ -264,6 +264,13 @@ with st.sidebar.expander("板块导航（CSV）", expanded=False):
         # 切换板块当次 rerun 不触发载入（避免刚切过来就误加载）
         if board_changed:
             st.session_state["_loaded_cons"] = None
+        # 过滤指数代码（399xxx/999xxx/899xxx/000xxx 等非个股），指数不应注入行情查询框
+        # （"精选指数"板块粘性回传 399001 会污染输入框——用户反馈自动出现 399001）
+        if isinstance(picked, str) and picked:
+            _p = picked.strip()
+            if len(_p) == 6 and (_p.startswith("399") or _p.startswith("999")
+                                 or _p.startswith("899") or _p.startswith("000")):
+                picked = None
         # 仅当组件回传了"新"代码才载入（Enter/点击触发），避免无关 rerun 重复加载
         if isinstance(picked, str) and picked and picked != st.session_state.get("_loaded_cons"):
             st.session_state["_loaded_cons"] = picked
