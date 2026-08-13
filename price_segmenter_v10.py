@@ -563,13 +563,13 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     n = len(ohlc); x = np.arange(n); offset = len(df_ohlc) - n  # ohlc 是 df_ohlc 末尾 n 行，offset 为其在原序列中的起始下标（恒 >=0）
 
     if hide_mid_panels:
-        fig, axes = plt.subplots(3, 1, figsize=(22, 13),
+        fig, axes = plt.subplots(4, 1, figsize=(22, 14),
                                  sharex=True,
-                                 gridspec_kw={'height_ratios': [4, 1.4, 1.1]})
+                                 gridspec_kw={'height_ratios': [4, 1.4, 1.1, 0.6]})
     else:
-        fig, axes = plt.subplots(5, 1, figsize=(22, 17),
+        fig, axes = plt.subplots(6, 1, figsize=(22, 18),
                                  sharex=True,
-                                 gridspec_kw={'height_ratios': [4, 1.4, 0.9, 1.4, 1.1]})
+                                 gridspec_kw={'height_ratios': [4, 1.4, 0.9, 1.4, 1.1, 0.6]})
     fig.suptitle(f'{name}  Price Segmentation V10 (Level Breakout)', fontsize=14, fontweight='bold')
 
     ax0 = axes[0]; opens = ohlc['open'].values; highs = ohlc['high'].values
@@ -869,6 +869,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
 
     # ── Panic-Reversal Signal Panel (5th panel: per-stock 5d drop bars, share x-axis with K-line) ──
     ax4 = axes[2] if hide_mid_panels else axes[4]
+    ax5 = axes[3] if hide_mid_panels else axes[5]  # 黄金坑 0/1 方波面板
     ax4.set_facecolor('#FAFAFA')
     # v4 strength 柱(死区滤波:波幅/ATR + 收盘位移方向,±30 饱和压缩)
     try:
@@ -933,6 +934,36 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     ax4.grid(True, alpha=0.2)
     ax4.set_title('Panic-Reversal Signal (deadzone-filtered strength v4, +/-30; red=up, green=down; v=event, o=confirm)',
                   fontsize=9, loc='left', pad=2)
+
+    # ── 第6面板:黄金坑 0/1 方波(坑内=1,其他=0)──
+    try:
+        import panic_reversal as _pr
+        _fc = df_ohlc['close'].values.astype(np.float64)
+        _frg2 = None
+        if reg_preds_long is not None:
+            _frg2 = np.asarray(reg_preds_long, dtype=np.float64)
+        elif reg_preds is not None:
+            _frg2 = np.asarray(reg_preds, dtype=np.float64)
+        if _frg2 is None:
+            from mean_reversion.signal_residual import compute_rolling_regression as _crr
+            _frg2, _ = _crr(_fc, window=250, use_log=True)  # res 不含 reg,缺失时自算
+        if _frg2 is not None:
+            _pits = _pr.detect_golden_pit(_fc, _frg2)
+            pit_mask = np.zeros(len(_fc))
+            for _s, _b, _lch in _pits:
+                _end = _lch if _lch is not None else _b
+                pit_mask[_s:_end + 1] = 1.0
+            pit_win = pit_mask[offset:offset + n]
+            ax5.set_facecolor('#F5F5F5')
+            ax5.fill_between(x, 0, pit_win, step='post', color='#1565C0', alpha=0.30, label='Golden Pit(深坑)')
+            ax5.plot(x, pit_win, drawstyle='steps-post', color='#1565C0', linewidth=1.4)
+            ax5.set_ylim(-0.1, 1.15)
+            ax5.set_yticks([0, 1])
+            ax5.set_ylabel('GOLD PIT', fontsize=8)
+            ax5.grid(axis='y', alpha=0.3)
+            ax5.legend(loc='upper left', fontsize=7)
+    except Exception:
+        pass
 
     # ── 统一 x 轴日期刻度（落在最底层面板）──
     ts2 = max(1, n // 12); dates = ohlc['date'].values

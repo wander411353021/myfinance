@@ -979,3 +979,90 @@ def compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_at
                 active = cand
                 prev = cand
     return refs
+
+
+def detect_watch_pool(closes, reg250, z_lo=-0.5, z_hi=1.5, flat_amp=0.25, min_len=10):
+    """低位横盘观察池(⚠️ 非买入信号,仅观察)。
+
+    与深坑黄金坑(z<-2)不同:z 持续 ∈ [z_lo, z_hi](放宽版 -0.5~+1.5,回归线上下
+    平台整理)且段内振幅 < flat_amp(横盘)。这类股票常是"第2类"主升(无深坑,
+    线上横盘后事件驱动启动,如 600550 2020-01~02 z≈-0.3~+1.4),日线无确认信号,
+    只列入观察池供人工结合消息面关注。
+
+    返回 [(段起点 s, 段终点 e)] 升序。
+    """
+    closes = np.asarray(closes, dtype=float)
+    n = len(closes)
+    resid = closes - np.asarray(reg250, dtype=float)
+    rstd = np.full(n, np.nan)
+    for i in range(59, n):
+        rstd[i] = np.std(resid[i - 59:i + 1])
+    z = np.full(n, np.nan)
+    for i in range(59, n):
+        z[i] = resid[i] / rstd[i] if rstd[i] > 0 else 0.0
+    segs = []
+    st = None
+    for i in range(59, n):
+        in_lo = np.isfinite(z[i]) and z_lo <= z[i] <= z_hi
+        if in_lo and st is None:
+            st = i
+        elif not in_lo and st is not None:
+            segs.append([st, i - 1]); st = None
+    if st is not None:
+        segs.append([st, n - 1])
+    out = []
+    for s, e in segs:
+        if e - s + 1 < min_len:
+            continue
+        amp = (np.max(closes[s:e + 1]) - np.min(closes[s:e + 1])) / np.min(closes[s:e + 1])
+        if amp < flat_amp:
+            out.append((s, e))
+    return out
+
+
+def detect_golden_pit(closes, reg250, z_thr=-2.0, merge_gap=15, launch_gate=0.9):
+    """黄金坑检测【固化版,2026-08-11】— 无未来函数。
+
+    坑 = close 相对 250日回归线残差 z-score 持续 < z_thr(-2) 的深跌段(相邻段间隔
+    < merge_gap=15 合并为同一坑);坑底 = 段内最低 close;
+    启动 = 坑底后首次收复门控线(close >= reg250 × launch_gate=0.9)。
+
+    验证(299池/两年):
+      启动后 r20 胜率 79.7%(n=833),r60 77.3%;快启动(距坑底≤5天)r20 87.3%(n=519)。
+      信号覆盖率:252/299 只出现过快启动信号;主升召回率(未来120日翻倍牛股)44%。
+    返回 [(段起点 s, 坑底 b, 启动日 lch 或 None)] 升序。
+    """
+    closes = np.asarray(closes, dtype=float)
+    n = len(closes)
+    resid = closes - np.asarray(reg250, dtype=float)
+    rstd = np.full(n, np.nan)
+    for i in range(59, n):
+        rstd[i] = np.std(resid[i - 59:i + 1])
+    z = np.full(n, np.nan)
+    for i in range(59, n):
+        z[i] = resid[i] / rstd[i] if rstd[i] > 0 else 0.0
+    pits = []
+    st = None
+    for i in range(59, n):
+        if np.isfinite(z[i]) and z[i] < z_thr and st is None:
+            st = i
+        elif (not np.isfinite(z[i]) or z[i] >= z_thr) and st is not None:
+            pits.append([st, i - 1]); st = None
+    if st is not None:
+        pits.append([st, n - 1])
+    merged = []
+    for p in pits:
+        if merged and p[0] - merged[-1][1] <= merge_gap:
+            merged[-1][1] = p[1]
+        else:
+            merged.append(list(p))
+    out = []
+    for s, e in merged:
+        b = int(s + np.argmin(closes[s:e + 1]))
+        lch = None
+        for i in range(b + 1, n):
+            if closes[i] >= reg250[i] * launch_gate:
+                lch = i
+                break
+        out.append((s, b, lch))
+    return out

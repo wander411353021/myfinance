@@ -14,6 +14,8 @@ description: 极速杀跌反转模型与 V10 第5面板 strength 柱架构速查
   - `detect_panic_events(df, code, drop_pct=0.15, ...)` — 事件研究主函数(默认 15% 档)
   - `compute_strength(closes, highs, lows, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=5, decay_factor=0.75, min_decay=2.0, reg_decay=0.10, short_win=5, short_drop=0.08, opens=None)`
     - **第5面板 strength 柱最终版 v4.8**(无未来函数)
+  - `detect_golden_pit(closes, reg250, z_thr=-2.0, merge_gap=15, new_high_win=20, min_gap=3)` — 黄金坑检测
+    (A z-score 深坑 + D 形态填坑启动,无未来函数);返回 [(段起点s, 坑底b, 启动日lch)]
   - `compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_atr=2.0, short_win=5, short_drop=0.08, reg_decay=0.10, reg_preds=None, atr=None, strength=None, min_band=0.05, gate_prox=0.85)`
     - 阴柱期"转阳触发价"序列;V10 panel0 蓝粗虚线;**严格单向滞回 + 段落重置 + gate近距垫底 + 阳柱日也可降档**(2026-08-11 现行)
   - `despeckle_strength(strength, min_seg=3)` — ⚠️ 用到右侧(未来)柱段,**存在未来函数**,
@@ -65,6 +67,33 @@ u       = max(0, raw - k)^alpha                          k=2.0, alpha=2.0
 | v4.9+ | 骤涨翻阳需站上回归线+当天非阴线(C+B) | 688099 4/14 阴K阳柱(骤涨+8%但reg下) |
 | v4.9+ | opens 参数(骤涨阳线条件) | signal/V10 已传 opens |
 | v4.9+ | 骤涨翻阳 + 10日方向转正约束 | 002249 下跌中继孤立阳(2/12/3/06)不合理;688552 受影响日均为阴K 零影响 |
+
+## 黄金坑检测(detect_golden_pit)— V10 第6面板(GOLD PIT 0/1 方波)【定版:快启动,2026-08-11】
+
+- **签名**:`detect_golden_pit(closes, reg250, z_thr=-2.0, merge_gap=15, launch_gate=0.9)`
+- **定义**(无固定深度阈值):
+  - 坑 = close 相对 250日回归线残差 z-score < -2 的深跌段(相邻段间隔<15天合并)
+  - 坑底 = 段内最低 close
+  - 启动 = 坑底后首次收复门控线(close ≥ reg250×0.9)
+  - **信号 = 快启动(距坑底 ≤5 天)** ← 定版核心
+- **验证**(299池/两年):
+  - 快启动 r20 胜率 **87.3%**(n=519),r60 80.7%
+  - 深坑 z<-3 + 快启动 88.3%(n=248);段长≤40 + 快启动 88.3%(n=454)
+  - 段长≤40 + 深坑 + 快启动 90.7%(n=193)
+  - **覆盖率**:快启动 534 信号/252只(84%)/每只2.1次/近一年235个
+  - 主升召回率(未来120日翻倍牛股101只):44%(56% 牛股主升前无深坑,见下)
+- **"长时间阴跌不算坑"结论**(用户直觉验证):牛股主升前坑 z<-2 持续中位仅 2 天(87%≤20天),
+  段起点前 z 中位 -1.7(低位二次探底)。但"快短"作为过滤会稀释胜率(64.2%,小回调坑太多);
+  **正确做法是"快启动"(坑底后≤5天收复门控线)而非限制坑段长度**——长度过滤副作用小
+  (段长≤40 仅 1pp 提升),用户最终选择不加段长
+- **第2类牛股(56%无深坑)探索结论**:主升前 z 最低中位 -0.93(几乎无坑)、主升起点不创新高/
+  不放量/多数收阴,日线周线均无预判信号(疑似事件/消息驱动)→ 转观察池,不做自动信号;
+  观察池定义(z∈[-0.5,+1.5] 横盘≥10天)已实现 detect_watch_pool 但用户嫌信号多已移除显示
+- **周线接口**:`tdx_quant.get_weekly_kline_from_tdx(code, end_date)`(eltdx period='week',
+  前复权,~800根)——第2类周线探索无信号,接口保留备用
+- V10 绘制:ax5(最底层面板,height_ratio 0.6)steps-post 方波+淡蓝 fill(坑内=1)
+- ⚠️ **历史教训**:脚本文件方式(python /tmp/x.py)修改 price_segmenter_v10.py 的写入在
+  Windows 上不生效(assert/print 正常但文件没变);必须用 stdin 方式(python - <<EOF)或写入后 grep 验证
 
 ## 转阳触发价(compute_turn_positive_prices)— V10 panel0 蓝粗虚线
 

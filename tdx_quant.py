@@ -18,6 +18,27 @@ def get_daily_kline_from_tdx(code, end_date):
     df['date'] = pd.to_datetime(df['date']).dt.normalize()  # 去 15:00:00 收盘时间戳,统一为纯日期(00:00:00)
     return df
 
+
+def get_weekly_kline_from_tdx(code, end_date):
+    """通达信直连拉周线(前复权)。列结构与日线一致(date/open/high/low/close/volume)。
+    eltdx period='week' 返回约 800 根;用于周线级别探索主升前形态。
+    """
+    from eltdx import TdxClient
+    with TdxClient() as client:
+        adj = client.get_adjusted_kline(period='week', code=code, adjust='qfq', anchor_date=end_date)
+    df = pd.DataFrame({
+        'date':   [b.time for b in adj.bars],
+        'open':   [float(b.open) for b in adj.bars],
+        'high':   [float(b.high) for b in adj.bars],
+        'low':    [float(b.low) for b in adj.bars],
+        'close':  [float(b.close) for b in adj.bars],
+        'volume': [float(b.volume_lots) for b in adj.bars],
+    })
+    df = df[df['close'] > 0].reset_index(drop=True)
+    df['date'] = pd.to_datetime(df['date']).dt.normalize()
+    return df
+
+
 """
 DataFrame 列说明:
   name      str         板块名称（如"房地产"、"新能源车"、"央企改革"）
