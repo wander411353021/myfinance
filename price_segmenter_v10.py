@@ -948,17 +948,29 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             from mean_reversion.signal_residual import compute_rolling_regression as _crr
             _frg2, _ = _crr(_fc, window=250, use_log=True)  # res 不含 reg,缺失时自算
         if _frg2 is not None:
+            _fv = df_ohlc['volume'].values.astype(np.float64) if 'volume' in df_ohlc.columns else None
             _pits = _pr.detect_golden_pit(_fc, _frg2)
+            _qual = _pr.compute_pit_quality(_pits, _fc, _fv) if _fv is not None else None
+            # 质量: 高度区分(strong=1.0 / normal=0.7 / weak=0.4) + 颜色辅助
+            _qh = {'strong': 1.0, 'normal': 0.7, 'weak': 0.4}
+            _qcolor = {'strong': '#0D47A1', 'normal': '#1565C0', 'weak': '#90CAF9'}
             pit_mask = np.zeros(len(_fc))
-            for _s, _b, _lch in _pits:
-                _end = _lch if _lch is not None else _b
-                pit_mask[_s:_end + 1] = 1.0
-            pit_win = pit_mask[offset:offset + n]
             ax5.set_facecolor('#F5F5F5')
-            ax5.fill_between(x, 0, pit_win, step='post', color='#1565C0', alpha=0.30, label='Golden Pit(深坑)')
-            ax5.plot(x, pit_win, drawstyle='steps-post', color='#1565C0', linewidth=1.4)
+            for _k, (_s, _b, _lch) in enumerate(_pits):
+                _end = _lch if _lch is not None else _b
+                _q = _qual[_k][2] if _qual is not None else 'normal'
+                _lv = _qh.get(_q, 0.7)
+                pit_mask[_s:_end + 1] = _lv
+                _col = _qcolor.get(_q, '#1565C0')
+                _x0 = _s + offset
+                _x1 = _end + 1 + offset
+                ax5.fill_between(np.arange(_x0, _x1 + 1), 0, _lv, step='post',
+                                 color=_col, alpha=0.60)
+            pit_win = pit_mask[offset:offset + n]
+            ax5.plot(x, pit_win, drawstyle='steps-post', color='#0D47A1', linewidth=1.2)
             ax5.set_ylim(-0.1, 1.15)
-            ax5.set_yticks([0, 1])
+            ax5.set_yticks([0, 0.4, 0.7, 1.0])
+            ax5.set_yticklabels(['0', 'weak', 'normal', 'strong'], fontsize=6)
             ax5.set_ylabel('GOLD PIT', fontsize=8)
             ax5.grid(axis='y', alpha=0.3)
             ax5.legend(loc='upper left', fontsize=7)

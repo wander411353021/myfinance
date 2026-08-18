@@ -1019,17 +1019,28 @@ def detect_watch_pool(closes, reg250, z_lo=-0.5, z_hi=1.5, flat_amp=0.25, min_le
             out.append((s, e))
     return out
 
+def detect_golden_pit(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9, use_pre_std=True,
+                     max_pre_gain=1.5):
+    # max_pre_gain: 坑底前 250 日涨幅上限(默认 +150%)——超过 = 高位坑(大牛后半山腰回调),
+    # 非低位黄金坑(688110 20260402 +228%/20260803 +182%、300204 20260304 +212% 均被滤)。
+    # 全池验证:仅滤 3/784 坑,统计无差异,但防个案"半山腰难受"。
+    """黄金坑检测【z_thr=-1.5 + 坑前std版,2026-08-14】— 无未来函数。
 
-def detect_golden_pit(closes, reg250, z_thr=-2.0, merge_gap=15, launch_gate=0.9):
-    """黄金坑检测【固化版,2026-08-11】— 无未来函数。
-
-    坑 = close 相对 250日回归线残差 z-score 持续 < z_thr(-2) 的深跌段(相邻段间隔
+    坑 = close 相对 250日回归线残差 z-score 持续 < z_thr(-1.5) 的深跌段(相邻段间隔
     < merge_gap=15 合并为同一坑);坑底 = 段内最低 close;
     启动 = 坑底后首次收复门控线(close >= reg250 × launch_gate=0.9)。
 
+    use_pre_std=True(HY3 指出的 rstd 稀释修复):
+      坑内急跌会抬高含坑的 60 日滚动 std → z 分母变大 → 急跌当日 z 反而没那么负、
+      坑边界被切短。两遍扫描:第一遍用含坑滚动 std 粗定坑段;第二遍用"坑前 60 日 std"
+      (段起点 s 之前,纯历史,无未来函数)重算段内 z,精确定边界与坑底。
+
     验证(299池/两年):
-      启动后 r20 胜率 79.7%(n=833),r60 77.3%;快启动(距坑底≤5天)r20 87.3%(n=519)。
-      信号覆盖率:252/299 只出现过快启动信号;主升召回率(未来120日翻倍牛股)44%。
+      【2026-08-14 z_thr -2.0→-1.5】放宽后 n=682 r20胜率 88.4%(均值+9.88%),覆盖率+28%;
+      修复"前期大涨+高波动"股深跌 z 到不了 -2 的边界遗漏(001258 20260713 z=-1.8,后 +120%)。
+      【2026-08-14 use_pre_std】rstd 稀释修复:急跌坑(001258 类)坑前 std 重算后 z 更深、边界更准。
+      HY3 其余批评(门控0.9过低/量能硬过滤/坑前reg背景)已实测否定——门控1.0 胜率 79.7%→58.7%(追高),
+      量能硬过滤信号-84%胜率不升,reg背景过滤胜率反降。勿重蹈。
     返回 [(段起点 s, 坑底 b, 启动日 lch 或 None)] 升序。
     """
     closes = np.asarray(closes, dtype=float)
@@ -1041,6 +1052,7 @@ def detect_golden_pit(closes, reg250, z_thr=-2.0, merge_gap=15, launch_gate=0.9)
     z = np.full(n, np.nan)
     for i in range(59, n):
         z[i] = resid[i] / rstd[i] if rstd[i] > 0 else 0.0
+    # ── pass1: 滚动std(含坑)粗定坑段 ──
     pits = []
     st = None
     for i in range(59, n):
@@ -1056,13 +1068,77 @@ def detect_golden_pit(closes, reg250, z_thr=-2.0, merge_gap=15, launch_gate=0.9)
             merged[-1][1] = p[1]
         else:
             merged.append(list(p))
-    out = []
-    for s, e in merged:
+    # ── pass2: 坑前 std 重算段内 z,精确定边界(use_pre_std=True)──
+    refined = []
+    for s0, e0 in merged:
+        if use_pre_std and s0 >= 60:
+            pre_std = np.std(resid[s0 - 60:s0])
+            if pre_std <= 0:
+                pre_std = rstd[s0]
+        else:
+            pre_std = rstd[s0]
+        s_a = max(0, s0 - 10); e_a = min(n - 1, e0 + 10)
+        seg = []
+        st2 = None
+        for i in range(s_a, e_a + 1):
+            zz = resid[i] / pre_std if pre_std > 0 else 0.0
+            if zz < z_thr and st2 is None:
+                st2 = i
+            elif (zz >= z_thr or not np.isfinite(zz)) and st2 is not None:
+                seg.append([st2, i - 1]); st2 = None
+        if st2 is not None:
+            seg.append([st2, e_a])
+        if not seg:
+            continue
+        m2 = []
+        for p in seg:
+            if m2 and p[0] - m2[-1][1] <= merge_gap:
+                m2[-1][1] = p[1]
+            else:
+                m2.append(list(p))
+        s, e = m2[0][0], m2[-1][1]
         b = int(s + np.argmin(closes[s:e + 1]))
+        if max_pre_gain is not None and b >= 250:
+            pre_gain = closes[b] / closes[b - 250] - 1
+            if pre_gain > max_pre_gain:
+                continue  # 高位坑(坑前已暴涨),非黄金坑
         lch = None
         for i in range(b + 1, n):
             if closes[i] >= reg250[i] * launch_gate:
                 lch = i
                 break
-        out.append((s, b, lch))
+        refined.append((s, b, lch))
+    return refined
+
+
+def compute_pit_quality(pits, closes, volumes, pre_win=20, fill_win=20, fill_lead=2):
+    """黄金坑量能质量标签【2026-08-14】— 无未来函数,不改 pits 结构。
+
+    黄金坑形态灵魂 = "缩量挖、放量填"(HY3 建议;实测硬过滤信号-84%胜率不升,
+    故不做硬门槛,只做质量标签供观察池/排序用)。
+
+    对每个坑 [(s, b, lch)]:
+      shrink_ratio = 坑段均量 / 坑前 pre_win 日均量   (<1 = 缩量挖 ✓)
+      fill_ratio   = 出坑日(及前 fill_lead 日)均量 / 前 fill_win 日均量  (>1.2 = 放量填 ✓)
+      quality ∈ {'strong'(缩量挖+放量填), 'normal'(满足其一), 'weak'(都不满足)}
+    只使用 s 之前 / lch 当日及之前的数据,无未来函数。
+    返回 [(shrink_ratio, fill_ratio, quality), ...] 与 pits 对齐。
+    """
+    closes = np.asarray(closes, dtype=float)
+    vols = np.asarray(volumes, dtype=float)
+    out = []
+    for s, b, lch in pits:
+        v_pre = np.mean(vols[max(0, s - pre_win):s]) if s >= pre_win else np.nan
+        v_pit = np.mean(vols[s:b + 1])
+        shrink = v_pit / v_pre if v_pre and np.isfinite(v_pre) and v_pre > 0 else np.nan
+        if lch is not None:
+            v_base = np.mean(vols[max(0, lch - fill_win):lch]) if lch >= fill_win else np.nan
+            v_lch = np.mean(vols[max(0, lch - fill_lead):lch + 1])
+            fill = v_lch / v_base if v_base and np.isfinite(v_base) and v_base > 0 else np.nan
+        else:
+            fill = np.nan
+        sh_ok = np.isfinite(shrink) and shrink < 1.0
+        fl_ok = np.isfinite(fill) and fill > 1.2
+        q = 'strong' if (sh_ok and fl_ok) else ('normal' if (sh_ok or fl_ok) else 'weak')
+        out.append((shrink, fill, q))
     return out

@@ -14,7 +14,8 @@ description: 极速杀跌反转模型与 V10 第5面板 strength 柱架构速查
   - `detect_panic_events(df, code, drop_pct=0.15, ...)` — 事件研究主函数(默认 15% 档)
   - `compute_strength(closes, highs, lows, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=5, decay_factor=0.75, min_decay=2.0, reg_decay=0.10, short_win=5, short_drop=0.08, opens=None)`
     - **第5面板 strength 柱最终版 v4.8**(无未来函数)
-  - `detect_golden_pit(closes, reg250, z_thr=-2.0, merge_gap=15, new_high_win=20, min_gap=3)` — 黄金坑检测
+  - `detect_golden_pit(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9, use_pre_std=True, max_pre_gain=1.5)` — 黄金坑检测
+  - `compute_pit_quality(pits, closes, volumes, pre_win=20, fill_win=20, fill_lead=2)` — 坑量能质量标签(strong/normal/weak)
     (A z-score 深坑 + D 形态填坑启动,无未来函数);返回 [(段起点s, 坑底b, 启动日lch)]
   - `compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_atr=2.0, short_win=5, short_drop=0.08, reg_decay=0.10, reg_preds=None, atr=None, strength=None, min_band=0.05, gate_prox=0.85)`
     - 阴柱期"转阳触发价"序列;V10 panel0 蓝粗虚线;**严格单向滞回 + 段落重置 + gate近距垫底 + 阳柱日也可降档**(2026-08-11 现行)
@@ -68,34 +69,42 @@ u       = max(0, raw - k)^alpha                          k=2.0, alpha=2.0
 | v4.9+ | opens 参数(骤涨阳线条件) | signal/V10 已传 opens |
 | v4.9+ | 骤涨翻阳 + 10日方向转正约束 | 002249 下跌中继孤立阳(2/12/3/06)不合理;688552 受影响日均为阴K 零影响 |
 
-## 黄金坑检测(detect_golden_pit)— V10 第6面板(GOLD PIT 0/1 方波)【定版:快启动,2026-08-11】
+## 黄金坑检测(detect_golden_pit)— V10 第6面板(GOLD PIT 质量台阶)【定版:z_thr=-1.5 + 坑前std,2026-08-14】
 
-- **签名**:`detect_golden_pit(closes, reg250, z_thr=-2.0, merge_gap=15, launch_gate=0.9)`
-- **定义**(无固定深度阈值):
-  - 坑 = close 相对 250日回归线残差 z-score < -2 的深跌段(相邻段间隔<15天合并)
-  - 坑底 = 段内最低 close
-  - 启动 = 坑底后首次收复门控线(close ≥ reg250×0.9)
-  - **信号 = 快启动(距坑底 ≤5 天)** ← 定版核心
-- **验证**(299池/两年):
-  - 快启动 r20 胜率 **87.3%**(n=519),r60 80.7%
-  - 深坑 z<-3 + 快启动 88.3%(n=248);段长≤40 + 快启动 88.3%(n=454)
-  - 段长≤40 + 深坑 + 快启动 90.7%(n=193)
-  - **覆盖率**:快启动 534 信号/252只(84%)/每只2.1次/近一年235个
-  - 主升召回率(未来120日翻倍牛股101只):44%(56% 牛股主升前无深坑,见下)
-- **"长时间阴跌不算坑"结论**(用户直觉验证):牛股主升前坑 z<-2 持续中位仅 2 天(87%≤20天),
-  段起点前 z 中位 -1.7(低位二次探底)。但"快短"作为过滤会稀释胜率(64.2%,小回调坑太多);
-  **正确做法是"快启动"(坑底后≤5天收复门控线)而非限制坑段长度**——长度过滤副作用小
-  (段长≤40 仅 1pp 提升),用户最终选择不加段长
-- **第2类牛股(56%无深坑)探索结论**:主升前 z 最低中位 -0.93(几乎无坑)、主升起点不创新高/
-  不放量/多数收阴,日线周线均无预判信号(疑似事件/消息驱动)→ 转观察池,不做自动信号;
-  观察池定义(z∈[-0.5,+1.5] 横盘≥10天)已实现 detect_watch_pool 但用户嫌信号多已移除显示
-- **周线接口**:`tdx_quant.get_weekly_kline_from_tdx(code, end_date)`(eltdx period='week',
-  前复权,~800根)——第2类周线探索无信号,接口保留备用
-- V10 绘制:ax5(最底层面板,height_ratio 0.6)steps-post 方波+淡蓝 fill(坑内=1)
-- ⚠️ **历史教训**:脚本文件方式(python /tmp/x.py)修改 price_segmenter_v10.py 的写入在
-  Windows 上不生效(assert/print 正常但文件没变);必须用 stdin 方式(python - <<EOF)或写入后 grep 验证
+- **签名**:`detect_golden_pit(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9, use_pre_std=True, max_pre_gain=1.5)`
+- **max_pre_gain=1.5(坑前250日涨幅过滤,2026-08-15 加)**:
+  - 坑底前 250 日涨幅 > +150% = 高位坑(大牛后半山腰回调),非低位黄金坑 → 直接过滤
+  - 案例:688110 20260402(+228%)/20260803(+182%)、300204 20260304(+212% 假出坑)均被滤
+  - 全池验证:仅滤 3/784 坑,统计无损(r20 81.0% 不变),防个案"半山腰难受"
+  - 用户决策:黄金坑是低位恐慌反转,已暴涨 2 倍+ 后的坑是高位回调,不配叫黄金坑
+- **定义**:
+  - 坑 = close 相对 250日回归线残差 z-score < -1.5 的深跌段(相邻段间隔<15天合并)
+  - 坑底 = 段内最低 close;启动 = 坑底后首次收复门控线(close ≥ reg250×0.9)
+  - **z_thr=-1.5 定版**(原 -2.0):放宽后 n=682 r20胜率 88.4%(均值+9.88%),覆盖率+28%;
+    修复"前期大涨+高波动股深跌 z 到不了-2"边界遗漏(001258 20260713 z=-1.8,后+120%)
+  - **use_pre_std=True**(HY3 rstd 稀释修复):两遍扫描——pass1 含坑滚动 std(60日)粗定坑段,
+    pass2 用坑前 60 日 std(段起点前,纯历史,无未来函数)重算段内 z 精确定边界;
+    急跌坑边界更完整(001258 7月坑 4天→23天,300204 坑底 3/23→3/04)
+- **验证**(299池/两年):快启动(距坑底≤5天)r20 胜率 88.4%;"长时间阴跌不算坑"结论仍成立,
+  正确做法是"快启动"而非限制坑段长度(长度过滤副作用小,用户不加段长)
+- **第2类牛股(56%无深坑)**:主升前无预判信号(事件/消息驱动)→ 观察池,不做自动信号
+- **周线接口**:`tdx_quant.get_weekly_kline_from_tdx(code, end_date)`(eltdx period='week')接口保留备用
+- **量能质量标签 compute_pit_quality**(2026-08-14,HY3 建议):
+  - 每坑 (shrink_ratio=坑段量/坑前20日均量, fill_ratio=出坑日量/前20日均量, quality)
+  - strong(缩<1+放>1.2) / normal(其一) / weak(都不满足);只依赖历史,无未来函数
+  - 案例:001258 7月坑 缩0.33/放2.45=strong(真坑);300204 假坑 缩0.61/放0.56=normal(填不回去)
+  - **硬过滤无效**(信号-84%胜率不升)→ 只做标签/排序,不做硬门槛
+- **V10 绘制(ax5 最底层面板)**:高度+颜色双维——strong=1.0深蓝#0D47A1 / normal=0.7中蓝#1565C0 /
+  weak=0.4浅蓝#90CAF9,无坑=0;yticks 标 weak/normal/strong(英文防乱码);逐坑 fill_between(offset 换算)
+- **HY3 批评逐条裁决**(2026-08-14 实测):
+  - ①"门控0.9太低" ❌ gate=1.0 胜率 79.7%→58.7%(站上reg=追高),0.9 是胜率来源
+  - ②"无量能约束" ⚠️ 部分有理 → 只做质量标签(见上)
+  - ③"rstd 含坑稀释" ✅ 已修 use_pre_std
+  - ④"merge_gap=15 过宽" 未单独验证,保留
+  - ⑤"z_thr 固定不自适应" 存疑,放宽更好,不动
+  - ⑥"坑前无背景约束" ❌ reg 走平/上行过滤后胜率反降(76.0%),阴跌坑不更差
 
-## 转阳触发价(compute_turn_positive_prices)— V10 panel0 蓝粗虚线
+## 转阳触发价(compute_turn_positive_prices)## 转阳触发价(compute_turn_positive_prices)— V10 panel0 蓝粗虚线
 
 - 用途:阴柱期间在 K 线上画一条"目标/压制价",突破该价 = 次日大概率转阳(买入条件单参考);**阳柱期延续显示,直到真突破才消失**
 - 第 i 天(阴柱)触发价 = min(常规路径, 骤变路径) 再优化:
