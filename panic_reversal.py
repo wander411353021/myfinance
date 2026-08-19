@@ -1020,10 +1020,10 @@ def detect_watch_pool(closes, reg250, z_lo=-0.5, z_hi=1.5, flat_amp=0.25, min_le
     return out
 
 def detect_golden_pit(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9, use_pre_std=True,
-                     max_pre_gain=1.5):
-    # max_pre_gain: 坑底前 250 日涨幅上限(默认 +150%)——超过 = 高位坑(大牛后半山腰回调),
-    # 非低位黄金坑(688110 20260402 +228%/20260803 +182%、300204 20260304 +212% 均被滤)。
-    # 全池验证:仅滤 3/784 坑,统计无差异,但防个案"半山腰难受"。
+                     max_pre_gain=None):
+    # max_pre_gain(默认 None=不过滤):坑底前 250 日涨幅上限。曾设为 1.5 硬过滤高位坑
+    # (688110 +228%/+182%、300204 +212%),但误杀 300300 20250923(+330%,后 +288% 主升)——
+    # 上涨中继坑 vs 高位见顶坑单看涨幅不可分 → 改为软标注(见 mark_high_pos),不再硬过滤。
     """黄金坑检测【z_thr=-1.5 + 坑前std版,2026-08-14】— 无未来函数。
 
     坑 = close 相对 250日回归线残差 z-score 持续 < z_thr(-1.5) 的深跌段(相邻段间隔
@@ -1098,10 +1098,6 @@ def detect_golden_pit(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9,
                 m2.append(list(p))
         s, e = m2[0][0], m2[-1][1]
         b = int(s + np.argmin(closes[s:e + 1]))
-        if max_pre_gain is not None and b >= 250:
-            pre_gain = closes[b] / closes[b - 250] - 1
-            if pre_gain > max_pre_gain:
-                continue  # 高位坑(坑前已暴涨),非黄金坑
         lch = None
         for i in range(b + 1, n):
             if closes[i] >= reg250[i] * launch_gate:
@@ -1141,4 +1137,23 @@ def compute_pit_quality(pits, closes, volumes, pre_win=20, fill_win=20, fill_lea
         fl_ok = np.isfinite(fill) and fill > 1.2
         q = 'strong' if (sh_ok and fl_ok) else ('normal' if (sh_ok or fl_ok) else 'weak')
         out.append((shrink, fill, q))
+    return out
+
+
+def mark_high_pos(pits, closes, thr=1.5):
+    """高位坑软标注【2026-08-15】— 无未来函数。
+
+    坑底前 250 日涨幅 > thr(默认 +150%) = 高位坑(大牛后半山腰回调,如 688110/300204),
+    但也可能是上涨中继坑(300300 20250923 +330% → 后 +288% 主升)——故不硬过滤,只标注,
+    由面板/人工判断(reg 拐头与否是区分关键)。
+    返回 [True(高位坑)/False, ...] 与 pits 对齐;坑底前不足 250 日返回 False。
+    """
+    closes = np.asarray(closes, dtype=float)
+    out = []
+    for s, b, lch in pits:
+        if b >= 250:
+            pre_gain = closes[b] / closes[b - 250] - 1
+            out.append(pre_gain > thr)
+        else:
+            out.append(False)
     return out

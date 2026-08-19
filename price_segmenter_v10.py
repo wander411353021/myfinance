@@ -951,9 +951,11 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             _fv = df_ohlc['volume'].values.astype(np.float64) if 'volume' in df_ohlc.columns else None
             _pits = _pr.detect_golden_pit(_fc, _frg2)
             _qual = _pr.compute_pit_quality(_pits, _fc, _fv) if _fv is not None else None
+            _highpos = _pr.mark_high_pos(_pits, _fc)  # 高位坑软标注(坑前250日涨幅>150%)
             # 质量: 高度区分(strong=1.0 / normal=0.7 / weak=0.4) + 颜色辅助
             _qh = {'strong': 1.0, 'normal': 0.7, 'weak': 0.4}
-            _qcolor = {'strong': '#0D47A1', 'normal': '#1565C0', 'weak': '#90CAF9'}
+            # 颜色对比拉开: strong=橙 / normal=蓝 / weak=灰(快启动=红,四种互不混淆)
+            _qcolor = {'strong': '#E65100', 'normal': '#1565C0', 'weak': '#BDBDBD'}
             pit_mask = np.zeros(len(_fc))
             ax5.set_facecolor('#F5F5F5')
             for _k, (_s, _b, _lch) in enumerate(_pits):
@@ -961,11 +963,15 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _q = _qual[_k][2] if _qual is not None else 'normal'
                 _lv = _qh.get(_q, 0.7)
                 pit_mask[_s:_end + 1] = _lv
-                _col = _qcolor.get(_q, '#1565C0')
-                _x0 = _s + offset
-                _x1 = _end + 1 + offset
-                ax5.fill_between(np.arange(_x0, _x1 + 1), 0, _lv, step='post',
-                                 color=_col, alpha=0.60)
+                _fast = _lch is not None and _lch - _b <= 5  # 快启动坑(坑底→出坑 ≤5 天,2026-08-15 由3放宽)
+                _hp = _highpos[_k] if _highpos is not None and _k < len(_highpos) else False  # 高位坑软标注
+                _col = '#E53935' if _fast else _qcolor.get(_q, '#1565C0')
+                # ⚠️ 必须用窗口坐标(0..n-1):折线 x 是窗口坐标,fill 用全局坐标(+offset)会画到窗口外被裁剪
+                _x0w = _s - offset
+                _x1w = _end - offset + 1  # steps-post 需右闭边界
+                ax5.fill_between(np.arange(_x0w, _x1w + 1), 0, _lv, step='post',
+                                 color=_col, alpha=0.85 if _fast else 0.60,
+                                 hatch='//' if _hp else None)  # 高位坑加斜纹标注
             pit_win = pit_mask[offset:offset + n]
             ax5.plot(x, pit_win, drawstyle='steps-post', color='#0D47A1', linewidth=1.2)
             ax5.set_ylim(-0.1, 1.15)

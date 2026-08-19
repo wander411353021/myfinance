@@ -14,7 +14,8 @@ description: 极速杀跌反转模型与 V10 第5面板 strength 柱架构速查
   - `detect_panic_events(df, code, drop_pct=0.15, ...)` — 事件研究主函数(默认 15% 档)
   - `compute_strength(closes, highs, lows, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=5, decay_factor=0.75, min_decay=2.0, reg_decay=0.10, short_win=5, short_drop=0.08, opens=None)`
     - **第5面板 strength 柱最终版 v4.8**(无未来函数)
-  - `detect_golden_pit(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9, use_pre_std=True, max_pre_gain=1.5)` — 黄金坑检测
+  - `detect_golden_pit(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9, use_pre_std=True, max_pre_gain=None)` — 黄金坑检测
+  - `mark_high_pos(pits, closes, thr=1.5)` — 高位坑软标注(坑前250日涨幅>150%,返回 bool 列表)
   - `compute_pit_quality(pits, closes, volumes, pre_win=20, fill_win=20, fill_lead=2)` — 坑量能质量标签(strong/normal/weak)
     (A z-score 深坑 + D 形态填坑启动,无未来函数);返回 [(段起点s, 坑底b, 启动日lch)]
   - `compute_turn_positive_prices(closes, highs, lows, opens=None, win=10, dir_atr=2.0, short_win=5, short_drop=0.08, reg_decay=0.10, reg_preds=None, atr=None, strength=None, min_band=0.05, gate_prox=0.85)`
@@ -72,11 +73,11 @@ u       = max(0, raw - k)^alpha                          k=2.0, alpha=2.0
 ## 黄金坑检测(detect_golden_pit)— V10 第6面板(GOLD PIT 质量台阶)【定版:z_thr=-1.5 + 坑前std,2026-08-14】
 
 - **签名**:`detect_golden_pit(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9, use_pre_std=True, max_pre_gain=1.5)`
-- **max_pre_gain=1.5(坑前250日涨幅过滤,2026-08-15 加)**:
-  - 坑底前 250 日涨幅 > +150% = 高位坑(大牛后半山腰回调),非低位黄金坑 → 直接过滤
-  - 案例:688110 20260402(+228%)/20260803(+182%)、300204 20260304(+212% 假出坑)均被滤
-  - 全池验证:仅滤 3/784 坑,统计无损(r20 81.0% 不变),防个案"半山腰难受"
-  - 用户决策:黄金坑是低位恐慌反转,已暴涨 2 倍+ 后的坑是高位回调,不配叫黄金坑
+- **高位坑 = 软标注(2026-08-15 硬过滤→软标注)**:
+  - 硬过滤(max_pre_gain=1.5)曾滤掉 688110(+228%/+182%)、300204(+212%)高位坑——**但误杀 300300 20250923(+330%,后 +288% 主升)**:
+    上涨中继坑 vs 高位见顶坑单看坑前涨幅不可分(reg 拐头与否是关键区分,300300 该坑 reg 当日拐头)
+  - **现改为 mark_high_pos 软标注**:坑前 250 日涨幅>150% 的坑保留显示,面板加斜纹(hatch='//'),由人工判断
+  - detect_golden_pit max_pre_gain 默认 None(不过滤)
 - **定义**:
   - 坑 = close 相对 250日回归线残差 z-score < -1.5 的深跌段(相邻段间隔<15天合并)
   - 坑底 = 段内最低 close;启动 = 坑底后首次收复门控线(close ≥ reg250×0.9)
@@ -171,3 +172,24 @@ python panic_reversal.py one sz300437  # 单只检测+画图
 # 触发价图:plot_price_segmentation_v10(..., reg_preds_long=250日回归线) 即自动画蓝粗虚线(阴柱期)
 # 注意:修改 panic_reversal.py/price_segmenter_v10.py 后必须重启 streamlit 进程才生效
 ```
+
+## 快启动阈值定版(2026-08-15)
+
+- 快启动 = 坑底→出坑 ≤5 天(原 ≤3 天,用户 300204 5天出坑案例质疑后放宽)
+- 1000只全市场滞后阈值曲线: ≤2天 82.7% | ≤3天 81.9% | ≤4天 81.4% | ≤5天 80.5% | ≤6天 78.8% | ≤7天 76.8% | ≤10天 73.4%
+- 3→5天 胜率仅-1.4pp,信号+18%;6天起加速下滑——5天是性价比拐点
+- 面板红色填充 = 快启动坑
+
+## 坑的实时动态性(2026-08-15 用户发现,待讨论)
+
+- **坑可能"消失"或"变形"**:数据末端的开放段(未出坑,z<-1.5 持续)是"实时暂定"的,
+  后续数据可能:①坑底后移(4/02 坑底3/25 → 4/07 新低 → 坑底变4/07)②整个坑消失
+  (pass2 坑前 std 重切,段不再满足 z<thr)③快启动标注取消(滞后随坑底/启动日后移变>3天)
+- **案例 300204 2025/04**:截至 4/02 坑底 3/25(7.11)启动 3/26 滞后1天=红色快启动;
+  4/07 暴跌创新低(6.27)→ 坑底后移 → 新坑 4/14 启动 滞后5天 → 红色取消。
+  这是实时正确行为(数据更新判断更新),非 bug。
+- **实盘含义**:红色快启动标注仅当天有效;红色取消/坑消失 = 反转被推翻 = "破坑底止损"信号。
+  红色标注 + 破坑底止损是一体:红=买入提示,红消失/破坑底=离场提示。
+- **现状**:299 池中 38 只存在"未出坑开放段"(暂定坑)。面板未区分开放/已确认坑。
+- **待讨论方案**(未实施):A. 面板区分显示——开放段(未出坑)用虚线/半透明,已确认坑实心;
+  B. 不管(开放段无启动信号,等出坑确认,不影响买入决策)。
