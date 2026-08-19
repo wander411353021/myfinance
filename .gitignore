@@ -20,3 +20,6 @@ bin-release/
 
 # Results (generated images, etc.)
 result/
+
+# kilo local tool
+.kilo/
