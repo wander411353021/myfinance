@@ -215,3 +215,12 @@ python panic_reversal.py one sz300437  # 单只检测+画图
 - 位置:C:/Users/work/AppData/Roaming/reasonix/config.toml 三个 providers 块(92/102/113 行)
 - 备份:config.toml.bak.20260819price;注意高峰时段实际扣费是空闲价 2 倍,统计口径偏低
 - 下次价格变动:web_fetch https://api-docs.deepseek.com/zh-cn/quick_start/pricing 核对,问用户口径(高峰/空闲/平均)再改
+
+## streamlit 手机端适配(2026-08-19 完成)
+
+- 局域网访问:`python -m streamlit run streamlit_demo.py --server.address 0.0.0.0 --server.port 8501`,手机浏览器访问 http://<电脑IP>:8501
+- **手机端 CSS 全部通过 st.markdown(unsafe_allow_html=True) 注入 @media (max-width:1100px)**——已验证生效(st.html 曾被尝试但用户反馈无效,已还原 markdown 方式)
+- 隐藏项:侧边栏第1个 details(板块导航)、[data-testid="stMetric"](指标卡)、[data-testid="stMain"] details(信号明细/生命周期)、h1/h2/h3(标题)、[data-testid="stCaptionContainer"](数据源说明)、[data-testid="stAlert"](已拉取等提示)
+- 图片:absolute + translate(-50%,-50%) + rotate(90deg) 居中,width:80vh(用户调 80%),容器 100vw×100vh overflow:auto(可左右滑)
+- 用户迭代链:旋转90→居中(留白偏移)→80%缩放→放开滑动,最终定版
+- 提交 7a52e16 已双推(streamlit 手机适配 + skill 更新)
