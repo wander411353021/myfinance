@@ -206,3 +206,12 @@ python panic_reversal.py one sz300437  # 单只检测+画图
   compute_pit_quality + mark_high_pos;快启动=滞后≤5天
 - 历史:20260818 全量统计(未保存 r20 全市场胜率 80.5%/r60 71.7%/假出坑 5.8%——脚本崩溃于索引 bug,
   20260818.md 为 90 天版;20260819.md 为当日版)。如用户要全市场胜率重新跑统计(修复版未跑完)。
+
+## Reasonix 费用配置(2026-08-19)
+
+- DeepSeek 官方价格(2026-08):flash 输入 1.5(空闲)/3.0(高峰)、输出 4.5/9.0、缓存命中 0.05/0.10;
+  pro 输入 4.5/9.0、输出 13.5/27.0、缓存 0.15/0.30(元/百万 tokens)
+- config.toml 已更新为**空闲价**(用户选定口径):flash {0.05, 1.5, 4.5}, pro {0.15, 4.5, 13.5}
+- 位置:C:/Users/work/AppData/Roaming/reasonix/config.toml 三个 providers 块(92/102/113 行)
+- 备份:config.toml.bak.20260819price;注意高峰时段实际扣费是空闲价 2 倍,统计口径偏低
+- 下次价格变动:web_fetch https://api-docs.deepseek.com/zh-cn/quick_start/pricing 核对,问用户口径(高峰/空闲/平均)再改

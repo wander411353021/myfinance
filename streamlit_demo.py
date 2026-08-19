@@ -29,6 +29,43 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 st.set_page_config(page_title="V10 价格分段 Demo", layout="wide")
 
+# 手机端:隐藏"板块导航(CSV)"expander(侧边栏第1个 details),保留输入框/日期/同行业个股
+st.markdown("""
+<style>
+@media (max-width: 1100px) {
+  /* 手机端:隐藏"板块导航(CSV)"expander(侧边栏第1个 details) */
+  [data-testid="stSidebar"] details:nth-of-type(1) { display: none !important; }
+  /* 手机端:隐藏主区域指标卡(窗口买入/卖出/阻力支撑) */
+  [data-testid="stMain"] [data-testid="stMetric"] { display: none !important; }
+  /* 手机端:隐藏主区域 expander(信号明细 / 阻力支撑位生命周期) */
+  [data-testid="stMain"] details { display: none !important; }
+  /* 手机端:隐藏标题(V10 价格分段)与数据源说明,只留图 */
+  [data-testid="stMain"] h1, [data-testid="stMain"] h2, [data-testid="stMain"] h3 { display: none !important; }
+  [data-testid="stMain"] [data-testid="stCaptionContainer"] { display: none !important; }
+  /* 隐藏"已拉取"等提示(st.success/error/warning) */
+  [data-testid="stAlert"] { display: none !important; }
+  /* 图旋转 90°:absolute + translate 严格居中,消除横向滚动与偏移 */
+  [data-testid="stImage"] {
+    position: relative !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    overflow: auto !important;  /* 2026-08-19:放开左右滑动 */
+  }
+  [data-testid="stImage"] img {
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) rotate(90deg) !important;
+    width: 80vh !important;  /* 2026-08-19:用户要求缩到 80% */
+    height: auto !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+  }
+}
+</style>
+""", unsafe_allow_html=True)
+
 # 板块类型标签 → 文件键
 BLOCK_LABELS = {v: k for k, v in BLOCK_KEYS.items()}  # {'行业/指数': 'block_zs', ...}
 
