@@ -232,3 +232,13 @@ python panic_reversal.py one sz300437  # 单只检测+画图
 - 影响面:299 池 884 个出坑全部不受影响(0.0%);只过滤全市场横盘假出坑
 - 20260820 日报:25→23 只(移除 601727 上海电气、000404 长虹华意),已用 refilter 脚本重生成
 - streamlit 新增"当日详情(出坑)"expander(参照关联个股):读 result/daily/{date}.md,↑↓/Enter/点击载入主图;无文件/无股票显示空
+
+## streamlit 跟踪列表功能(2026-08-20)
+
+- **当日详情(出坑)面板**:读 result/daily/{date}.md,↑↓/Enter/点击载入主图;右键 → "加入跟踪列表"写入 result/tracking.md(去重)
+- **跟踪列表面板**:读 result/tracking.md,点击载入主图;右键 → "移除跟踪"
+- **组件**:_cons_component/index.html 加右键菜单(contextmenu + 自定义菜单,menu_actions 参数控制 track/untrack),回传特殊值 `__TRACK__:code` / `__UNTRACK__:code`
+- **防重复(重要)**:Streamlit 组件 rerun 会重复回传上次值 → track/untrack 分支必须用 session_state 标记(_last_track/_last_untrack)只处理一次,否则无限 rerun/不刷新
+- **tracking.md 读写**:_load_tracking/_save_tracking(去重保序),存 | 代码 | 名称 | 表格
+- **手机端隐藏**:当日详情(第3个 details)和跟踪列表(第4个)在 <1100px 隐藏
+- 提交 643bd5e 已双推
