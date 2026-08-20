@@ -19,7 +19,10 @@ bin-release/
 *.apk
 
 # Results (generated images, etc.)
-result/
+result/*
+# keep daily reports tracked
+!result/daily/
+!result/daily/*.md
 
 # kilo local tool
 .kilo/
