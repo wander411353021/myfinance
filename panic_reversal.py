@@ -1217,23 +1217,33 @@ def detect_volume_clusters(closes, volumes, win=60, hi_ratio=1.5, lo_ratio=0.6,
             st[i] = 1
         elif np.isfinite(ratio[i]) and ratio[i] < lo_ratio:
             st[i] = -1
-    # 滞回:连续 exit_confirm 天中性才结束当前堆 → 先找原始段,再用 merge_gap 合并
+    # 滞回:连续 exit_confirm 天中性才结束堆(放量/缩量一致,无未来函数——确认只用历史)
+    # 堆进行中遇中性日进入待确认;连续 exit_confirm 天中性 → 闭合(结束于最后达标日);中途恢复 → 取消待确认
     segs = []
-    cur = None  # [start, last_kind, last_idx]
+    cur = None      # [start, kind, last_ok_idx]
+    neutral_run = 0  # 连续中性天数(仅当 cur 存在时有意义)
     for i in range(n):
-        if st[i] != 0:
-            if cur is None:
+        if cur is None:
+            if st[i] != 0:
                 cur = [i, st[i], i]
-            elif st[i] == cur[1]:
-                cur[2] = i
-            else:
-                # 类型切换:旧堆结束
-                segs.append((cur[0], cur[2], cur[1]))
-                cur = [i, st[i], i]
+                neutral_run = 0
         else:
-            if cur is not None:
+            if st[i] == cur[1]:
+                # 同类型继续(含从待确认恢复)
+                cur[2] = i
+                neutral_run = 0
+            elif st[i] != 0:
+                # 类型切换(如放量堆中间直接变缩量):旧堆闭合,新堆开始
                 segs.append((cur[0], cur[2], cur[1]))
-                cur = None
+                cur = [i, st[i], i]
+                neutral_run = 0
+            else:
+                # 中性日:进入/累计待确认
+                neutral_run += 1
+                if neutral_run >= exit_confirm:
+                    segs.append((cur[0], cur[2], cur[1]))
+                    cur = None
+                    neutral_run = 0
     if cur is not None:
         segs.append((cur[0], cur[2], cur[1]))
     # 合并同类型且间隔 <= merge_gap 的段;间隔期间若有另一种类型则中断
