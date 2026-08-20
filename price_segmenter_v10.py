@@ -795,11 +795,24 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     ax1 = axes[1]; vol = ohlc['volume'].values; va = result['vol_annotation'].values[offset:offset + n]
     vc = {"VOL_EXPANDING": "#ef5350", "VOL_SHRINKING": "#26a69a", "NEUTRAL": "#9E9E9E"}
     ax1.bar(x, vol, width=bar_w, color=[vc.get(va[k], '#9E9E9E') for k in range(n)], alpha=0.8)
+    # 成交量堆背景(MAD z-score,无未来函数):放量堆淡红 / 缩量堆淡绿
+    # ohlc 是窗口切片,堆索引即窗口坐标,直接用 x 画(勿加 offset!)
+    try:
+        import panic_reversal as _pr
+        _vcl = _pr.detect_volume_clusters(ohlc['close'].values, vol)
+        for _s, _e, _kd, _dr, _zp, _vr in _vcl:
+            if _e < 0 or _s >= n:
+                continue
+            _s0 = max(0, _s); _e0 = min(n - 1, _e)
+            _col = '#ef5350' if _kd == 'HIGH' else '#26a69a'
+            ax1.axvspan(_s0 - 0.5, _e0 + 0.5, color=_col, alpha=0.14, zorder=0)
+    except Exception:
+        pass
     # 量轴：取窗口内实际最大值 * 1.2，完整显示 + 20% 顶空
     if len(vol) > 0 and vol.max() > 0:
         ax1.set_ylim(0, vol.max() * 1.2)
     ax1.set_ylabel('Volume', fontsize=9); ax1.grid(True, alpha=0.2)
-    ax1.set_title('Volume (red=expanding, green=shrinking)', fontsize=9, loc='left', pad=2)
+    ax1.set_title('Volume (red=expanding, green=shrinking; bg=cluster)', fontsize=9, loc='left', pad=2)
 
     ax2 = axes[2] if not hide_mid_panels else None
     if ax2 is not None:

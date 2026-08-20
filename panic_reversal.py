@@ -1167,3 +1167,101 @@ def mark_high_pos(pits, closes, thr=1.5):
         else:
             out.append(False)
     return out
+
+
+def detect_volume_clusters(closes, volumes, win=60, win_short=20, z_hi=2.0, z_lo=-1.5,
+                           min_len=3, merge_gap=0, exit_confirm=2, dir_pct=0.02):
+    """成交量堆识别与分割【MAD z-score 版,2026-08-20】— 无未来函数。
+
+    放量堆/缩量堆 = 量能显著偏离自身历史基准的连续区间。
+
+    基准(只用历史,滚动到 i-1,含未来函数检查):
+      med[i] = median(log(vol)[i-win..i-1])   前 win 日中位量
+      mad[i] = median(|log(vol)-med|)[i-win..i-1]  前 win 日 MAD(抗极端值)
+      z[i]   = (log(vol)[i] - med[i]) / mad[i]   放量 z>0,缩量 z<0
+
+    状态: z > z_hi(默认2.0) → 放量日; z < z_lo(默认-2.0) → 缩量日; 否则中性。
+    阈值依据: z_hi=3 漏掉温和放量(300251 1/20~1/27 平台放量 z=1~2.4 被漏),放宽到 2 后
+    堆数 6→15;MAD z≈2 ≈ 常规 2σ 异常,仍显著高于普通波动。
+    z_lo=-1.5: 缩量在 log 空间幅度天然小(量≥0,最多几个σ,放量可10倍),对称阈值 z<-2
+    缩量堆几乎不触发(300251 缩量日 12-16万 z 仅 -1.8),故缩量单独放宽到 -1.5。
+    屏蔽微小波动假信号:
+      - min_len=3: 堆至少 3 天(单/双日不成堆)
+      - exit_confirm=2: 连续 2 天中性才算堆结束(滞回防抖)
+      - merge_gap=2: 相邻同类型堆间隔 <=2 天合并
+      - 堆内峰值 |z| >= 1.5 才保留(避免边界松动的弱堆)
+
+    方向标注(量价结合):堆内 close 末 vs 首:
+      UP(>dir_pct 涨幅) / DOWN(<-dir_pct) / FLAT。
+
+    返回 [(start, end, kind, direction, z_peak, vol_ratio)] 升序;
+      kind ∈ {'HIGH','LOW'}; vol_ratio = 堆均量/前win日中位量。
+    双基准:放量用 win=60 长窗(稳定),缩量用 win_short=20 短窗(对近期缩量敏感)——
+    1/06~1/15 相对 12 月温和缩量在 60 日基准下 z 仅 -1.2~-1.6,短窗下更明显。
+    """
+    import pandas as pd
+    closes = np.asarray(closes, dtype=float)
+    lv = np.log1p(np.asarray(volumes, dtype=float))
+    s = pd.Series(lv)
+    # 长窗(放量)
+    med_l = s.rolling(win, min_periods=20).median().shift(1).values
+    mad_l = (s - med_l).abs().rolling(win, min_periods=20).median().shift(1).values
+    # 短窗(缩量)
+    med_s = s.rolling(win_short, min_periods=10).median().shift(1).values
+    mad_s = (s - med_s).abs().rolling(win_short, min_periods=10).median().shift(1).values
+    with np.errstate(divide='ignore', invalid='ignore'):
+        z_hi_v = np.where(mad_l > 0, (lv - med_l) / np.where(mad_l > 0, mad_l, np.nan), np.nan)
+        z_lo_v = np.where(mad_s > 0, (lv - med_s) / np.where(mad_s > 0, mad_s, np.nan), np.nan)
+    n = len(lv)
+    # 逐日状态:放量用长窗 z_hi_v,缩量用短窗 z_lo_v(双基准,各自判定)
+    st = np.zeros(n, dtype=int)  # 1=HIGH, -1=LOW, 0=NEUTRAL
+    for i in range(n):
+        if np.isfinite(z_hi_v[i]) and z_hi_v[i] > z_hi:
+            st[i] = 1
+        elif np.isfinite(z_lo_v[i]) and z_lo_v[i] < z_lo:
+            st[i] = -1
+    # 滞回:连续 exit_confirm 天中性才结束当前堆 → 先找原始段,再用 merge_gap 合并
+    segs = []
+    cur = None  # [start, last_kind, last_idx]
+    for i in range(n):
+        if st[i] != 0:
+            if cur is None:
+                cur = [i, st[i], i]
+            elif st[i] == cur[1]:
+                cur[2] = i
+            else:
+                # 类型切换:旧堆结束
+                segs.append((cur[0], cur[2], cur[1]))
+                cur = [i, st[i], i]
+        else:
+            if cur is not None:
+                segs.append((cur[0], cur[2], cur[1]))
+                cur = None
+    if cur is not None:
+        segs.append((cur[0], cur[2], cur[1]))
+    # 合并同类型且间隔 <= merge_gap 的段;间隔期间若有另一种类型则中断
+    merged = []
+    for sg in segs:
+        if merged and sg[2] == merged[-1][2] and sg[0] - merged[-1][1] - 1 <= merge_gap:
+            merged[-1] = (merged[-1][0], sg[1], sg[2])
+        else:
+            merged.append(sg)
+    # 强度 + 最小长度过滤,标注方向
+    out = []
+    for s0, e0, kd in merged:
+        if e0 - s0 + 1 < min_len:
+            continue
+        zseg = np.abs(z_hi_v[s0:e0 + 1]) if kd == 1 else np.abs(z_lo_v[s0:e0 + 1])
+        if not np.isfinite(zseg).any() or np.nanmax(zseg) < 1.5:
+            continue
+        direction = 'FLAT'
+        chg = closes[e0] / closes[s0] - 1
+        if chg > dir_pct:
+            direction = 'UP'
+        elif chg < -dir_pct:
+            direction = 'DOWN'
+        med_v = np.nanmedian(lv[max(0, s0 - win):s0])
+        vol_ratio = float(np.exp(np.nanmean(lv[s0:e0 + 1]) - med_v)) if np.isfinite(med_v) else float('nan')
+        out.append((s0, e0, 'HIGH' if kd == 1 else 'LOW', direction,
+                    float(np.nanmax(zseg)), vol_ratio))
+    return out
