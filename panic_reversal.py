@@ -1020,7 +1020,9 @@ def detect_watch_pool(closes, reg250, z_lo=-0.5, z_hi=1.5, flat_amp=0.25, min_le
     return out
 
 def detect_golden_pit(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9, use_pre_std=True,
-                     max_pre_gain=None):
+                     max_pre_gain=None, require_below_gate=False):
+    # require_below_gate(默认 False=关闭):坑需"价格跌破门控线"? 验证方向反了——
+    # 被过滤的未破线坑 r20 88.5% > 破线坑 75.3%(299池),故不启用。603275/000404 单日浅坑另议。
     # max_pre_gain(默认 None=不过滤):坑底前 250 日涨幅上限。曾设为 1.5 硬过滤高位坑
     # (688110 +228%/+182%、300204 +212%),但误杀 300300 20250923(+330%,后 +288% 主升)——
     # 上涨中继坑 vs 高位见顶坑单看涨幅不可分 → 改为软标注(见 mark_high_pos),不再硬过滤。
@@ -1052,13 +1054,18 @@ def detect_golden_pit(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9,
     z = np.full(n, np.nan)
     for i in range(59, n):
         z[i] = resid[i] / rstd[i] if rstd[i] > 0 else 0.0
+    # 坑 = z<-1.5 且 价格跌破门控线(close < reg×0.9):只 z 深但价格未破线不算坑
+    # (603275 8/19 z=-2.1 但 close 34.82>=34.44、000404 同病——reg 下移时 z 深但价格没创新低)
+    gate_line = np.asarray(reg250, dtype=float) * launch_gate
     # ── pass1: 滚动std(含坑)粗定坑段 ──
     pits = []
     st = None
     for i in range(59, n):
-        if np.isfinite(z[i]) and z[i] < z_thr and st is None:
+        in_pit = np.isfinite(z[i]) and z[i] < z_thr and (
+            closes[i] < gate_line[i] if require_below_gate else True)
+        if in_pit and st is None:
             st = i
-        elif (not np.isfinite(z[i]) or z[i] >= z_thr) and st is not None:
+        elif (not in_pit) and st is not None:
             pits.append([st, i - 1]); st = None
     if st is not None:
         pits.append([st, n - 1])
@@ -1082,9 +1089,11 @@ def detect_golden_pit(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9,
         st2 = None
         for i in range(s_a, e_a + 1):
             zz = resid[i] / pre_std if pre_std > 0 else 0.0
-            if zz < z_thr and st2 is None:
+            in_pit2 = zz < z_thr and (
+                closes[i] < gate_line[i] if require_below_gate else True)
+            if in_pit2 and st2 is None:
                 st2 = i
-            elif (zz >= z_thr or not np.isfinite(zz)) and st2 is not None:
+            elif (not in_pit2 or not np.isfinite(zz)) and st2 is not None:
                 seg.append([st2, i - 1]); st2 = None
         if st2 is not None:
             seg.append([st2, e_a])
