@@ -1169,8 +1169,10 @@ def mark_high_pos(pits, closes, thr=1.5):
     return out
 
 
-def detect_volume_clusters(closes, volumes, win=60, win_short=20, z_hi=2.0, z_lo=-1.5,
+def detect_volume_clusters(closes, volumes, win=60, hi_ratio=1.5, lo_ratio=0.6,
                            min_len=3, merge_gap=0, exit_confirm=2, dir_pct=0.02):
+    # hi_ratio/lo_ratio: 放量=vol>前win日中位量×1.5, 缩量=vol<×0.6(量比判据,2026-08-20)
+    # 弃用 z-score:z>2 漏掉"持续高于常态但非尖峰"的放量段(600199 11月 量2~9倍但 z 仅1.4~2.6)
     """成交量堆识别与分割【MAD z-score 版,2026-08-20】— 无未来函数。
 
     放量堆/缩量堆 = 量能显著偏离自身历史基准的连续区间。
@@ -1196,29 +1198,24 @@ def detect_volume_clusters(closes, volumes, win=60, win_short=20, z_hi=2.0, z_lo
 
     返回 [(start, end, kind, direction, z_peak, vol_ratio)] 升序;
       kind ∈ {'HIGH','LOW'}; vol_ratio = 堆均量/前win日中位量。
-    双基准:放量用 win=60 长窗(稳定),缩量用 win_short=20 短窗(对近期缩量敏感)——
-    1/06~1/15 相对 12 月温和缩量在 60 日基准下 z 仅 -1.2~-1.6,短窗下更明显。
+    量比判据:vol[i] / 前 win 日中位量 > hi_ratio(1.5) = 放量; < lo_ratio(0.6) = 缩量。
+    量比直接衡量"放大倍数",贴合直觉(600199 11月 量2~9倍,量比判据连成整段放量堆)。
     """
-    import pandas as pd
     closes = np.asarray(closes, dtype=float)
-    lv = np.log1p(np.asarray(volumes, dtype=float))
-    s = pd.Series(lv)
-    # 长窗(放量)
-    med_l = s.rolling(win, min_periods=20).median().shift(1).values
-    mad_l = (s - med_l).abs().rolling(win, min_periods=20).median().shift(1).values
-    # 短窗(缩量)
-    med_s = s.rolling(win_short, min_periods=10).median().shift(1).values
-    mad_s = (s - med_s).abs().rolling(win_short, min_periods=10).median().shift(1).values
+    vols = np.asarray(volumes, dtype=float)
+    n = len(vols)
+    # 前 win 日中位量(只用历史,滚动到 i-1)
+    import pandas as pd
+    s = pd.Series(vols)
+    med = s.rolling(win, min_periods=20).median().shift(1).values
     with np.errstate(divide='ignore', invalid='ignore'):
-        z_hi_v = np.where(mad_l > 0, (lv - med_l) / np.where(mad_l > 0, mad_l, np.nan), np.nan)
-        z_lo_v = np.where(mad_s > 0, (lv - med_s) / np.where(mad_s > 0, mad_s, np.nan), np.nan)
-    n = len(lv)
-    # 逐日状态:放量用长窗 z_hi_v,缩量用短窗 z_lo_v(双基准,各自判定)
+        ratio = vols / np.where(med > 0, med, np.nan)
+    # 逐日状态:量比判据
     st = np.zeros(n, dtype=int)  # 1=HIGH, -1=LOW, 0=NEUTRAL
     for i in range(n):
-        if np.isfinite(z_hi_v[i]) and z_hi_v[i] > z_hi:
+        if np.isfinite(ratio[i]) and ratio[i] > hi_ratio:
             st[i] = 1
-        elif np.isfinite(z_lo_v[i]) and z_lo_v[i] < z_lo:
+        elif np.isfinite(ratio[i]) and ratio[i] < lo_ratio:
             st[i] = -1
     # 滞回:连续 exit_confirm 天中性才结束当前堆 → 先找原始段,再用 merge_gap 合并
     segs = []
@@ -1251,17 +1248,23 @@ def detect_volume_clusters(closes, volumes, win=60, win_short=20, z_hi=2.0, z_lo
     for s0, e0, kd in merged:
         if e0 - s0 + 1 < min_len:
             continue
-        zseg = np.abs(z_hi_v[s0:e0 + 1]) if kd == 1 else np.abs(z_lo_v[s0:e0 + 1])
-        if not np.isfinite(zseg).any() or np.nanmax(zseg) < 1.5:
+        rseg = ratio[s0:e0 + 1]
+        if not np.isfinite(rseg).any():
             continue
+        if kd == 1:
+            # 放量堆:堆内峰值量比需达 hi_ratio 的 90%(防边界松动弱堆)
+            if np.nanmax(rseg) < hi_ratio * 0.9:
+                continue
+        else:
+            # 缩量堆:堆内需有真正缩量日(峰值量比 < lo_ratio 的 1.1 倍)——修复:之前误用 hi_ratio 过滤导致缩量堆全灭
+            if np.nanmin(rseg) > lo_ratio * 1.1:
+                continue
         direction = 'FLAT'
         chg = closes[e0] / closes[s0] - 1
         if chg > dir_pct:
             direction = 'UP'
         elif chg < -dir_pct:
             direction = 'DOWN'
-        med_v = np.nanmedian(lv[max(0, s0 - win):s0])
-        vol_ratio = float(np.exp(np.nanmean(lv[s0:e0 + 1]) - med_v)) if np.isfinite(med_v) else float('nan')
         out.append((s0, e0, 'HIGH' if kd == 1 else 'LOW', direction,
-                    float(np.nanmax(zseg)), vol_ratio))
+                    float(np.nanmax(rseg)), float(np.nanmean(rseg))))
     return out

@@ -799,11 +799,14 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     # ohlc 是窗口切片,堆索引即窗口坐标,直接用 x 画(勿加 offset!)
     try:
         import panic_reversal as _pr
-        _vcl = _pr.detect_volume_clusters(ohlc['close'].values, vol)
+        # ⚠️ 堆必须用完整历史算(基准60日/20日中位量),窗口只影响显示——
+        # 否则 150 天小窗口会把窗口外的放量堆截断(300251 9/24 堆被 150 天窗口截掉,用户看到 10/29 起点)
+        _vcl = _pr.detect_volume_clusters(df_ohlc['close'].values, df_ohlc['volume'].values)
         for _s, _e, _kd, _dr, _zp, _vr in _vcl:
-            if _e < 0 or _s >= n:
+            _s0 = _s - offset; _e0 = _e - offset  # 全序列索引 → 窗口坐标
+            if _e0 < 0 or _s0 >= n:
                 continue
-            _s0 = max(0, _s); _e0 = min(n - 1, _e)
+            _s0 = max(0, _s0); _e0 = min(n - 1, _e0)
             _col = '#ef5350' if _kd == 'HIGH' else '#26a69a'
             ax1.axvspan(_s0 - 0.5, _e0 + 0.5, color=_col, alpha=0.14, zorder=0)
     except Exception:
