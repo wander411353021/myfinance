@@ -372,6 +372,41 @@ with st.sidebar.expander("关联个股（同行业）", expanded=True):
     else:
         st.caption(f"尚未查询 {code} 的同行业个股（在上方输入框改码或板块导航点股票后已清空；点「刷新同行业个股」按钮查询）。")
 
+# ── 当日详情（出坑股票）:参照关联个股样式,读 result/daily/{date}.md ──
+with st.sidebar.expander("当日详情（出坑）", expanded=False):
+    _dd = end_date.strftime("%Y%m%d") if hasattr(end_date, "strftime") else str(end_date).replace("-", "")
+    _daily_path = os.path.join(BASE_DIR, "result", "daily", f"{_dd}.md")
+    if os.path.exists(_daily_path):
+        _daily_items = []
+        try:
+            with open(_daily_path, encoding="utf-8") as f:
+                for _ln in f:
+                    _ln = _ln.strip()
+                    if _ln.startswith("|") and not _ln.startswith("|---"):
+                        _cells = [c.strip() for c in _ln.strip("|").split("|")]
+                        if len(_cells) >= 2 and len(_cells[0]) == 6 and _cells[0].isdigit():
+                            _daily_items.append([_cells[0], _cells[1]])
+        except Exception:
+            _daily_items = []
+        if _daily_items:
+            st.caption(f"{_dd} 当日出坑 {len(_daily_items)} 只 — 点击 / ↑↓+Enter 载入主图")
+            _picked_d = _get_cons_component()(
+                items=_daily_items,
+                ident=f"daily|{_dd}",
+                key=f"daily_{_dd}",
+                default=None,
+                selected=code,
+            )
+            if isinstance(_picked_d, str) and _picked_d and _picked_d != st.session_state.get("_loaded_daily"):
+                st.session_state["_loaded_daily"] = _picked_d
+                st.session_state["pending_code"] = _picked_d
+                st.session_state["auto_go"] = True
+                st.rerun()
+        else:
+            st.caption(f"{_dd} 日报中无出坑股票记录。")
+    else:
+        st.caption(f"{_dd} 无日报文件（尚未扫描）。")
+
 # 统一显示：仅当 session 里已存图
 if "last_png" in st.session_state:
     display_last()

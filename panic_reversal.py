@@ -1100,7 +1100,8 @@ def detect_golden_pit(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9,
         b = int(s + np.argmin(closes[s:e + 1]))
         lch = None
         for i in range(b + 1, n):
-            if closes[i] >= reg250[i] * launch_gate:
+            # 出坑必须"走出坑":收复门控线 且 收盘高于坑底价(否则是横盘/假出坑,000404 出坑价==坑底价 案例)
+            if closes[i] >= reg250[i] * launch_gate and closes[i] > closes[b]:
                 lch = i
                 break
         refined.append((s, b, lch))

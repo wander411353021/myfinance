@@ -224,3 +224,11 @@ python panic_reversal.py one sz300437  # 单只检测+画图
 - 图片:absolute + translate(-50%,-50%) + rotate(90deg) 居中,width:80vh(用户调 80%),容器 100vw×100vh overflow:auto(可左右滑)
 - 用户迭代链:旋转90→居中(留白偏移)→80%缩放→放开滑动,最终定版
 - 提交 7a52e16 已双推(streamlit 手机适配 + skill 更新)
+
+## 出坑判定修复(2026-08-20)
+
+- **问题**:出坑判定只要求 close >= reg×0.9,000404/601727 出坑价 == 坑底价(横盘持平)也被判"出坑"
+- **修复**:detect_golden_pit 的 lch 判定加 `closes[i] > closes[b]`(出坑价必须高于坑底价,真正走出坑)
+- 影响面:299 池 884 个出坑全部不受影响(0.0%);只过滤全市场横盘假出坑
+- 20260820 日报:25→23 只(移除 601727 上海电气、000404 长虹华意),已用 refilter 脚本重生成
+- streamlit 新增"当日详情(出坑)"expander(参照关联个股):读 result/daily/{date}.md,↑↓/Enter/点击载入主图;无文件/无股票显示空
