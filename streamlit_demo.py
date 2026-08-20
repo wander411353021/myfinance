@@ -35,6 +35,9 @@ st.markdown("""
 @media (max-width: 1100px) {
   /* 手机端:隐藏"板块导航(CSV)"expander(侧边栏第1个 details) */
   [data-testid="stSidebar"] details:nth-of-type(1) { display: none !important; }
+  /* 手机端:隐藏"当日详情(出坑)"和"跟踪列表"expander(侧边栏第3、4个 details) */
+  [data-testid="stSidebar"] details:nth-of-type(3),
+  [data-testid="stSidebar"] details:nth-of-type(4) { display: none !important; }
   /* 手机端:隐藏主区域指标卡(窗口买入/卖出/阻力支撑) */
   [data-testid="stMain"] [data-testid="stMetric"] { display: none !important; }
   /* 手机端:隐藏主区域 expander(信号明细 / 阻力支撑位生命周期) */
@@ -372,6 +375,51 @@ with st.sidebar.expander("关联个股（同行业）", expanded=True):
     else:
         st.caption(f"尚未查询 {code} 的同行业个股（在上方输入框改码或板块导航点股票后已清空；点「刷新同行业个股」按钮查询）。")
 
+TRACK_FILE = os.path.join(BASE_DIR, "result", "tracking.md")
+
+
+def _load_tracking():
+    """读 result/tracking.md,返回 [[code, name], ...]"""
+    items = []
+    if os.path.exists(TRACK_FILE):
+        try:
+            with open(TRACK_FILE, encoding="utf-8") as f:
+                for ln in f:
+                    ln = ln.strip()
+                    if ln.startswith("|") and not ln.startswith("|---"):
+                        cells = [c.strip() for c in ln.strip("|").split("|")]
+                        if len(cells) >= 1 and len(cells[0]) == 6 and cells[0].isdigit():
+                            items.append([cells[0], cells[1] if len(cells) > 1 else ""])
+        except Exception:
+            items = []
+    return items
+
+
+def _save_tracking(items):
+    """写 result/tracking.md(去重保持顺序)"""
+    seen, out = set(), []
+    for c, nm in items:
+        c = str(c).strip()
+        if c and c not in seen:
+            seen.add(c)
+            out.append([c, nm])
+    lines = ["# 跟踪列表", "", "| 代码 | 名称 |", "|---|---|"]
+    for c, nm in out:
+        lines.append(f"| {c} | {nm} |")
+    os.makedirs(os.path.dirname(TRACK_FILE), exist_ok=True)
+    with open(TRACK_FILE, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
+@st.cache_data(show_spinner=False)
+def _name_map():
+    return {c: n for c, n in get_stock_items_cached()}
+
+
+def _name_of(code):
+    return _name_map().get(str(code), "")
+
+
 # ── 当日详情（出坑股票）:参照关联个股样式,读 result/daily/{date}.md ──
 with st.sidebar.expander("当日详情（出坑）", expanded=False):
     _dd = end_date.strftime("%Y%m%d") if hasattr(end_date, "strftime") else str(end_date).replace("-", "")
@@ -389,15 +437,27 @@ with st.sidebar.expander("当日详情（出坑）", expanded=False):
         except Exception:
             _daily_items = []
         if _daily_items:
-            st.caption(f"{_dd} 当日出坑 {len(_daily_items)} 只 — 点击 / ↑↓+Enter 载入主图")
+            st.caption(f"{_dd} 当日出坑 {len(_daily_items)} 只 — 点击 / ↑↓+Enter 载入主图,右键加入跟踪")
             _picked_d = _get_cons_component()(
                 items=_daily_items,
                 ident=f"daily|{_dd}",
                 key=f"daily_{_dd}",
                 default=None,
                 selected=code,
+                menu_actions=["track"],
             )
-            if isinstance(_picked_d, str) and _picked_d and _picked_d != st.session_state.get("_loaded_daily"):
+            if isinstance(_picked_d, str) and _picked_d.startswith("__TRACK__:"):
+                # 防重复:组件 rerun 会回传上次值,用 session 标记只处理一次
+                if _picked_d != st.session_state.get("_last_track"):
+                    st.session_state["_last_track"] = _picked_d
+                    _tc = _picked_d.split(":", 1)[1]
+                    _t_items = _load_tracking()
+                    if not any(x[0] == _tc for x in _t_items):
+                        _t_items.append([_tc, _name_of(_tc)])
+                        _save_tracking(_t_items)
+                        st.toast(f"已加入跟踪列表: {_tc}")
+                    st.rerun()
+            elif isinstance(_picked_d, str) and _picked_d and _picked_d != st.session_state.get("_loaded_daily"):
                 st.session_state["_loaded_daily"] = _picked_d
                 st.session_state["pending_code"] = _picked_d
                 st.session_state["auto_go"] = True
@@ -406,6 +466,34 @@ with st.sidebar.expander("当日详情（出坑）", expanded=False):
             st.caption(f"{_dd} 日报中无出坑股票记录。")
     else:
         st.caption(f"{_dd} 无日报文件（尚未扫描）。")
+
+# ── 跟踪列表:读 result/tracking.md,右键移除,点击载入 ──
+with st.sidebar.expander("跟踪列表", expanded=False):
+    _t_items = _load_tracking()
+    if _t_items:
+        st.caption(f"跟踪 {len(_t_items)} 只 — 点击 / ↑↓+Enter 载入主图,右键移除")
+        _picked_t = _get_cons_component()(
+            items=_t_items,
+            ident="track",
+            key="track_list",
+            default=None,
+            selected=code,
+            menu_actions=["untrack"],
+        )
+        if isinstance(_picked_t, str) and _picked_t.startswith("__UNTRACK__:"):
+            if _picked_t != st.session_state.get("_last_untrack"):
+                st.session_state["_last_untrack"] = _picked_t
+                _uc = _picked_t.split(":", 1)[1]
+                _save_tracking([x for x in _load_tracking() if x[0] != _uc])
+                st.toast(f"已移除跟踪: {_uc}")
+                st.rerun()
+        elif isinstance(_picked_t, str) and _picked_t and _picked_t != st.session_state.get("_loaded_track"):
+            st.session_state["_loaded_track"] = _picked_t
+            st.session_state["pending_code"] = _picked_t
+            st.session_state["auto_go"] = True
+            st.rerun()
+    else:
+        st.caption("跟踪列表为空 — 在『当日详情』里右键股票选「加入跟踪列表」。")
 
 # 统一显示：仅当 session 里已存图
 if "last_png" in st.session_state:
