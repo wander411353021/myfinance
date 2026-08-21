@@ -1170,7 +1170,7 @@ def mark_high_pos(pits, closes, thr=1.5):
 
 
 def detect_volume_clusters(closes, volumes, win=60, hi_ratio=1.5, lo_ratio=0.6,
-                           hi_pct=0.85, lo_pct=0.15,
+                           hi_pct=0.75, lo_pct=0.15,
                            min_len=3, merge_gap=0, exit_confirm=2, dir_pct=0.02):
     # hi_ratio/lo_ratio: 放量=vol>前win日中位量×1.5, 缩量=vol<×0.6(量比判据,2026-08-20)
     # 弃用 z-score:z>2 漏掉"持续高于常态但非尖峰"的放量段(600199 11月 量2~9倍但 z 仅1.4~2.6)
