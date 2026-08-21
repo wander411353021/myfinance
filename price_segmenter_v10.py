@@ -976,7 +976,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             pit_mask = np.zeros(len(_fc))
             ax5.set_facecolor('#F5F5F5')
             for _k, (_s, _b, _lch) in enumerate(_pits):
-                _end = _lch if _lch is not None else _b
+                _end = _lch if _lch is not None else _b  # 坑画到出坑日(启动日);未出坑画到坑底
                 _q = _qual[_k][2] if _qual is not None else 'normal'
                 _lv = _qh.get(_q, 0.7)
                 pit_mask[_s:_end + 1] = _lv
@@ -990,9 +990,19 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 ax5.fill_between(np.arange(_x0w, _x1w + 1), 0, _lv, step='post',
                                  color=_col, alpha=0.85 if _fast else 0.60,
                                  hatch='//' if _hp else None)  # 高位坑加斜纹标注
-                if _sp:  # 超高胜率坑(坑长≥8+量比≥5,93%):金色★醒目标记
-                    ax5.text(_x0w + (_x1w - _x0w) / 2, _lv + 0.18, '★', color='#FF8F00',
-                             fontsize=14, ha='center', va='center', zorder=9, fontweight='bold')
+                if _sp:  # 加仓确认(出坑后7天巨量):金色★标在 K 线加仓位(放量堆起点)
+                    _vcl = _pr.detect_volume_clusters(_fc, _fv)
+                    _add = None  # 加仓日(窗口坐标)
+                    for _ss, _ee, _kk, _dd, _pp, _vv in _vcl:
+                        if _kk == 'HIGH' and _lch is not None and _lch < _ss <= _lch + 7:
+                            _add = _ss - offset
+                            break
+                    if _add is not None and 0 <= _add < n:
+                        ax0.plot(_add, highs[_add] * 1.05, '*', color='#FF8F00', markersize=15,
+                                 zorder=9, markeredgewidth=0.5, markeredgecolor='#B26A00')
+                        ax0.annotate('加仓', (_add, highs[_add] * 1.05), textcoords='offset points',
+                                     xytext=(0, 8), ha='center', fontsize=7, color='#B26A00',
+                                     fontweight='bold', zorder=9)
             pit_win = pit_mask[offset:offset + n]
             ax5.plot(x, pit_win, drawstyle='steps-post', color='#0D47A1', linewidth=1.2)
             ax5.set_ylim(-0.1, 1.15)
