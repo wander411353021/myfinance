@@ -266,7 +266,7 @@ python panic_reversal.py one sz300437  # 单只检测+画图
 
 ## 成交量堆 v2(量比判据,2026-08-20 定版)
 
-- **签名**:`detect_volume_clusters(closes, volumes, win=60, hi_ratio=1.5, lo_ratio=0.6, min_len=3, merge_gap=0, exit_confirm=2, dir_pct=0.02)`
+- **签名**:`detect_volume_clusters(closes, volumes, win=60, hi_ratio=1.5, lo_ratio=0.6, hi_pct=0.85, lo_pct=0.15, min_len=3, merge_gap=0, exit_confirm=2, dir_pct=0.02)`
 - **判据 v3(量比+分位双条件,2026-08-20 优化)**:放量=量比>1.5 且 vol>前60日85分位;缩量=量比<0.6 且 vol<前60日15分位
   - 单量比 1.5 一刀切对低量股太敏感(8万→12万也算放量)→ 加滚动分位滤掉"量比刚过线但低于自身85分位"的小放量
   - 8只验证:弱放量堆(均量比<1.5)从 4~6个/只 → 0~1个;真放量(600199 11月 峰值9.03)保留
