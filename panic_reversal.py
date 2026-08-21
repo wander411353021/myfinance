@@ -1170,6 +1170,7 @@ def mark_high_pos(pits, closes, thr=1.5):
 
 
 def detect_volume_clusters(closes, volumes, win=60, hi_ratio=1.5, lo_ratio=0.6,
+                           hi_pct=0.85, lo_pct=0.15,
                            min_len=3, merge_gap=0, exit_confirm=2, dir_pct=0.02):
     # hi_ratio/lo_ratio: 放量=vol>前win日中位量×1.5, 缩量=vol<×0.6(量比判据,2026-08-20)
     # 弃用 z-score:z>2 漏掉"持续高于常态但非尖峰"的放量段(600199 11月 量2~9倍但 z 仅1.4~2.6)
@@ -1204,18 +1205,20 @@ def detect_volume_clusters(closes, volumes, win=60, hi_ratio=1.5, lo_ratio=0.6,
     closes = np.asarray(closes, dtype=float)
     vols = np.asarray(volumes, dtype=float)
     n = len(vols)
-    # 前 win 日中位量(只用历史,滚动到 i-1)
+    # 前 win 日中位量 + 滚动分位(只用历史,滚动到 i-1,无未来函数)
     import pandas as pd
     s = pd.Series(vols)
     med = s.rolling(win, min_periods=20).median().shift(1).values
+    p_hi = s.rolling(win, min_periods=20).quantile(hi_pct).shift(1).values
+    p_lo = s.rolling(win, min_periods=20).quantile(lo_pct).shift(1).values
     with np.errstate(divide='ignore', invalid='ignore'):
         ratio = vols / np.where(med > 0, med, np.nan)
-    # 逐日状态:量比判据
+    # 逐日状态:量比 + 分位双条件(滤掉"量比刚过线但低于自身85分位"的小放量误报)
     st = np.zeros(n, dtype=int)  # 1=HIGH, -1=LOW, 0=NEUTRAL
     for i in range(n):
-        if np.isfinite(ratio[i]) and ratio[i] > hi_ratio:
+        if np.isfinite(ratio[i]) and ratio[i] > hi_ratio and np.isfinite(p_hi[i]) and vols[i] > p_hi[i]:
             st[i] = 1
-        elif np.isfinite(ratio[i]) and ratio[i] < lo_ratio:
+        elif np.isfinite(ratio[i]) and ratio[i] < lo_ratio and np.isfinite(p_lo[i]) and vols[i] < p_lo[i]:
             st[i] = -1
     # 滞回:连续 exit_confirm 天中性才结束堆(放量/缩量一致,无未来函数——确认只用历史)
     # 堆进行中遇中性日进入待确认;连续 exit_confirm 天中性 → 闭合(结束于最后达标日);中途恢复 → 取消待确认
