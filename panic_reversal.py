@@ -1284,13 +1284,15 @@ def detect_volume_clusters(closes, volumes, win=60, hi_ratio=1.5, lo_ratio=0.6,
 
 
 def mark_super_pits(pits, closes, volumes, min_len=8, peak_ratio=5.0, fast_days=5, window_days=7):
-    """超高胜率坑标记【2026-08-20 定版】— 无未来函数。
+    """加仓确认坑标记(B 方案,2026-08-20)— 无未来函数,无时滞。
 
-    条件(全市场5534只验证 r60胜率 93.3%,盈亏比4.6):
-      1) 坑长 >= min_len(8天):持续下跌充分,非一日闪崩
-      2) 快启动:坑底→出坑 <= fast_days(5天)
-      3) 出坑前后 window_days(7天)内有放量堆,且峰值量比 >= peak_ratio(5.0):巨量启动
-    返回 [True(超高)/False, ...] 与 pits 对齐。
+    决策框架(B,用户选定):
+      1) 出坑日买入(快启动≤5天 + 坑长≥8):r20 79% / r60 84%(1500只)
+      2) 出坑后 window_days(7)天内出现放量堆且峰值量比>=peak_ratio(5) → **加仓/确认主升**:
+         这 102 例 r20 92.2% / r60 93.1% / r60 +40.6%(基准 +22.6%)
+    金色★ = "该坑出坑后 7 天内巨量确认,可加仓持有"——不是买入条件(买入在出坑日)。
+    只依赖 lch+7 及之前数据,无未来函数;信号在 lch+7 收盘后可确认。
+    返回 [True(加仓确认)/False, ...] 与 pits 对齐。
     """
     closes = np.asarray(closes, dtype=float)
     vols = np.asarray(volumes, dtype=float)
@@ -1305,7 +1307,8 @@ def mark_super_pits(pits, closes, volumes, min_len=8, peak_ratio=5.0, fast_days=
             continue
         peak = 0.0
         for ss, ee, kk, dd, pp, vv in clusters:
-            if kk == 'HIGH' and ss > b and ss <= lch + window_days and ee >= lch:
+            # 出坑后 window_days 天内(ss > lch):加仓确认,不含出坑前
+            if kk == 'HIGH' and lch < ss <= lch + window_days and ee >= lch:
                 peak = max(peak, pp)
         out.append(peak >= peak_ratio)
     return out
