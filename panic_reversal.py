@@ -1109,8 +1109,9 @@ def detect_golden_pit(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9,
         b = int(s + np.argmin(closes[s:e + 1]))
         lch = None
         for i in range(b + 1, n):
-            # 出坑必须"走出坑":收复门控线 且 收盘高于坑底价(否则是横盘/假出坑,000404 出坑价==坑底价 案例)
-            if closes[i] >= reg250[i] * launch_gate and closes[i] > closes[b]:
+            # 出坑必须"走出坑":收复门控线 且 收盘高于坑底价≥2%(否则弱反弹/假出坑——
+            # 603515 +0.1%/600406 +0.4%/002039 +0.2% 刚过线小阳线不算出坑;验证超高信号 93.1%→93.2% 不降)
+            if closes[i] >= reg250[i] * launch_gate and closes[i] > closes[b] * 1.02:
                 lch = i
                 break
         refined.append((s, b, lch))
