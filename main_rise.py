@@ -21,7 +21,7 @@ def detect_main_rise(closes, highs=None, lows=None, opens=None, volumes=None,
                      reg250=None, reg120=None,
                      reg_win_long=250, reg_win_mid=120,
                      slope_annual_min=0.20, pos_gate=0.97,
-                     max_dd=0.25, min_len=20):
+                     max_dd=0.25, min_len=20, vol_confirm=1.0, vol_win=20):
     """主升浪检测（无未来函数）。
 
     Parameters
@@ -49,6 +49,12 @@ def detect_main_rise(closes, highs=None, lows=None, opens=None, volumes=None,
     _, slopes120 = compute_rolling_regression(closes, reg_win_mid)
     # 对数斜率 a(每日) → 年化涨幅 ≈ exp(a*250)-1
     annual120 = np.exp(slopes120 * 250.0) - 1.0
+    vol_base = None
+    if volumes is not None and vol_confirm > 1.0:
+        vol = np.asarray(volumes, dtype=float)
+        vol_base = np.full(n, np.nan)
+        for i in range(vol_win, n):
+            vol_base[i] = vol[i - vol_win:i].mean()
 
     in_state = np.zeros(n, dtype=bool)
     score = np.zeros(n, dtype=float)
@@ -66,6 +72,8 @@ def detect_main_rise(closes, highs=None, lows=None, opens=None, volumes=None,
             continue
 
         up = (annual120[i] > slope_annual_min) and (closes[i] > reg250[i] * pos_gate)
+        if vol_base is not None:
+            up = up and np.isfinite(vol_base[i]) and vol[i] > vol_base[i] * vol_confirm
 
         if state:
             peak = max(peak, closes[i])
