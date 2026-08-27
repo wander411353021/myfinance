@@ -6,12 +6,12 @@ description: 极速杀跌反转模型与 V10 第5面板 strength 柱架构速查
 # 极速杀跌反转模型架构速查(panic_reversal.py + V10 第5面板 + 股眼面板)
 
 ## V10 面板布局(2026-08-26 更新)
-- 默认 5 面板(hide_mid_panels=True):K线 / Volume(0.7) / Strength(0.55) / 股眼 GUYAN / 黄金坑 GOLD PIT(最底)
-- 完整 7 面板:多 Level Price、第5面板,股眼在黄金坑上方
-- **股眼面板(aben_patterns.py detect_guyan v2)**:矩形色块 + 白字类型
-  - reversal 橙(堆前60日跌>8%+后止跌) / breakout 蓝(横盘→突破) / accel 紫(上涨加速) / mega_absorb 红(峰值量比>8 吸筹)
+- 默认 4 面板(hide_mid_panels=True):K线 / Volume+股眼(1.3) / Strength(0.55) / 黄金坑 GOLD PIT(最底)
+- 完整 6 面板:多 Level Price、Strength,黄金坑最底
+- **股眼标注(aben_patterns.py detect_guyan v2)叠加在 volume 面板**(2026-08-27 用户要求与 volume 合并):
+  - 色块 + 柱子上方类型文字:reversal 橙(堆前60日跌>8%+后止跌) / breakout 蓝(横盘→突破) / accel 紫(上涨加速) / mega_absorb 红(峰值量比>8 吸筹)
   - 股眼=改变走势的关键量堆(用户定义),定位长期观察非买入信号;详见 aben-arch skill
-- Volume/Strength 高度 2026-08-26 压至一半(0.7/0.55)
+- Volume 高度演进:1.4 → 0.7(压半)→ 合并股眼后 1.0 → 1.3(2026-08-27 调高)
 
 ## 核心文件与函数(当前版)
 
