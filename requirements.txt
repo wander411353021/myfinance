@@ -20,7 +20,7 @@ requests==2.32.5
 akshare==1.18.43
 efinance==0.5.8
 adata==2.9.5
-# gm（掘金量化）：需配合掘金终端 + 账号才能运行；仅 juejing.py 用到，主程序不依赖。
+# gs（掘金量化）：需配合掘金终端 + 账号才能运行；仅 juejing.py 用到，主程序不依赖。
 # 若只用 streamlit_demo / price_segmenter / related_stocks，可注释掉此行。
 # gm==3.0.183
 
