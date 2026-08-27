@@ -1029,13 +1029,20 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _fast = _lch is not None and _lch - _b <= 5  # 快启动坑(坑底→出坑 ≤5 天,2026-08-15 由3放宽)
                 _hp = _highpos[_k] if _highpos is not None and _k < len(_highpos) else False  # 高位坑软标注
                 _sp = _super[_k] if _super is not None and _k < len(_super) else False  # 超高胜率坑(93%)
-                _col = '#E53935' if _fast else _qcolor.get(_q, '#1565C0')
+                # 高胜率坑(96%):reg250 20日斜率>0(上行) OR 放量堆确认(_sp)——2026-08-27 金色区域标记
+                _hi_win = _sp
+                if _lch is not None and _lch >= 20:
+                    _hi_win = _hi_win or (np.isfinite(_frg2[_lch]) and np.isfinite(_frg2[_lch - 20])
+                                          and _frg2[_lch] > _frg2[_lch - 20])
+                _col = '#FFC107' if _hi_win else ('#E53935' if _fast else _qcolor.get(_q, '#1565C0'))
                 # ⚠️ 必须用窗口坐标(0..n-1):折线 x 是窗口坐标,fill 用全局坐标(+offset)会画到窗口外被裁剪
                 _x0w = _s - offset
                 _x1w = _end - offset + 1  # steps-post 需右闭边界
                 ax5.fill_between(np.arange(_x0w, _x1w + 1), 0, _lv, step='post',
-                                 color=_col, alpha=0.85 if _fast else 0.60,
+                                 color=_col, alpha=0.95 if _hi_win else (0.85 if _fast else 0.60),
                                  hatch='//' if _hp else None)  # 高位坑加斜纹标注
+                if _hi_win:  # 高胜率坑:K线面板金色背景区域标记(96%)
+                    ax0.axvspan(_x0w - 0.5, _x1w + 0.5, color='#FFD54F', alpha=0.22, zorder=1)
                 if _sp:  # 加仓确认(出坑后7天巨量):金色★标在 K 线加仓位(放量堆起点)
                     _vcl = _pr.detect_volume_clusters(_fc, _fv)
                     _add = None  # 加仓日(窗口坐标)
