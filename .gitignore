@@ -26,3 +26,16 @@ result/*
 
 # kilo local tool
 .kilo/
+
+# 运行期/环境垃圾文件（禁止入库）
+hsperfdata_*/
+node-compile-cache/
+persistent-sync/
+playwright-artifacts-*/
+*.pyc
+.X*-lock
+tmp*.json
+cc_bash_pwd_*.txt
+nginx.*.conf.template
+org.chromium.Chromium.*/
+runtime-gem/
