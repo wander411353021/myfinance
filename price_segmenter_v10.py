@@ -563,13 +563,13 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     n = len(ohlc); x = np.arange(n); offset = len(df_ohlc) - n  # ohlc 是 df_ohlc 末尾 n 行，offset 为其在原序列中的起始下标（恒 >=0）
 
     if hide_mid_panels:
-        fig, axes = plt.subplots(4, 1, figsize=(22, 14),
+        fig, axes = plt.subplots(5, 1, figsize=(22, 15),
                                  sharex=True,
-                                 gridspec_kw={'height_ratios': [4, 1.4, 1.1, 0.6]})
+                                 gridspec_kw={'height_ratios': [4, 0.7, 0.55, 0.6, 0.6]})
     else:
-        fig, axes = plt.subplots(6, 1, figsize=(22, 18),
+        fig, axes = plt.subplots(7, 1, figsize=(22, 19),
                                  sharex=True,
-                                 gridspec_kw={'height_ratios': [4, 1.4, 0.9, 1.4, 1.1, 0.6]})
+                                 gridspec_kw={'height_ratios': [4, 0.7, 0.45, 0.9, 0.55, 0.6, 0.6]})
     fig.suptitle(f'{name}  Price Segmentation V10 (Level Breakout)', fontsize=14, fontweight='bold')
 
     ax0 = axes[0]; opens = ohlc['open'].values; highs = ohlc['high'].values
@@ -886,7 +886,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
 
     # ── Panic-Reversal Signal Panel (5th panel: per-stock 5d drop bars, share x-axis with K-line) ──
     ax4 = axes[2] if hide_mid_panels else axes[4]
-    ax5 = axes[3] if hide_mid_panels else axes[5]  # 黄金坑 0/1 方波面板
+    ax5 = axes[4] if hide_mid_panels else axes[6]  # 黄金坑 0/1 方波面板(最底)
+    ax6 = axes[3] if hide_mid_panels else axes[5]  # 股眼面板(阿笨:改变走势的关键量堆,黄金坑上方)
     ax4.set_facecolor('#FAFAFA')
     # v4 strength 柱(死区滤波:波幅/ATR + 收盘位移方向,±30 饱和压缩)
     try:
@@ -1014,6 +1015,32 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             ax5.legend(loc='upper left', fontsize=7)
     except Exception:
         pass
+
+    # ── 第7面板:股眼(改变走势的关键量堆,阿笨理论)— 矩形色块 + 类型文字 ──
+    if ax6 is not None:
+        try:
+            import aben_patterns as _ab
+            _gys = _ab.detect_guyan(df_ohlc['close'].values.astype(np.float64),
+                                    df_ohlc['volume'].values.astype(np.float64))
+            _gycol = {'reversal': '#E65100', 'breakout': '#1565C0',
+                      'accel': '#6A1B9A', 'mega_absorb': '#C62828'}
+            ax6.set_facecolor('#F7F7F7')
+            for _gs, _ge, _pre, _post, _typ, _pk in _gys:
+                _xs = _gs - offset
+                _xe = _ge - offset
+                if _xe < 0 or _xs >= n:
+                    continue
+                _xs = max(0, _xs); _xe = min(n - 1, _xe)
+                _c = _gycol.get(_typ, '#333333')
+                ax6.axvspan(_xs - 0.5, _xe + 0.5, color=_c, alpha=0.55, zorder=0)
+                ax6.text((_xs + _xe) / 2, 0.5, _typ, ha='center', va='center',
+                         fontsize=7, color='white', fontweight='bold', zorder=5)
+            ax6.set_ylim(0, 1)
+            ax6.set_yticks([])
+            ax6.set_ylabel('GUYAN', fontsize=8)
+            ax6.grid(False)
+        except Exception:
+            pass
 
     # ── 统一 x 轴日期刻度（落在最底层面板）──
     ts2 = max(1, n // 12); dates = ohlc['date'].values
