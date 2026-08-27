@@ -8,7 +8,14 @@
   `/home/user/.super_doubao/super-doubao-runtime/workspace/pressure-level-algorithm`
 - 本目录即 Gitee 仓库 `polo4111/pressure-level-algorithm` 的本地副本，**任何代码/文件改动后必须同步回 Gitee**（见第 2 节）。
 
-## 2. Git 工作流（每次任务收尾的硬性动作）
+## 2. Git 工作流（修改前强制同步 + 任务收尾推送，硬性动作）
+
+0. **修改前先同步（强制前置动作）**：每次开始任何修改/开发/分析前，必须先确认本地与远端一致：
+   - `git status` 检查本地是否有未提交改动
+   - `git fetch origin` 后对比本地 `master` 与 `origin/master`
+   - **本地落后远端** → 先 `git pull --rebase origin master` 同步到最新，再开始修改
+   - **本地有未提交改动** → 先 `git stash`（或先 commit 保存），同步完成后 `git stash pop` 恢复，再继续
+   - 确认本地与 origin/master 一致、工作区干净，才允许动手修改
 
 1. **工作目录**：`cd /home/user/.super_doubao/super-doubao-runtime/workspace/pressure-level-algorithm`
 2. **Git 身份**：若 `.git/config` 丢失身份，必须重设：
