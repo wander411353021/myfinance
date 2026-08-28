@@ -55,8 +55,9 @@
 | 最终策略（信号扫描+6维评分+20天持有） | `golden_pit_final_strategy.py` |
 | 核心算法模块（数据获取+信号检测） | `golden_pit_v2_backtest.py` |
 | 股票池 300 只 / 1000 只 | `stock_pool_300.txt` / `stock_pool_1000.txt` |
-| reasonix skill | `.reasonix/skills/golden-pit-strategy/` |
-| 本机 skill 副本 | `.user_skills/golden-pit-strategy/` |
+| **skill 统一权威目录** | `.reasonix/skills/golden-pit-strategy/`（git 管理，所有改动在此进行） |
+| 系统加载副本 | `workspace/.user_skills/golden-pit-strategy/`（勿直接改，跑 `sync_skills.sh` 同步） |
+| 同步脚本 | `sync_skills.sh`（仓库权威 → 系统副本，改完 skill 必跑） |
 
 **策略核心口径**（与 `golden-pit-strategy` skill 保持一致，改动需经用户确认并同步回 skill）：
 - 信号【规则F，2026-08-28 定版】：250日对数回归 z< -1.5（60日 std）+ 快启动≤5天 + 出坑确认
@@ -65,6 +66,13 @@
 - **放量堆加仓确认 = 已废弃**（未来函数，真实胜率 56.8% < 不买 82.4%，仅作事后标注）
 - 6 维评分 = 不采用（本地数据无排序能力）
 - 实盘前必过 `golden_pit_lookahead_check.py` 截断一致性自检（见第 0 节红线）
+
+## 3.5 skill 统一管理（2026-08-28 polo4111 定规）
+
+- **唯一权威 = 仓库 `.reasonix/skills/`**（git 管理，带版本历史）。系统加载副本 `workspace/.user_skills/` 只是部署副本，**不直接改**。
+- **修改 skill 流程**：改仓库 `.reasonix/skills/` 下文件 → `bash sync_skills.sh` 同步到系统副本 → git 提交推送。
+- 系统级 `.user_skills/golden-pit-strategy.bak_v1` 为合并前的旧版备份（只读存档，勿动）。
+- 当前统一 skill：`golden-pit-strategy`（规则F 口径 + 未来函数红线 + 自检记录，见文件内）。
 
 ## 4. 数据与运行
 
