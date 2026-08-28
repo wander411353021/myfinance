@@ -5,6 +5,11 @@ description: 极速杀跌反转模型与 V10 第5面板 strength 柱架构速查
 
 # 极速杀跌反转模型架构速查(panic_reversal.py + V10 第5面板 + 股眼面板)
 
+> 🚨 **未来函数红线(polo4111 定规 2026-08-28)**：`signal()`/`detect_golden_pit`/`mark_super_pits` 等
+> 任何实盘或可执行信号接口必须严格无未来函数——只用判定日及以前数据，截断一致性测试 100% 通过。
+> 含未来函数(如用未来选股、回溯重算)一律废弃；reasonix 输出先过自检再采信。
+> 注意区分：`despeckle_strength` 用到右侧柱段有未来函数，**仅事后可视化，严禁用于 signal()`。
+
 ## V10 面板布局(2026-08-26 更新)
 - 默认 4 面板(hide_mid_panels=True):K线 / Volume+股眼(1.3) / Strength(0.55) / 黄金坑 GOLD PIT(最底)
 - 完整 6 面板:多 Level Price、Strength,黄金坑最底
