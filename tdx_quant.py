@@ -2,20 +2,40 @@ import os
 import ast
 import pandas as pd
 
-def get_daily_kline_from_tdx(code, end_date):
+_PAGE = 800  # eltdx 单次返回上限(协议限制,count>800 报 ProtocolError)
+
+def get_daily_kline_from_tdx(code, end_date, datalen=800):
+    """通达信直连拉日线(前复权)。列: date/open/high/low/close/volume。
+
+    datalen>800 时自动分页拼接(eltdx 单次 count>800 报 ProtocolError):
+    start=0/800/1600... 逐页拉取,按时间升序拼接。datalen=2400 ≈ 10 年。
+    """
     from eltdx import TdxClient
+    n_pages = (datalen + _PAGE - 1) // _PAGE
+    all_bars = []
     with TdxClient() as client:
-        adj = client.get_adjusted_kline(period='day', code=code, adjust='qfq', anchor_date=end_date)
+        for pi in range(n_pages):
+            adj = client.bars.get(code, period='day', adjust='qfq',
+                                  anchor_date=end_date, start=pi * _PAGE, count=_PAGE)
+            bars = [b for b in adj.bars if float(b.close) > 0]
+            if not bars:
+                break
+            all_bars.extend(bars)
+    if not all_bars:
+        return None
+    all_bars.sort(key=lambda b: b.time)  # 分页返回顺序须显式排序(防错位)
     df = pd.DataFrame({
-        'date':   [b.time for b in adj.bars],
-        'open':   [float(b.open) for b in adj.bars],
-        'high':   [float(b.high) for b in adj.bars],
-        'low':    [float(b.low) for b in adj.bars],
-        'close':  [float(b.close) for b in adj.bars],
-        'volume': [float(b.volume_lots) for b in adj.bars],
+        'date':   [b.time for b in all_bars],
+        'open':   [float(b.open) for b in all_bars],
+        'high':   [float(b.high) for b in all_bars],
+        'low':    [float(b.low) for b in all_bars],
+        'close':  [float(b.close) for b in all_bars],
+        'volume': [float(b.volume_lots) for b in all_bars],
     })
     df = df[df['close'] > 0].reset_index(drop=True)
     df['date'] = pd.to_datetime(df['date']).dt.normalize()  # 去 15:00:00 收盘时间戳,统一为纯日期(00:00:00)
+    df = df.drop_duplicates(subset='date').reset_index(drop=True)
+    df = df.tail(datalen).reset_index(drop=True)
     return df
 
 

@@ -98,10 +98,10 @@ def get_stock_items_cached():
 
 
 @st.cache_data(show_spinner=False)
-def fetch_tdx_kline(code, end_date):
-    """通达信直连拉日线（前复权）。end_date 透传给 get_daily_kline_from_tdx 的 anchor_date。"""
+def fetch_tdx_kline(code, end_date, datalen=2400):
+    """通达信直连拉日线（前复权）。end_date 透传给 anchor_date;datalen>800 自动分页(最长10年)。"""
     from tdx_quant import get_daily_kline_from_tdx
-    df = get_daily_kline_from_tdx(code, end_date)
+    df = get_daily_kline_from_tdx(code, end_date, datalen=datalen)
     if df is None or len(df) == 0:
         raise RuntimeError(f"通达信返回为空（代码 {code}）")
     # 标准化：时间升序、剔除空收盘，保证 run_segmentation 的 tail 取到最近 N 根

@@ -164,12 +164,12 @@ EXTRA3_POOL = [
 BIG4_POOL = sorted(set(BIG3_POOL) | set(EXTRA3_POOL))
 
 
-def _load_df(code, end_date=None):
-    """拉取数据,带重试与容错(通达信服务器偶发连接失败)。"""
+def _load_df(code, end_date=None, datalen=800):
+    """拉取数据,带重试与容错(通达信服务器偶发连接失败)。datalen>800 分页拉长历史。"""
     import time
     for attempt in range(3):
         try:
-            df = get_daily_kline_from_tdx(code, end_date)
+            df = get_daily_kline_from_tdx(code, end_date, datalen=datalen)
             break
         except Exception as e:
             if attempt == 2:
