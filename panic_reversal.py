@@ -1218,7 +1218,7 @@ def detect_golden_pit_v2(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0
 
 
 def detect_golden_pit_v3(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9,
-                       use_pre_std=True, require_below_gate=False, confirm_days=3, min_len=3, min_drop=0.05):
+                       use_pre_std=True, require_below_gate=False, confirm_days=3, min_len=1, min_drop=0.05):
     """黄金坑检测 v3【2026-08-28 reasonix 定版】— z 连续确认,克服 z 缺陷。
 
     在 v2(纯因果单遍扫描)基础上,出坑判定升级:
@@ -1232,10 +1232,13 @@ def detect_golden_pit_v3(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0
     坑结构(688099 @20251001): 4/03~6/27 大坑 + 6/30~7/23 横盘段 + 7/31~8/15 一坑
     (5/13、6/25 假出坑并入大坑,不再碎坑)。
 
-    min_len=3(2026-08-28): 过滤 1-2 天 z 抖动微坑。全池 n=2556, 胜率 58.2%(无损)。
     min_drop=0.05(2026-08-28 用户拍板): 过滤坑内跌幅<5% 的微浅坑(低位横盘)。
-    代价: 全池 n=1695, 胜率 52.7%(-5.5pp)——数据上微浅坑胜率不低(58.5%),
-    但用户要求视觉干净(600613 180天 7坑→2坑)。注意勿再提高 min_drop(8% 掉到 51%)。
+    600613 180天 7坑→2坑。数据上微浅坑胜率不低(58.5%), 过滤是视觉取舍; 勿再提高(8%→51%)。
+    min_len=1(2026-08-28 修复): 原 min_len=3 误杀急跌坑——688099 4/03~4/07
+    3 交易日暴跌 23%(坑内跌幅16.6%)坑长仅 2, 被 min_len=3 过滤; 急跌坑由
+    min_drop 区分(跌幅>5% 保留), min_len 只应滤 1-2 天抖动(那些坑跌幅也<5%,
+    min_drop 已承担), 故 min_len 默认 1。
+    全池(1000, 20日): n=1417, 胜率 54.1%, 均值 +3.4%。
 
     返回 [(段起点 s, 坑底 b, 启动日 lch 或 None)] 升序。
     """
