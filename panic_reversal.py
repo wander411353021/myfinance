@@ -1114,6 +1114,11 @@ def detect_golden_pit(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9,
             if closes[i] >= reg250[i] * launch_gate and closes[i] > closes[b] * 1.02:
                 lch = i
                 break
+        # 因果性保护(2026-08-28 未来函数自检): 出坑日 lch 不得早于 pass1 坑段起点 s0。
+        # 否则坑底/出坑的确认依赖"出坑日之后才出现的 pass1 坑段"(pass2 坑前std重算回溯),
+        # 是未来函数(截断到 lch 无法复现),必须丢弃。b<s0 但 lch>=s0 仍因果(坑底用 s0 日可得数据可定)。
+        if lch is not None and lch < s0:
+            continue
         refined.append((s, b, lch))
     return refined
 

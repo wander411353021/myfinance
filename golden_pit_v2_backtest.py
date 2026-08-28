@@ -149,6 +149,9 @@ def detect_golden_pit_v1(closes, reg250, z_thr=-1.5, merge_gap=15,
             if closes[i] >= reg250[i] * launch_gate and closes[i] > closes[b] * 1.02:
                 lch = i
                 break
+        # 因果性保护(2026-08-28 未来函数自检): 出坑日不得早于 pass1 坑段起点 s0(见 panic_reversal)
+        if lch is not None and lch < s0:
+            continue
         refined.append((s, b, lch))
     return refined
 

@@ -23,6 +23,7 @@ description: 极速杀跌反转模型与 V10 第5面板 strength 柱架构速查
   - `compute_strength(closes, highs, lows, k=2.0, alpha=2.0, m=30.0, atr=None, win=10, dir_atr=2.0, reg_preds=None, confirm_flip=2, flip_strong=0.08, min_main=3, decay_days=5, decay_factor=0.75, min_decay=2.0, reg_decay=0.10, short_win=5, short_drop=0.08, opens=None)`
     - **第5面板 strength 柱最终版 v4.8**(无未来函数)
   - `detect_golden_pit(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9, use_pre_std=True, max_pre_gain=None)` — 黄金坑检测
+    - **2026-08-28 polo4111 因果修复**:pass2 坑前std重算可能把坑底回溯到出坑日之前、而确认坑段的 pass1 起点在出坑日之后(幽灵信号,截断到 lch 无法复现,占 0.8%)。已加 `if lch is not None and lch < s0: continue`(出坑日不得早于 pass1 坑段起点)。
   - `mark_high_pos(pits, closes, thr=1.5)` — 高位坑软标注(坑前250日涨幅>150%,返回 bool 列表)
   - `compute_pit_quality(pits, closes, volumes, pre_win=20, fill_win=20, fill_lead=2)` — 坑量能质量标签(strong/normal/weak)
     (A z-score 深坑 + D 形态填坑启动,无未来函数);返回 [(段起点s, 坑底b, 启动日lch)]
@@ -305,10 +306,13 @@ python panic_reversal.py one sz300437  # 单只检测+画图
 
 ## 超高胜率坑信号(2026-08-20 定版,全市场验证)
 
-- **B 方案定版(加仓确认,2026-08-20 用户选定)**:
-  - 决策框架:出坑日买入(快启动≤5天【2026-08-28 规则F:坑长≥8约束已移除】, r20 79%/r60 84%)→ 出坑后7天内出现≥5倍放量堆 → 金色★ 加仓确认(r20 92.2%/r60 93.1%/r60 +40.6% vs 基准+22.6%)
-  - 关键:无 7 天时滞——买入在出坑日(红柱),金色★ 是加仓信号(确认后 lch+7 出现)
-  - mark_super_pits 条件:ss > lch(出坑后7天内),不含出坑前;无未来函数(截断一致验证通过)
+- **B 方案(加仓确认,2026-08-20 用户选定)→ 2026-08-28 polo4111 未来函数自检推翻**:
+  - 决策框架(原):出坑日买入(快启动≤5天, r20 79%/r60 84%)→ 出坑后7天内≥5倍放量堆 → 金色★ 加仓(r20 92.2%/r60 93.1%)
+  - 🚨 **原 r20 92.2% 是未来函数口径**:用"出坑后7天放量堆"选股、却从出坑日(lch)算收益=提前知道未来
+  - 真实可执行(确认后 lch+7 买入持有20日,500只池 n=162):胜率 56.8%、均值 +3.42%,不如不买(82.4%)
+  - **定案:放量堆不作加仓依据,仅作事后标注(金色★=历史确认区);require_super 禁用于可执行统计**
+  - mark_super_pits 本身无未来函数(只依赖 lch+7 及之前),问题在"用其选股却从 lch 算收益"
+
   - 原版(出坑前后7天,等确认再买)因 7 天时滞被用户否定
 - **面板标记**:GOLD PIT 红柱=买入点(快启动),金色★=加仓确认(出坑后7天巨量),橙蓝灰=质量,斜纹=高位——有分辨率
 
