@@ -1156,7 +1156,24 @@ def detect_golden_pit_v2(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0
     closes = np.asarray(closes, dtype=float)
     reg250 = np.asarray(reg250, dtype=float)
     n = len(closes)
-    resid = closes - reg250
+    # 2026-08-28: reg 平滑 + 双基准(reg120>reg250 时用 reg120 做 z 基准, 补牛市信号)
+    if smooth_w > 1:
+        _sm = np.full(n, np.nan)
+        for _i in range(n):
+            if _i >= smooth_w - 1 and np.all(np.isfinite(reg250[_i - smooth_w + 1:_i + 1])):
+                _sm[_i] = np.mean(reg250[_i - smooth_w + 1:_i + 1])
+        reg250 = np.where(np.isfinite(_sm), _sm, reg250)
+    _base = reg250
+    if use_dual and reg120 is not None:
+        reg120 = np.asarray(reg120, dtype=float)
+        if smooth_w > 1:
+            _sm120 = np.full(n, np.nan)
+            for _i in range(n):
+                if _i >= smooth_w - 1 and np.all(np.isfinite(reg120[_i - smooth_w + 1:_i + 1])):
+                    _sm120[_i] = np.mean(reg120[_i - smooth_w + 1:_i + 1])
+            reg120 = np.where(np.isfinite(_sm120), _sm120, reg120)
+        _base = np.where((reg120 > reg250) & np.isfinite(reg120) & np.isfinite(reg250), reg120, reg250)
+    resid = closes - _base
     # 滚动 60 日 std(含坑,因果)
     rstd = np.full(n, np.nan)
     for i in range(59, n):
@@ -1217,8 +1234,9 @@ def detect_golden_pit_v2(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0
     return out
 
 
-def detect_golden_pit_v3(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9,
-                       use_pre_std=True, require_below_gate=False, confirm_days=3, min_len=1, min_depth=0.08):
+def detect_golden_pit_v3(closes, reg250, reg120=None, z_thr=-1.5, merge_gap=15, launch_gate=0.9,
+                       use_pre_std=True, require_below_gate=False, confirm_days=3, min_len=1, min_depth=0.08,
+                       use_dual=False, smooth_w=5):
     """黄金坑检测 v3【2026-08-28 reasonix 定版】— z 连续确认,克服 z 缺陷。
 
     在 v2(纯因果单遍扫描)基础上,出坑判定升级:
@@ -1245,14 +1263,31 @@ def detect_golden_pit_v3(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0
     closes = np.asarray(closes, dtype=float)
     reg250 = np.asarray(reg250, dtype=float)
     n = len(closes)
-    resid = closes - reg250
+    # 2026-08-28: reg 平滑 + 双基准(reg120>reg250 时用 reg120 做 z 基准, 补牛市信号)
+    if smooth_w > 1:
+        _sm = np.full(n, np.nan)
+        for _i in range(n):
+            if _i >= smooth_w - 1 and np.all(np.isfinite(reg250[_i - smooth_w + 1:_i + 1])):
+                _sm[_i] = np.mean(reg250[_i - smooth_w + 1:_i + 1])
+        reg250 = np.where(np.isfinite(_sm), _sm, reg250)
+    _base = reg250
+    if use_dual and reg120 is not None:
+        reg120 = np.asarray(reg120, dtype=float)
+        if smooth_w > 1:
+            _sm120 = np.full(n, np.nan)
+            for _i in range(n):
+                if _i >= smooth_w - 1 and np.all(np.isfinite(reg120[_i - smooth_w + 1:_i + 1])):
+                    _sm120[_i] = np.mean(reg120[_i - smooth_w + 1:_i + 1])
+            reg120 = np.where(np.isfinite(_sm120), _sm120, reg120)
+        _base = np.where((reg120 > reg250) & np.isfinite(reg120) & np.isfinite(reg250), reg120, reg250)
+    resid = closes - _base
     rstd = np.full(n, np.nan)
     for i in range(59, n):
         rstd[i] = np.std(resid[i - 59:i + 1])
     z_roll = np.full(n, np.nan)
     for i in range(59, n):
         z_roll[i] = resid[i] / rstd[i] if rstd[i] > 0 else 0.0
-    gate_line = reg250 * launch_gate
+    gate_line = _base * launch_gate
     out = []
     i = 59
     while i < n:
@@ -1303,7 +1338,7 @@ def detect_golden_pit_v3(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0
                 if leave > merge_gap:
                     break
             j += 1
-        if lch is not None and b - s + 1 >= min_len and (closes[b] / reg250[b] - 1) <= -min_depth:
+        if lch is not None and b - s + 1 >= min_len and (closes[b] / _base[b] - 1) <= -min_depth:
             out.append((s, b, lch))
             i = lch + 1
         else:

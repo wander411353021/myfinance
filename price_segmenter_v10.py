@@ -1011,7 +1011,14 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             _frg2, _ = _crr(_fc, window=250, use_log=True)  # res 不含 reg,缺失时自算
         if _frg2 is not None:
             _fv = df_ohlc['volume'].values.astype(np.float64) if 'volume' in df_ohlc.columns else None
-            _pits = _pr.detect_golden_pit_v3(_fc, _frg2)  # v3定版: z连续确认(2026-08-28,假出坑不切坑,无未来函数)
+            # 双基准(2026-08-28): reg120>reg250 时用 reg120 做 z 基准, 补牛市信号(信号+57%,胜率58.4%)
+            _frg120 = None
+            if reg_preds is not None:
+                _frg120 = np.asarray(reg_preds, dtype=np.float64)
+            else:
+                from mean_reversion.signal_residual import compute_rolling_regression as _crr120
+                _frg120, _ = _crr120(_fc, window=120, use_log=True)
+            _pits = _pr.detect_golden_pit_v3(_fc, _frg2, _frg120, use_dual=True)
             _qual = _pr.compute_pit_quality(_pits, _fc, _fv) if _fv is not None else None
             _highpos = _pr.mark_high_pos(_pits, _fc)  # 高位坑软标注(坑前250日涨幅>150%)
             _super = _pr.mark_super_pits(_pits, _fc, _fv) if _fv is not None else None  # 超高胜率坑(93%)
