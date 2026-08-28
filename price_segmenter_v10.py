@@ -1093,7 +1093,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             _x0v = _vs - offset - 0.5
             _x1v = _vb - offset + 0.5
             if _x1v > 0 and _x0v < n:
-                ax0.axvspan(max(_x0v, -0.5), min(_x1v, n + 0.5), color='#9C27B0', alpha=0.22, zorder=2)
+                ax0.axvspan(max(_x0v, -0.5), min(_x1v, n + 0.5), color='#9C27B0', alpha=0.38, zorder=2)
         if _viol:
             ax0.plot([], [], color='#9C27B0', lw=3, alpha=0.6, label='Violent Dev (10d>20pp)')
     except Exception:
