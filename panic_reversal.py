@@ -1209,7 +1209,11 @@ def detect_golden_pit_v2(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0
             out.append((s, b, lch))
             i = lch + 1  # 出坑即结算,之后重新找坑
         else:
-            i = n
+            # 修复(2026-08-28): 未出坑的坑(leave>merge_gap 退出)只结束本坑,
+            # 不能 i=n 终止整个扫描——否则后面所有坑全部丢失
+            # (300437 20210930 锚点: 2020 未出坑段吞掉 2021-02~04 大坑)。
+            # j==n-1 自然结束时 i=n 正常收尾。
+            i = j + 1
     return out
 
 
