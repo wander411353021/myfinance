@@ -98,7 +98,7 @@ def get_stock_items_cached():
 
 
 @st.cache_data(show_spinner=False)
-def fetch_tdx_kline(code, end_date, datalen=2400):
+def fetch_tdx_kline(code, end_date, datalen=800):
     """通达信直连拉日线（前复权）。end_date 透传给 anchor_date;datalen>800 自动分页(最长10年)。"""
     from tdx_quant import get_daily_kline_from_tdx
     df = get_daily_kline_from_tdx(code, end_date, datalen=datalen)
