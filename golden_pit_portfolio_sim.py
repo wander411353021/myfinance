@@ -35,8 +35,10 @@ def load(sym):
     return np.load(f, allow_pickle=True).item()
 
 
-def collect_events(sym):
-    """返回该股票所有规则F信号的 买入/卖出事件"""
+def collect_events(sym, buy_delay=0):
+    """返回该股票所有规则F信号的 买入/卖出事件。
+    buy_delay=0: 出坑日(lch)收盘买入(理论口径,实盘买不到)
+    buy_delay=1: 次日(lch+1)收盘买入(严格实盘口径), 卖出=lch+1+20(lch+21)"""
     d = load(sym)
     if d is None:
         return []
@@ -47,22 +49,27 @@ def collect_events(sym):
     for s, b, lch in pits:
         if lch is None or lch - b > 5:
             continue  # 规则F: 快启动<=5
-        bdate = pd.to_datetime(int(ts[lch]), unit='s')
-        evs.append(('buy', bdate, sym, lch, lch))
-        if lch + 20 < n:
-            sdate = pd.to_datetime(int(ts[lch + 20]), unit='s')
-            evs.append(('sell', sdate, sym, lch, lch + 20))
+        bi = lch + buy_delay
+        if bi >= n:
+            continue
+        bdate = pd.to_datetime(int(ts[bi]), unit='s')
+        evs.append(('buy', bdate, sym, lch, bi))
+        si = bi + 20
+        if si < n:
+            sdate = pd.to_datetime(int(ts[si]), unit='s')
+            evs.append(('sell', sdate, sym, lch, si))
         else:
             evs.append(('sell_eod', None, sym, lch, n - 1))
     return evs
 
 
-def run_sim(stocks, nfunds=NFUNDS, unit=UNIT, start=START_DATE, end=END_DATE):
+def run_sim(stocks, nfunds=NFUNDS, unit=UNIT, start=START_DATE, end=END_DATE, buy_delay=0):
     """对给定股票列表执行完整模拟，返回结果字典。
-    模型：10 个独立子账户复利——空仓时用该账户全部资金买入单票，20日后卖出资金回到该账户。"""
+    模型：10 个独立子账户复利——空仓时用该账户全部资金买入单票，20日后卖出资金回到该账户。
+    buy_delay: 0=出坑日收盘买入(理论) / 1=次日收盘买入(严格实盘), 卖出=买入后20交易日收盘。"""
     events = []
     for sym in stocks:
-        events += collect_events(sym)
+        events += collect_events(sym, buy_delay=buy_delay)
     events.sort(key=lambda e: (e[1] is not None, e[1] if e[1] is not None else pd.Timestamp.max))
 
     funds = [unit] * nfunds
@@ -157,19 +164,22 @@ def run_sim(stocks, nfunds=NFUNDS, unit=UNIT, start=START_DATE, end=END_DATE):
 def main():
     pool_file = sys.argv[1] if len(sys.argv) > 1 else 'stock_pool_1000.txt'
     top = int(sys.argv[2]) if len(sys.argv) > 2 else 1000
+    buy_delay = int(sys.argv[3]) if len(sys.argv) > 3 else 0
+    delay_txt = '次日买入(严格实盘口径)' if buy_delay else '出坑日收盘买入(理论口径)'
     stocks = [l.strip().split(',')[0] for l in open(os.path.join(WORKDIR, pool_file)) if l.strip()][:top]
     t0 = time.time()
     # 预扫描显示进度
     n_ev = 0
     for i, sym in enumerate(stocks):
-        n_ev += len(collect_events(sym))
+        n_ev += len(collect_events(sym, buy_delay=buy_delay))
         if (i + 1) % 200 == 0:
             print(f'  扫描 {i+1}/{len(stocks)} 事件{n_ev} {time.time()-t0:.0f}s', flush=True)
     print(f'扫描完成: {len(stocks)}只, 规则F信号事件 {n_ev} 个 ({time.time()-t0:.0f}s)')
-    r = run_sim(stocks)
+    r = run_sim(stocks, buy_delay=buy_delay)
     print(f'2023-01-01 后买入信号: {r["n_signals"]} 个')
     print('\n' + '=' * 60)
     print(f'黄金坑组合模拟: 100万 / {NFUNDS}份子账户复利 / {START_DATE.date()} ~ 2026-08-28')
+    print(f'买卖口径: {delay_txt} + 持有20交易日收盘卖出')
     print('=' * 60)
     print(f'完成交易: {r["n_trades"]} 笔   胜率: {r["win_rate"]:.1f}%')
     realized_pnl = sum(t['ret'] * t['invest'] for t in r['trades'])

@@ -28,11 +28,11 @@ END = pd.Timestamp('2026-08-28')
 INIT = 1000000.0
 
 
-def run_fixed_sim(stocks):
+def run_fixed_sim(stocks, buy_delay=0):
     """口径A: 固定每份10万, 收益落袋不复投。返回 (date_series, asset_series)"""
     events = []
     for sym in stocks:
-        events += sim.collect_events(sym)
+        events += sim.collect_events(sym, buy_delay=buy_delay)
     events.sort(key=lambda e: (e[1] is not None, e[1] if e[1] is not None else pd.Timestamp.max))
     cash = INIT
     positions = {}  # (sym,lch)-> dict(qty, price, close_idx)
@@ -74,14 +74,15 @@ def _mv(positions):
 
 
 def main():
+    buy_delay = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+    delay_txt = '次日买入(严格实盘)' if buy_delay else '出坑日收盘买入(理论)'
     stocks = [l.strip().split(',')[0] for l in open(os.path.join(sim.WORKDIR, 'stock_pool_1000.txt')) if l.strip()]
-    print(f'加载 {len(stocks)} 只, 运行口径B(子账户复利)...')
-    r = sim.run_sim(stocks)
+    print(f'加载 {len(stocks)} 只, 口径: {delay_txt}')
+    r = sim.run_sim(stocks, buy_delay=buy_delay)
     print(f'  口径B: 成交{r["n_trades"]}笔 胜率{r["win_rate"]:.1f}% 总收益{r["total_ret"]*100:+.1f}%')
     print('运行口径A(固定份额)...')
-    sA = run_fixed_sim(stocks)
+    sA = run_fixed_sim(stocks, buy_delay=buy_delay)
     finalA = sA['asset'].iloc[-1]
-    print(f'  DEBUG: A finalA={finalA:.0f} ret={(finalA/INIT*100-100):.1f}%  snapshot_len={len(sA)}')
     print(f'  口径A: 总收益{finalA/INIT*100-100:+.1f}%')
 
     # 沪深300 基准（归一化 100万）
@@ -111,7 +112,7 @@ def main():
                         xy=(pd.Timestamp(f'{y}-06-15'), ya['asset'] / 1e4),
                         fontsize=10, color='#d62728', alpha=0.85)
 
-    ax.set_title('黄金坑组合模拟资金曲线（100万 / 10份 / 2023-01-01 ~ 2026-08-28，单位：万元）', fontsize=14)
+    ax.set_title('黄金坑组合模拟资金曲线（100万 / 10份 / 2023-01-01 ~ 2026-08-28 / ' + delay_txt + '，单位：万元）', fontsize=14)
     ax.set_xlabel('日期'); ax.set_ylabel('总资产（万元）')
     ax.legend(loc='upper left', fontsize=11)
     ax.grid(alpha=0.3)
