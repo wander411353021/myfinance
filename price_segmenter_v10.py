@@ -1075,6 +1075,30 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     except Exception:
         pass
 
+    # ── 剧烈偏离大趋势(独立形态算法, 2026-08-28): 10日偏离剧变>20pp, 亮紫背景 ──
+    # 用户定义: "短时间剧烈偏离大趋势的形态"(非z值判据)。1000池: 20日胜率65.5%/60日75.9%
+    try:
+        import panic_reversal as _prv
+        _fcv = ohlc['close'].values.astype(np.float64)
+        _frv = None
+        if reg_preds_long is not None:
+            _frv = np.asarray(reg_preds_long, dtype=np.float64)
+        elif reg_preds is not None:
+            _frv = np.asarray(reg_preds, dtype=np.float64)
+        if _frv is None:
+            from mean_reversion.signal_residual import compute_rolling_regression as _crrv
+            _frv, _ = _crrv(_fcv, window=250, use_log=True)
+        _viol = _prv.detect_violent_deviation(_fcv, _frv)
+        for _vs, _vb in _viol:
+            _x0v = _vs - offset - 0.5
+            _x1v = _vb - offset + 0.5
+            if _x1v > 0 and _x0v < n:
+                ax0.axvspan(max(_x0v, -0.5), min(_x1v, n + 0.5), color='#9C27B0', alpha=0.22, zorder=2)
+        if _viol:
+            ax0.plot([], [], color='#9C27B0', lw=3, alpha=0.6, label='Violent Dev (10d>20pp)')
+    except Exception:
+        pass
+
     # ── 统一 x 轴日期刻度（落在最底层面板）──
     ts2 = max(1, n // 12); dates = ohlc['date'].values
     tp = list(range(0, n, ts2)); tl = [str(dates[i])[:10] for i in tp]

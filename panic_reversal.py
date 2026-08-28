@@ -1311,6 +1311,57 @@ def detect_golden_pit_v3(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0
     return out
 
 
+def detect_violent_deviation(closes, reg250, window=10, drop=0.20):
+    """短时间剧烈偏离大趋势(形态信号, 2026-08-28 用户定义, 独立于黄金坑z判据)。
+
+    形态 = 偏离度 dev=close/reg250-1 在 window 个交易日内下降 >= drop
+    (从贴近趋势线短时间暴跌到深偏离), 且当前 dev<0(确实在 reg 下方)。
+    这是"形态"而非"值"判据: 不设 z<-1.5/深度阈值, 只看偏离的短期速率。
+    验证(1000池): 10日剧变>20pp: n=319, 20日胜率 65.5%, 60日胜率 75.9%
+    (基线 58.1%/55.6%)——60日更高, 剧烈偏离后反弹持续。
+
+    返回 [(事件起点 s, 偏离最深日 b)] 升序。
+    """
+    closes = np.asarray(closes, dtype=float)
+    reg250 = np.asarray(reg250, dtype=float)
+    n = len(closes)
+    dev = np.full(n, np.nan)
+    for i in range(n):
+        if np.isfinite(reg250[i]) and reg250[i] > 0:
+            dev[i] = closes[i] / reg250[i] - 1
+    out = []
+    i = window
+    while i < n:
+        if (np.isfinite(dev[i]) and np.isfinite(dev[i - window])
+                and dev[i - window] - dev[i] >= drop and dev[i] < 0):
+            # 事件起点 = 窗口起点~i 之间偏离最高处(贴近趋势线 = 剧变开始)
+            _seg = dev[max(0, i - window):i + 1]
+            if np.all(np.isfinite(_seg)):
+                s = max(0, i - window) + int(np.argmax(_seg))
+            else:
+                s = i
+            # 偏离最深日: 向后找 dev 最低(直到偏离回升超过 drop*0.5)
+            b = i
+            j = i + 1
+            while j < n:
+                if not np.isfinite(dev[j]):
+                    break
+                if dev[j] < dev[b]:
+                    b = j
+                if dev[j] - dev[b] > drop * 0.5:  # 已回升, 事件结束
+                    break
+                j += 1
+            # 去重: 同起点(或起点间隔<window)合并, 保留最深 b
+            if out and s - out[-1][0] < window:
+                out[-1] = (out[-1][0], b if b > out[-1][1] else out[-1][1])
+            else:
+                out.append((s, b))
+            i = b + 1
+        else:
+            i += 1
+    return out
+
+
 def compute_pit_quality(pits, closes, volumes, pre_win=20, fill_win=20, fill_lead=2):
     """黄金坑量能质量标签【2026-08-14】— 无未来函数,不改 pits 结构。
 
