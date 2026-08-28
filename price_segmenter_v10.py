@@ -1079,13 +1079,14 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     # 用户定义: "短时间剧烈偏离大趋势的形态"(非z值判据)。1000池: 20日胜率65.5%/60日75.9%
     try:
         import panic_reversal as _prv
-        _fcv = ohlc['close'].values.astype(np.float64)
+        # 必须用全量 df_ohlc 计算(reg_preds_long 是全量长度), 事件索引为全局坐标
+        _fcv = df_ohlc['close'].values.astype(np.float64)
         _frv = None
         if reg_preds_long is not None:
             _frv = np.asarray(reg_preds_long, dtype=np.float64)
         elif reg_preds is not None:
             _frv = np.asarray(reg_preds, dtype=np.float64)
-        if _frv is None:
+        if _frv is None or len(_frv) != len(_fcv):
             from mean_reversion.signal_residual import compute_rolling_regression as _crrv
             _frv, _ = _crrv(_fcv, window=250, use_log=True)
         _viol = _prv.detect_violent_deviation(_fcv, _frv)
@@ -1096,8 +1097,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 ax0.axvspan(max(_x0v, -0.5), min(_x1v, n + 0.5), color='#9C27B0', alpha=0.38, zorder=2)
         if _viol:
             ax0.plot([], [], color='#9C27B0', lw=3, alpha=0.6, label='Violent Dev (10d>20pp)')
-    except Exception:
-        pass
+    except Exception as _e:
+        print(f'[violent_dev] 绘制失败: {_e}')
 
     # ── 统一 x 轴日期刻度（落在最底层面板）──
     ts2 = max(1, n // 12); dates = ohlc['date'].values
