@@ -42,3 +42,4 @@ runtime-gem/
 # SSH密钥本地备份(禁止入库)
 .ssh_backup/
 .cache_kline/
+gp_recall_result.jsonl

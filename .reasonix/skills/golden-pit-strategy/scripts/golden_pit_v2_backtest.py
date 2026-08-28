@@ -361,8 +361,8 @@ def backtest_pits(closes, pits_v1, pits_v2, horizon=60):
     for s, b, lch in pits_v1:
         if lch is None or lch + horizon >= n:
             continue
-        # v1策略：快启动(≤5天) + 坑长≥8
-        if lch - b > 5 or b - s + 1 < 8:
+        # v1策略规则F：快启动(≤5天),坑长≥8已移除(短坑V反胜率更高,2026-08-28)
+        if lch - b > 5:
             continue
         buy_px = closes[lch]
         sell_px = closes[min(lch + horizon, n - 1)]

@@ -2,7 +2,8 @@
 """黄金坑体系回测 + 可视化(买卖点 + 收益曲线)。
 
 策略(已验证 93% 超高信号):
-  买入:黄金坑 + 快启动(≤5天) + 坑长≥8 + 出坑日买入(出坑 = 收复门控线且 >坑底×1.02)
+  买入:黄金坑 + 快启动(≤5天) + 出坑日买入(出坑 = 收复门控线且 >坑底×1.02)
+  # 规则F(2026-08-28): 坑长≥8约束已移除——短坑V反胜率更高
   加仓(可选):出坑后 7 天内放量堆峰值量比≥5
   卖出规则(可配):止损 / 止盈 / 到期(交易日)
 
@@ -51,9 +52,8 @@ def backtest_single(code, end_date, stop=-0.15, take=0.30, horizon=60,
         if lch is None or lch + horizon >= n:
             continue
         if lch - b > 5:
-            continue  # 快启动
-        if b - s + 1 < 8:
-            continue  # 坑长≥8
+            continue  # 快启动(坑底后5天内收复)
+        # 规则F(2026-08-28): 坑长≥8约束移除。短坑V反胜率更高(见 golden_pit_rule_compare.py)
         # 超高:出坑后7天内放量堆峰值≥5
         post_peak = max([pp for ss, ee, kk, dd, pp, vv in cl
                          if kk == 'HIGH' and lch < ss <= lch + 7] or [0])

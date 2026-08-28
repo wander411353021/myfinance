@@ -224,10 +224,11 @@ def scan_stock(symbol, name='', need_data_len=310):
         s, b, lch = pit
         if lch is None or lch + 20 >= n:
             continue
-        if lch - b > 5:      # 快启动条件
+        if lch - b > 5:      # 快启动条件(坑底后5天内收复)
             continue
-        if b - s + 1 < 8:    # 坑长条件
-            continue
+        # 规则F(2026-08-28): 坑长≥8约束已移除。坑长<8的急跌急涨V型短坑胜率反而更高:
+        # 1000池验证 坑长5-7天151个胜率80.1% / <5天756个胜率75.9% vs 现版74.1%(660个)。
+        # 快启动≤5仍是核心约束,去掉后胜率掉到65.8%。详见 golden_pit_rule_compare.py
 
         buy_date = pd.Timestamp(dates[lch]).strftime('%Y-%m-%d')
         buy_price = closes[lch]

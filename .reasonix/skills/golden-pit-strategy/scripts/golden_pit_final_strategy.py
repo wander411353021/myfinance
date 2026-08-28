@@ -224,10 +224,9 @@ def scan_stock(symbol, name='', need_data_len=310):
         s, b, lch = pit
         if lch is None or lch + 20 >= n:
             continue
-        if lch - b > 5:      # 快启动条件
+        if lch - b > 5:      # 快启动条件(坑底后5天内收复)
             continue
-        if b - s + 1 < 8:    # 坑长条件
-            continue
+        # 规则F(2026-08-28): 坑长≥8约束已移除——短坑V反胜率更高(见 golden_pit_rule_compare)
 
         buy_date = pd.Timestamp(dates[lch]).strftime('%Y-%m-%d')
         buy_price = closes[lch]
