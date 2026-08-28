@@ -1218,7 +1218,7 @@ def detect_golden_pit_v2(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0
 
 
 def detect_golden_pit_v3(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9,
-                       use_pre_std=True, require_below_gate=False, confirm_days=3, min_len=1, min_drop=0.05):
+                       use_pre_std=True, require_below_gate=False, confirm_days=3, min_len=1, min_depth=0.08):
     """黄金坑检测 v3【2026-08-28 reasonix 定版】— z 连续确认,克服 z 缺陷。
 
     在 v2(纯因果单遍扫描)基础上,出坑判定升级:
@@ -1232,13 +1232,13 @@ def detect_golden_pit_v3(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0
     坑结构(688099 @20251001): 4/03~6/27 大坑 + 6/30~7/23 横盘段 + 7/31~8/15 一坑
     (5/13、6/25 假出坑并入大坑,不再碎坑)。
 
-    min_drop=0.05(2026-08-28 用户拍板): 过滤坑内跌幅<5% 的微浅坑(低位横盘)。
-    600613 180天 7坑→2坑。数据上微浅坑胜率不低(58.5%), 过滤是视觉取舍; 勿再提高(8%→51%)。
-    min_len=1(2026-08-28 修复): 原 min_len=3 误杀急跌坑——688099 4/03~4/07
-    3 交易日暴跌 23%(坑内跌幅16.6%)坑长仅 2, 被 min_len=3 过滤; 急跌坑由
-    min_drop 区分(跌幅>5% 保留), min_len 只应滤 1-2 天抖动(那些坑跌幅也<5%,
-    min_drop 已承担), 故 min_len 默认 1。
-    全池(1000, 20日): n=1417, 胜率 54.1%, 均值 +3.4%。
+    min_depth=0.08(2026-08-28 用户拍板): 过滤判据=坑底距 reg 深度
+    (closes[b]/reg250[b]-1 <= -8% 保留), 替代原"坑内跌幅"判据。
+    原因: 坑内跌幅判据误杀"单日见底"深坑(300300 4/07 单日暴跌17.5%, 进坑价=坑底,
+    坑内跌幅 0% 被滤, 但距reg -17.5% 是真深坑); 距reg深度能正确区分:
+    300300(-17.5%)✓ / 688099 4/03(-24.4%)✓ / 600613 微坑(-5~6%)✗滤 / 688099 7/31(-9.3%)✓。
+    min_len=1(2026-08-28): 原 min_len=3 误杀急跌坑(688099 4/03 3日跌23%坑长2被滤)。
+    全池(1000, 20日): 见 min_depth 验证(约 n=2xxx, 胜率 55%+)。
 
     返回 [(段起点 s, 坑底 b, 启动日 lch 或 None)] 升序。
     """
@@ -1303,7 +1303,7 @@ def detect_golden_pit_v3(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0
                 if leave > merge_gap:
                     break
             j += 1
-        if lch is not None and b - s + 1 >= min_len and (closes[s] / closes[b] - 1) >= min_drop:
+        if lch is not None and b - s + 1 >= min_len and (closes[b] / reg250[b] - 1) <= -min_depth:
             out.append((s, b, lch))
             i = lch + 1
         else:
