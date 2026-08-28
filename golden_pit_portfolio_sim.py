@@ -3,11 +3,12 @@
 
 规则（与定版策略一致）：
 - 信号 = panic_reversal.detect_golden_pit 规则F（z<-1.5 + 快启动 lch-b<=5 + 出坑确认）
-- 买入 = 出坑日(lch)收盘价，每份固定 10 万（100万/10份）
+- 买入 = 出坑日(lch)收盘价；资金管理 = 10 个独立子账户，空仓时用该账户全部资金买入单票
 - 卖出 = lch+20 交易日收盘价（到期强制），数据末尾未到期按最后收盘估值
-- 资金管理 = 最多同时持有 10 份（无空闲份额则跳过新信号，计入 skipped）
 - 手续费 = 佣金万2.5(最低5元) + 卖出印花税 0.05%
 - 数据 = .cache_kline（tdx 前复权，2022-02 至 2026-08-28）
+
+本模块提供可复用 run_sim(stocks) 供组合/压力测试调用。
 用法: python3 golden_pit_portfolio_sim.py [pool_file] [top_n]
 """
 import os, sys, time
@@ -24,6 +25,7 @@ STAMP = 0.0005         # 印花税 0.05%（卖出）
 UNIT = 100000.0        # 每份 10 万
 NFUNDS = 10            # 10 份
 START_DATE = pd.Timestamp('2023-01-01')
+END_DATE = pd.Timestamp('2026-08-28')
 
 
 def load(sym):
@@ -55,32 +57,19 @@ def collect_events(sym):
     return evs
 
 
-def main():
-    pool_file = sys.argv[1] if len(sys.argv) > 1 else 'stock_pool_1000.txt'
-    top = int(sys.argv[2]) if len(sys.argv) > 2 else 1000
-    stocks = [l.strip().split(',')[0] for l in open(os.path.join(WORKDIR, pool_file)) if l.strip()][:top]
-
-    t0 = time.time()
+def run_sim(stocks, nfunds=NFUNDS, unit=UNIT, start=START_DATE, end=END_DATE):
+    """对给定股票列表执行完整模拟，返回结果字典。
+    模型：10 个独立子账户复利——空仓时用该账户全部资金买入单票，20日后卖出资金回到该账户。"""
     events = []
-    for i, sym in enumerate(stocks):
+    for sym in stocks:
         events += collect_events(sym)
-        if (i + 1) % 200 == 0:
-            print(f'  扫描 {i+1}/{len(stocks)} 事件{len(events)} {time.time()-t0:.0f}s', flush=True)
-    print(f'扫描完成: {len(stocks)}只, 规则F信号事件 {len(events)} 个 ({time.time()-t0:.0f}s)')
-
-    # 按日期排序；sell_eod 排最后
     events.sort(key=lambda e: (e[1] is not None, e[1] if e[1] is not None else pd.Timestamp.max))
-    buy_evs = [e for e in events if e[0] == 'buy']
-    buy_evs = [e for e in buy_evs if e[1] >= START_DATE]
-    print(f'2023-01-01 后买入信号: {len(buy_evs)} 个')
 
-    # ---- 模拟：10 个独立子账户复利模型 ----
-    # 每个子账户 10 万；空仓时用该账户全部可用资金买入单票，20日后卖出资金回到该账户（钱滚钱）
-    funds = [UNIT] * NFUNDS
-    positions = {}       # key=(sym,lch) -> dict(fund_id, qty, cost, buy_price, buy_date, close_idx)
-    trades = []          # 已实现交易
+    funds = [unit] * nfunds
+    positions = {}
+    trades = []
     skipped = 0
-    snapshot = []        # (date, total_asset)
+    snapshot = []
 
     def total_asset():
         mv = 0.0
@@ -89,25 +78,25 @@ def main():
             mv += pos['qty'] * float(d['close'][pos['close_idx']])
         return sum(funds) + mv
 
-    # 处理事件
+    n_buy_signals = 0
     for ev in events:
         typ, date, sym, lch, idx = ev
         if typ == 'buy':
-            if date < START_DATE:
+            if date < start:
                 continue
-            if len(positions) >= NFUNDS:
+            n_buy_signals += 1
+            if len(positions) >= nfunds:
                 skipped += 1
                 continue
-            # 选一个空仓且资金最多的子账户
             busy = {p['fund_id'] for p in positions.values()}
-            free = [i for i in range(NFUNDS) if i not in busy]
+            free = [i for i in range(nfunds) if i not in busy]
             if not free:
                 skipped += 1
                 continue
             fid = max(free, key=lambda i: funds[i])
             d = load(sym)
             price = float(d['close'][idx])
-            amount = funds[fid] * 0.99  # 留手续费余量
+            amount = funds[fid] * 0.99
             qty = int(amount / price / 100) * 100
             if qty <= 0:
                 continue
@@ -133,68 +122,82 @@ def main():
                            'ret': price / pos['buy_price'] - 1,
                            'invest': pos['cost'] / (1 + COMMISSION)})
             snapshot.append((date, total_asset()))
-        # sell_eod: 数据末尾未到期, 保持持仓, 最后统一估值
 
-    # 补充最终快照（数据最后一天）
-    snapshot.append((pd.Timestamp('2026-08-28'), total_asset()))
-
-    # 未平仓持仓: 按最后收盘估值
+    snapshot.append((end, total_asset()))
     open_pos = list(positions.items())
     final_asset = total_asset()
+    rets = np.array([t['ret'] for t in trades]) if trades else np.array([])
+    snap_df = pd.DataFrame(snapshot, columns=['date', 'asset']).sort_values('date').reset_index(drop=True)
 
-    # 已实现统计
-    rets = np.array([t['ret'] for t in trades])
+    # 年度资产曲线
+    year_assets = {}
+    snap_df['year'] = snap_df['date'].dt.year
+    prev = float(nfunds * unit)
+    for y in sorted(snap_df['year'].unique()):
+        ye = snap_df[snap_df['year'] == y]['asset'].iloc[-1]
+        year_assets[int(y)] = {'asset': float(ye), 'ret': float(ye / prev - 1)}
+        prev = float(ye)
+
+    # 最大回撤
+    peak = snap_df['asset'].cummax()
+    max_dd = float(((snap_df['asset'] - peak) / peak).min())
+
+    return {
+        'n_stocks': len(stocks), 'n_signals': n_buy_signals, 'n_trades': len(trades),
+        'n_open': len(open_pos), 'skipped': skipped,
+        'win_rate': float((rets > 0).mean() * 100) if len(rets) else 0.0,
+        'final_asset': float(final_asset),
+        'total_ret': float(final_asset / (nfunds * unit) - 1),
+        'funds': [float(f) for f in funds],
+        'trades': trades, 'snapshot': snap_df, 'year_assets': year_assets,
+        'max_dd': max_dd,
+    }
+
+
+def main():
+    pool_file = sys.argv[1] if len(sys.argv) > 1 else 'stock_pool_1000.txt'
+    top = int(sys.argv[2]) if len(sys.argv) > 2 else 1000
+    stocks = [l.strip().split(',')[0] for l in open(os.path.join(WORKDIR, pool_file)) if l.strip()][:top]
+    t0 = time.time()
+    # 预扫描显示进度
+    n_ev = 0
+    for i, sym in enumerate(stocks):
+        n_ev += len(collect_events(sym))
+        if (i + 1) % 200 == 0:
+            print(f'  扫描 {i+1}/{len(stocks)} 事件{n_ev} {time.time()-t0:.0f}s', flush=True)
+    print(f'扫描完成: {len(stocks)}只, 规则F信号事件 {n_ev} 个 ({time.time()-t0:.0f}s)')
+    r = run_sim(stocks)
+    print(f'2023-01-01 后买入信号: {r["n_signals"]} 个')
     print('\n' + '=' * 60)
     print(f'黄金坑组合模拟: 100万 / {NFUNDS}份子账户复利 / {START_DATE.date()} ~ 2026-08-28')
     print('=' * 60)
-    print(f'完成交易: {len(trades)} 笔   胜率: {(rets > 0).mean() * 100:.1f}%')
-    # 已实现收益(按实际投入,子账户已复利)
-    realized_pnl = sum(t['ret'] * t['invest'] for t in trades)
+    print(f'完成交易: {r["n_trades"]} 笔   胜率: {r["win_rate"]:.1f}%')
+    realized_pnl = sum(t['ret'] * t['invest'] for t in r['trades'])
     print(f'已实现收益(实际投入): {realized_pnl:+,.0f} 元')
-    open_mv = sum(pos['qty'] * float(load(sym)['close'][pos['close_idx']]) for (sym, lch), pos in open_pos)
-    print(f'未平仓持仓: {len(open_pos)} 份  市值: {open_mv:,.0f} 元')
-    print(f'各子账户资金: {[int(f) for f in funds]} 元')
-    print(f'最终总资产: {final_asset:,.0f} 元')
-    print(f'总收益率: {final_asset / 1000000 - 1:+.2%}')
-    print(f'满仓跳过信号: {skipped} 个')
-
-    # 年度已实现
-    if trades:
-        df = pd.DataFrame(trades)
+    open_mv = r['final_asset'] - sum(r['funds'])  # 未平仓市值 = 总资产 - 各子账户现金
+    print(f'未平仓持仓: {r["n_open"]} 份  市值: {open_mv:,.0f} 元')
+    print(f'各子账户资金: {[int(f) for f in r["funds"]]} 元')
+    print(f'最终总资产: {r["final_asset"]:,.0f} 元')
+    print(f'总收益率: {r["total_ret"]:+.2%}')
+    print(f'满仓跳过信号: {r["skipped"]} 个')
+    print(f'最大回撤: {r["max_dd"]*100:.1f}%')
+    if r['trades']:
+        df = pd.DataFrame(r['trades'])
         df['year'] = df['sell_date'].dt.year
-        print('\n分年度已实现(口径B):')
+        print('\n分年度已实现:')
         for y, g in df.groupby('year'):
-            r = g['ret'].values
-            print(f'  {y}: {len(g)}笔 胜率{(r > 0).mean()*100:.0f}% 均值{r.mean()*100:+.1f}% 收益{(g["ret"]*g["invest"]).sum():+,.0f}元')
-
-    # 分年度总资产（口径B 复利曲线, 年末含持仓市值）
-    snap = pd.DataFrame(snapshot, columns=['date', 'asset']).sort_values('date').reset_index(drop=True)
-    snap['year'] = snap['date'].dt.year
+            rr = g['ret'].values
+            print(f'  {y}: {len(g)}笔 胜率{(rr > 0).mean()*100:.0f}% 均值{rr.mean()*100:+.1f}% 收益{(g["ret"]*g["invest"]).sum():+,.0f}元')
     print('\n分年度总资产(口径B 子账户复利):')
-    print('  期初 2023-01-01: 1,000,000 元')
-    prev = 1000000.0
-    for y in sorted(snap['year'].unique()):
-        ys = snap[snap['year'] == y]
-        ye = ys['asset'].iloc[-1]
-        # 年末 = 该年最后快照（含持仓市值）
-        yret = ye / prev - 1
-        print(f'  {y}年末: {ye:>12,.0f} 元   年度收益 {yret:+.1%}')
-        prev = ye
-
-    # 最大回撤（快照法）
-    if snapshot:
-        snap = pd.DataFrame(snapshot, columns=['date', 'asset'])
-        snap = snap.sort_values('date').reset_index(drop=True)
-        peak = snap['asset'].cummax()
-        dd = (snap['asset'] - peak) / peak
-        print(f'\n最大回撤(按已实现快照): {dd.min()*100:.1f}%')
-
-    # 沪深300 基准
+    print(f'  期初 {START_DATE.date()}: {1000000:,} 元')
+    for y in sorted(r['year_assets']):
+        ya = r['year_assets'][y]
+        print(f'  {y}年末: {ya["asset"]:>12,.0f} 元   年度收益 {ya["ret"]:+.1%}')
     try:
         idx = load('sh000300')
         if idx is not None:
             ts = pd.to_datetime(idx['ts'].astype('int64'), unit='s')
-            m = (ts >= START_DATE) & (ts <= pd.Timestamp('2026-08-28'))
+            m = (ts >= START_DATE) & (ts <= END_DATE)
             c300 = idx['close'][m]
             if len(c300) > 1:
                 print(f'沪深300 同期: {c300[-1]/c300[0]-1:+.2%}')
