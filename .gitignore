@@ -39,3 +39,5 @@ cc_bash_pwd_*.txt
 nginx.*.conf.template
 org.chromium.Chromium.*/
 runtime-gem/
+# SSH密钥本地备份(禁止入库)
+.ssh_backup/
