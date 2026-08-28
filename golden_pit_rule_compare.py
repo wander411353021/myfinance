@@ -38,7 +38,7 @@ def collect(symbol):
             'symbol': symbol,
             'launch': int(lch - b), 'pit_len': int(b - s + 1),
             'gain20': float(c[lch + 20] / c[lch] - 1.0),
-            'year': int(pd.Timestamp(ts[lch] * 1e9).year),
+            'year': int(pd.to_datetime(int(ts[lch]), unit='s').year),
         })
     return out
 

@@ -40,7 +40,9 @@ def fetch_kline_tdx(symbol, datalen=1023, end_date='20260828'):
         for b in bars:
             if float(b.close) > 0:
                 rows.append([float(b.close), float(b.high), float(b.low),
-                             float(b.volume_lots), b.time.timestamp()])
+                             float(b.volume_lots), b.time])
+        # all_pages 返回顺序可能混乱,必须按时间升序排序
+        rows.sort(key=lambda r: r[4])
         # 只保留最近 1100 根（tdx 全量太长，拖慢回归）
         rows = rows[-1100:]
         if len(rows) < 310:
@@ -49,7 +51,7 @@ def fetch_kline_tdx(symbol, datalen=1023, end_date='20260828'):
              'high': np.array([r[1] for r in rows], dtype=float),
              'low': np.array([r[2] for r in rows], dtype=float),
              'vol': np.array([r[3] for r in rows], dtype=float),
-             'ts': np.array([r[4] for r in rows])}
+             'ts': np.array([int(r[4].timestamp()) for r in rows], dtype=np.int64)}
         np.save(cache_f, d)
         return d
     except Exception:
