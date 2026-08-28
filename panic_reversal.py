@@ -1217,6 +1217,92 @@ def detect_golden_pit_v2(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0
     return out
 
 
+def detect_golden_pit_v3(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9,
+                       use_pre_std=True, require_below_gate=False, confirm_days=3):
+    """黄金坑检测 v3【2026-08-28 reasonix 定版】— z 连续确认,克服 z 缺陷。
+
+    在 v2(纯因果单遍扫描)基础上,出坑判定升级:
+    - 旧(v2): 单日 close 过 gate 线 + 高于坑底 2% 即出坑 → 假出坑切坑
+      (688099: 8/06 刚过线 z=-1.24,8/07 立刻跌回,被切成两个坑)
+    - 新(v3): 出坑候选需 z >= -1.5 连续 confirm_days 日(中间跌回=假出坑,
+      坑延续不切分) → 坑结构完整,无未来函数(lch=确认完成日)。
+
+    全池(1000池, 20日): n=5321, 胜率 56.7%(v2 57.5% 基本持平),
+    截断自检 0 不一致。
+    坑结构(688099 @20251001): 4/03~6/27 大坑 + 6/30~7/23 横盘段 + 7/31~8/15 一坑
+    (5/13、6/25 假出坑并入大坑,不再碎坑)。
+
+    返回 [(段起点 s, 坑底 b, 启动日 lch 或 None)] 升序。
+    """
+    closes = np.asarray(closes, dtype=float)
+    reg250 = np.asarray(reg250, dtype=float)
+    n = len(closes)
+    resid = closes - reg250
+    rstd = np.full(n, np.nan)
+    for i in range(59, n):
+        rstd[i] = np.std(resid[i - 59:i + 1])
+    z_roll = np.full(n, np.nan)
+    for i in range(59, n):
+        z_roll[i] = resid[i] / rstd[i] if rstd[i] > 0 else 0.0
+    gate_line = reg250 * launch_gate
+    out = []
+    i = 59
+    while i < n:
+        if not (np.isfinite(z_roll[i]) and z_roll[i] < z_thr):
+            i += 1
+            continue
+        pre_std = np.std(resid[i - 60:i]) if use_pre_std and i >= 60 else rstd[i]
+        if pre_std <= 0:
+            pre_std = rstd[i]
+        s = i
+        b = i
+        bv = closes[i]
+        lch = None
+        leave = 0
+        j = i
+        while j < n:
+            zj = resid[j] / pre_std if pre_std > 0 else 0.0
+            in_pit = np.isfinite(zj) and zj < z_thr and (
+                closes[j] < gate_line[j] if require_below_gate else True)
+            if in_pit:
+                leave = 0
+                if closes[j] < bv:
+                    bv = closes[j]; b = j
+            else:
+                # 出坑候选: z 已脱离坑区 + 价格过 gate + 高于已知最低 2%
+                if zj >= z_thr and closes[j] >= gate_line[j] and closes[j] > bv * 1.02:
+                    # 确认: 后续 confirm_days-1 日 z 保持 >= -1.5
+                    confirmed = True
+                    kk = 0
+                    for k in range(1, confirm_days):
+                        if j + k >= n:
+                            confirmed = False
+                            break
+                        zk = resid[j + k] / pre_std if pre_std > 0 else 0.0
+                        if np.isfinite(zk) and zk < z_thr:
+                            confirmed = False
+                            kk = k
+                            break
+                    if confirmed:
+                        lch = j + confirm_days - 1  # 确认完成日(因果)
+                        break
+                    else:
+                        j += kk if kk > 0 else 1  # 假出坑: 坑延续
+                        continue
+                leave += 1
+                if closes[j] < bv:
+                    bv = closes[j]; b = j
+                if leave > merge_gap:
+                    break
+            j += 1
+        if lch is not None:
+            out.append((s, b, lch))
+            i = lch + 1
+        else:
+            i = j + 1
+    return out
+
+
 def compute_pit_quality(pits, closes, volumes, pre_win=20, fill_win=20, fill_lead=2):
     """黄金坑量能质量标签【2026-08-14】— 无未来函数,不改 pits 结构。
 

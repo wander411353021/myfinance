@@ -1011,7 +1011,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             _frg2, _ = _crr(_fc, window=250, use_log=True)  # res 不含 reg,缺失时自算
         if _frg2 is not None:
             _fv = df_ohlc['volume'].values.astype(np.float64) if 'volume' in df_ohlc.columns else None
-            _pits = _pr.detect_golden_pit_v2(_fc, _frg2)  # v2: 纯因果单遍扫描(2026-08-28,无未来函数,信号量翻倍)
+            _pits = _pr.detect_golden_pit_v3(_fc, _frg2)  # v3定版: z连续确认(2026-08-28,假出坑不切坑,无未来函数)
             _qual = _pr.compute_pit_quality(_pits, _fc, _fv) if _fv is not None else None
             _highpos = _pr.mark_high_pos(_pits, _fc)  # 高位坑软标注(坑前250日涨幅>150%)
             _super = _pr.mark_super_pits(_pits, _fc, _fv) if _fv is not None else None  # 超高胜率坑(93%)
@@ -1029,12 +1029,19 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _fast = _lch is not None and _lch - _b <= 5  # 快启动坑(坑底→出坑 ≤5 天,2026-08-15 由3放宽)
                 _hp = _highpos[_k] if _highpos is not None and _k < len(_highpos) else False  # 高位坑软标注
                 _sp = _super[_k] if _super is not None and _k < len(_super) else False  # 超高胜率坑(93%)
-                # 高质量坑(64%):坑长>=6 + reg250 上行(20日斜率>0)——2026-08-28 重定义
-                # (原 96% 金色=reg上行OR放量堆 是未来函数假象:放量堆确认 lch+7 买真实仅 60.7%,降级事后标注)
-                _hi_win = (_end - _s + 1) >= 6
-                if _lch is not None and _lch >= 20:
-                    _hi_win = _hi_win and (np.isfinite(_frg2[_lch]) and np.isfinite(_frg2[_lch - 20])
-                                           and _frg2[_lch] > _frg2[_lch - 20])
+                # 高胜率坑(73.3%): 低位深坑 + 短坑 + 前1-2次出坑 —— 2026-08-28 高收益分层定版
+                #   距250日高点<-40% + 坑长<15 + 90天内第<=2次出坑(1000池 n=483, 20日胜率73.3%, 均值+14.6%)
+                #   (原金色=坑长>=6+reg上行64%, 及更早的 96% reg上行OR放量堆 均为未来函数假象/弱因子, 已废弃)
+                _hi_win = False
+                if _lch is not None and _b >= 250:
+                    _hi_250 = np.max(_fc[max(0, _b - 250):_b + 1])
+                    _dd = _fc[_b] / _hi_250 - 1 if _hi_250 > 0 else 0.0
+                    _plen = _end - _s + 1
+                    _cnt = 1
+                    for _pk in range(_k):
+                        if _pits[_pk][2] is not None and _lch - _pits[_pk][2] <= 90:
+                            _cnt += 1
+                    _hi_win = _dd < -0.40 and _plen < 15 and _cnt <= 2
                 _col = '#FFC107' if _hi_win else ('#E53935' if _fast else _qcolor.get(_q, '#1565C0'))
                 # ⚠️ 必须用窗口坐标(0..n-1):折线 x 是窗口坐标,fill 用全局坐标(+offset)会画到窗口外被裁剪
                 _x0w = _s - offset
@@ -1042,7 +1049,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 ax5.fill_between(np.arange(_x0w, _x1w + 1), 0, _lv, step='post',
                                  color=_col, alpha=0.95 if _hi_win else (0.85 if _fast else 0.60),
                                  hatch='//' if _hp else None)  # 高位坑加斜纹标注
-                if _hi_win:  # 高胜率坑:K线面板金色背景区域标记(96%)
+                if _hi_win:  # 高胜率坑:K线面板金色背景区域标记(73.3%)
                     ax0.axvspan(_x0w - 0.5, _x1w + 0.5, color='#FFD54F', alpha=0.22, zorder=1)
                 if _sp:  # 加仓确认(出坑后7天巨量):金色★标在 K 线加仓位(放量堆起点)
                     _vcl = _pr.detect_volume_clusters(_fc, _fv)
