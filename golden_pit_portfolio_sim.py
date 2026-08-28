@@ -63,7 +63,14 @@ def collect_events(sym, buy_delay=0):
     return evs
 
 
-def run_sim(stocks, nfunds=NFUNDS, unit=UNIT, start=START_DATE, end=END_DATE, buy_delay=0):
+def run_sim(stocks, nfunds=NFUNDS, unit=UNIT, start=START_DATE, end=END_DATE, buy_delay=0,
+            stop_loss=0.0, pos_ratio=1.0, market_filter=False):
+    """对给定股票列表执行完整模拟，返回结果字典。
+    模型：10 个独立子账户复利——空仓时用该账户全部资金买入单票，20日后卖出资金回到该账户。
+    buy_delay: 0=出坑日收盘买入(理论) / 1=次日收盘买入(严格实盘), 卖出=买入后20交易日收盘。
+    stop_loss: 持有期内跌破买入价*(1-stop_loss) 提前止损离场(0=不止损)
+    pos_ratio: 每次买入用子账户资金比例(1.0=满仓, 0.7=7成仓)
+    market_filter: 沪深300 20日线下方(空头)时跳过买入信号(大盘过滤)"""
     """对给定股票列表执行完整模拟，返回结果字典。
     模型：10 个独立子账户复利——空仓时用该账户全部资金买入单票，20日后卖出资金回到该账户。
     buy_delay: 0=出坑日收盘买入(理论) / 1=次日收盘买入(严格实盘), 卖出=买入后20交易日收盘。"""
@@ -78,18 +85,80 @@ def run_sim(stocks, nfunds=NFUNDS, unit=UNIT, start=START_DATE, end=END_DATE, bu
     skipped = 0
     snapshot = []
 
-    def total_asset():
+    # 缓存每只股票 (ts_np, close) 用于按日期市价估值（避免反复读文件）
+    _kl = {}
+
+    def _kline(sym):
+        if sym not in _kl:
+            d = load(sym)
+            if d is None:
+                return None
+            ts = pd.to_datetime(d['ts'].astype('int64'), unit='s').values
+            _kl[sym] = (ts, d['close'].astype(float))
+        return _kl[sym]
+
+    def price_at(sym, cur_date):
+        """sym 在 cur_date（含）之前的最后收盘价（无未来）"""
+        kl = _kline(sym)
+        if kl is None:
+            return 0.0
+        ts, close = kl
+        i = int(np.searchsorted(ts, np.datetime64(pd.Timestamp(cur_date)), side='right') - 1)
+        if i < 0:
+            i = 0
+        return float(close[i])
+
+    def total_asset(cur_date):
+        """按当前日期市价估值全部持仓（反映真实浮盈浮亏）"""
         mv = 0.0
         for (sym, lch), pos in positions.items():
-            d = load(sym)
-            mv += pos['qty'] * float(d['close'][pos['close_idx']])
+            mv += pos['qty'] * price_at(sym, cur_date)
         return sum(funds) + mv
+
+    # 大盘过滤数据(沪深300 20日线)
+    _hs = None
+    if market_filter:
+        d = load('sh000300')
+        if d is not None:
+            ts300 = pd.to_datetime(d['ts'].astype('int64'), unit='s').values
+            cl300 = d['close'].astype(float)
+            ma20 = pd.Series(cl300).rolling(20).mean().values
+            _hs = (ts300, cl300, ma20)
+
+    def hs_bear(date):
+        if _hs is None:
+            return False
+        ts300, cl300, ma20 = _hs
+        i = int(np.searchsorted(ts300, np.datetime64(pd.Timestamp(date)), side='right') - 1)
+        if i < 20 or i >= len(cl300):
+            return False
+        return bool(cl300[i] < ma20[i])
 
     n_buy_signals = 0
     for ev in events:
         typ, date, sym, lch, idx = ev
+
+        # 止损检查(每次事件前, 用当前日期市价判定; 不早于买入日)
+        if stop_loss > 0 and positions:
+            for key in list(positions.keys()):
+                pos = positions[key]
+                if date <= pos['buy_date']:
+                    continue
+                cur = price_at(key[0], date)
+                if cur > 0 and cur <= pos['buy_price'] * (1 - stop_loss):
+                    proceeds = cur * pos['qty'] * (1 - COMMISSION - STAMP)
+                    funds[pos['fund_id']] += proceeds
+                    trades.append({'sym': key[0], 'buy_date': pos['buy_date'], 'sell_date': date,
+                                   'buy_price': pos['buy_price'], 'sell_price': cur,
+                                   'ret': cur / pos['buy_price'] - 1,
+                                   'invest': pos['cost'] / (1 + COMMISSION)})
+                    del positions[key]
+                    snapshot.append((date, total_asset(date)))
+
         if typ == 'buy':
             if date < start:
+                continue
+            if market_filter and hs_bear(date):
                 continue
             n_buy_signals += 1
             if len(positions) >= nfunds:
@@ -103,7 +172,7 @@ def run_sim(stocks, nfunds=NFUNDS, unit=UNIT, start=START_DATE, end=END_DATE, bu
             fid = max(free, key=lambda i: funds[i])
             d = load(sym)
             price = float(d['close'][idx])
-            amount = funds[fid] * 0.99
+            amount = funds[fid] * 0.99 * pos_ratio
             qty = int(amount / price / 100) * 100
             if qty <= 0:
                 continue
@@ -114,7 +183,7 @@ def run_sim(stocks, nfunds=NFUNDS, unit=UNIT, start=START_DATE, end=END_DATE, bu
             funds[fid] -= cost
             positions[(sym, lch)] = {'fund_id': fid, 'qty': qty, 'cost': cost,
                                      'buy_price': price, 'buy_date': date, 'close_idx': idx}
-            snapshot.append((date, total_asset()))
+            snapshot.append((date, total_asset(date)))
         elif typ == 'sell':
             key = (sym, lch)
             if key not in positions:
@@ -128,13 +197,13 @@ def run_sim(stocks, nfunds=NFUNDS, unit=UNIT, start=START_DATE, end=END_DATE, bu
                            'buy_price': pos['buy_price'], 'sell_price': price,
                            'ret': price / pos['buy_price'] - 1,
                            'invest': pos['cost'] / (1 + COMMISSION)})
-            snapshot.append((date, total_asset()))
+            snapshot.append((date, total_asset(date)))
 
-    snapshot.append((end, total_asset()))
+    snapshot.append((end, total_asset(end)))
     open_pos = list(positions.items())
-    final_asset = total_asset()
+    final_asset = total_asset(end)
     rets = np.array([t['ret'] for t in trades]) if trades else np.array([])
-    snap_df = pd.DataFrame(snapshot, columns=['date', 'asset']).sort_values('date').reset_index(drop=True)
+    snap_df = pd.DataFrame(snapshot, columns=['date', 'asset']).reset_index(drop=True)  # 保持事件顺序, 同日不乱序
 
     # 年度资产曲线
     year_assets = {}
