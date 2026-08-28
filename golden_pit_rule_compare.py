@@ -46,7 +46,7 @@ def collect(symbol):
 def main():
     pool_file = sys.argv[1] if len(sys.argv) > 1 else 'stock_pool_300.txt'
     top = int(sys.argv[2]) if len(sys.argv) > 2 else 300
-    stocks = [l.strip().split(',')[0] for l in open(os.path.join(WORKDIR, pool_file)) if l.strip()][:top]
+    stocks = [l.strip().split(',')[0] for l in open(os.path.join(WORKDIR, pool_file), encoding='utf-8') if l.strip()][:top]
     print(f'扫描 {len(stocks)} 只 ...', flush=True)
     rows = []
     t0 = time.time()
@@ -59,7 +59,7 @@ def main():
             print(f'  {i+1}/{len(stocks)} 信号{len(rows)} {time.time()-t0:.0f}s', flush=True)
     print(f'完成, 共 {len(rows)} 个已出坑信号(z<-1.5)', flush=True)
     df = pd.DataFrame(rows)
-    df.to_csv('/tmp/gp_rule_compare.csv', index=False)
+    df.to_csv(os.path.join(WORKDIR, 'result/gp_rule_compare.csv'), index=False)
 
     def rule(launch_max, len_min):
         return df[(df['launch'] <= launch_max) & (df['pit_len'] >= len_min)]

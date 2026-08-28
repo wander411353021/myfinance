@@ -108,7 +108,7 @@ def main():
     top = int(sys.argv[2]) if len(sys.argv) > 2 else 300
     start_from = int(sys.argv[3]) if len(sys.argv) > 3 else 0
     stocks = []
-    for line in open(os.path.join(WORKDIR, pool_file)):
+    for line in open(os.path.join(WORKDIR, pool_file), encoding='utf-8'):
         line = line.strip()
         if line:
             stocks.append(line.split(',')[0].strip())

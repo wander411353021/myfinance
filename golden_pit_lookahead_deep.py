@@ -20,7 +20,7 @@ import golden_pit_portfolio_sim as sim
 
 N_STOCKS = int(sys.argv[1]) if len(sys.argv) > 1 else 40
 _pool = os.path.join(sim.WORKDIR, 'stock_pool_1000.txt')
-stocks = [l.strip().split(',')[0] for l in open(_pool) if l.strip()][:N_STOCKS]
+stocks = [l.strip().split(',')[0] for l in open(_pool, encoding='utf-8') if l.strip()][:N_STOCKS]
 rng = np.random.default_rng(20260828)
 
 mismatch = 0; checked = 0; checked_sig = 0; checked_reg = 0

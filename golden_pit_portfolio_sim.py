@@ -235,7 +235,7 @@ def main():
     top = int(sys.argv[2]) if len(sys.argv) > 2 else 1000
     buy_delay = int(sys.argv[3]) if len(sys.argv) > 3 else 0
     delay_txt = '次日买入(严格实盘口径)' if buy_delay else '出坑日收盘买入(理论口径)'
-    stocks = [l.strip().split(',')[0] for l in open(os.path.join(WORKDIR, pool_file)) if l.strip()][:top]
+    stocks = [l.strip().split(',')[0] for l in open(os.path.join(WORKDIR, pool_file), encoding='utf-8') if l.strip()][:top]
     t0 = time.time()
     # 预扫描显示进度
     n_ev = 0
