@@ -1218,7 +1218,7 @@ def detect_golden_pit_v2(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0
 
 
 def detect_golden_pit_v3(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9,
-                       use_pre_std=True, require_below_gate=False, confirm_days=3, min_len=3):
+                       use_pre_std=True, require_below_gate=False, confirm_days=3, min_len=3, min_drop=0.05):
     """黄金坑检测 v3【2026-08-28 reasonix 定版】— z 连续确认,克服 z 缺陷。
 
     在 v2(纯因果单遍扫描)基础上,出坑判定升级:
@@ -1232,10 +1232,10 @@ def detect_golden_pit_v3(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0
     坑结构(688099 @20251001): 4/03~6/27 大坑 + 6/30~7/23 横盘段 + 7/31~8/15 一坑
     (5/13、6/25 假出坑并入大坑,不再碎坑)。
 
-    min_len=3(定版, 2026-08-28): 过滤 1-2 天 z 抖动微坑(低波动股浅微坑,
-    如 600613 一堆 len=1 的 z=-1.5~-1.9 抖动)。全池: n=2556, 胜率 58.2%
-    (不过滤 58.1%, 持平); 坑长>=5 胜率掉到 55.8%, >=3 是胜率无损最优点。
-    600613 @2026-08: 180天 7坑→4坑。
+    min_len=3(2026-08-28): 过滤 1-2 天 z 抖动微坑。全池 n=2556, 胜率 58.2%(无损)。
+    min_drop=0.05(2026-08-28 用户拍板): 过滤坑内跌幅<5% 的微浅坑(低位横盘)。
+    代价: 全池 n=1695, 胜率 52.7%(-5.5pp)——数据上微浅坑胜率不低(58.5%),
+    但用户要求视觉干净(600613 180天 7坑→2坑)。注意勿再提高 min_drop(8% 掉到 51%)。
 
     返回 [(段起点 s, 坑底 b, 启动日 lch 或 None)] 升序。
     """
@@ -1300,7 +1300,7 @@ def detect_golden_pit_v3(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0
                 if leave > merge_gap:
                     break
             j += 1
-        if lch is not None and b - s + 1 >= min_len:
+        if lch is not None and b - s + 1 >= min_len and (closes[s] / closes[b] - 1) >= min_drop:
             out.append((s, b, lch))
             i = lch + 1
         else:
