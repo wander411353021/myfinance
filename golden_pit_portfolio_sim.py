@@ -118,6 +118,7 @@ def main():
             funds[fid] -= cost
             positions[(sym, lch)] = {'fund_id': fid, 'qty': qty, 'cost': cost,
                                      'buy_price': price, 'buy_date': date, 'close_idx': idx}
+            snapshot.append((date, total_asset()))
         elif typ == 'sell':
             key = (sym, lch)
             if key not in positions:
@@ -133,6 +134,9 @@ def main():
                            'invest': pos['cost'] / (1 + COMMISSION)})
             snapshot.append((date, total_asset()))
         # sell_eod: 数据末尾未到期, 保持持仓, 最后统一估值
+
+    # 补充最终快照（数据最后一天）
+    snapshot.append((pd.Timestamp('2026-08-28'), total_asset()))
 
     # 未平仓持仓: 按最后收盘估值
     open_pos = list(positions.items())
@@ -158,10 +162,24 @@ def main():
     if trades:
         df = pd.DataFrame(trades)
         df['year'] = df['sell_date'].dt.year
-        print('\n分年度已实现:')
+        print('\n分年度已实现(口径B):')
         for y, g in df.groupby('year'):
             r = g['ret'].values
             print(f'  {y}: {len(g)}笔 胜率{(r > 0).mean()*100:.0f}% 均值{r.mean()*100:+.1f}% 收益{(g["ret"]*g["invest"]).sum():+,.0f}元')
+
+    # 分年度总资产（口径B 复利曲线, 年末含持仓市值）
+    snap = pd.DataFrame(snapshot, columns=['date', 'asset']).sort_values('date').reset_index(drop=True)
+    snap['year'] = snap['date'].dt.year
+    print('\n分年度总资产(口径B 子账户复利):')
+    print('  期初 2023-01-01: 1,000,000 元')
+    prev = 1000000.0
+    for y in sorted(snap['year'].unique()):
+        ys = snap[snap['year'] == y]
+        ye = ys['asset'].iloc[-1]
+        # 年末 = 该年最后快照（含持仓市值）
+        yret = ye / prev - 1
+        print(f'  {y}年末: {ye:>12,.0f} 元   年度收益 {yret:+.1%}')
+        prev = ye
 
     # 最大回撤（快照法）
     if snapshot:
