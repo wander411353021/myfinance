@@ -1136,7 +1136,12 @@ def detect_golden_pit(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9,
 
 
 def detect_golden_pit_v2(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9,
-                         use_pre_std=True, require_below_gate=False):
+                         use_pre_std=True, require_below_gate=False,
+                         smooth_w=1, use_dual=False, reg120=None):
+    # 2026-08-29 polo4111 修复: da74de0 把双基准代码块粘入 v2 但签名未加参数,
+    # 导致 smooth_w/use_dual/reg120 未定义(NameError), 所有调用 v2 的脚本崩溃。
+    # 补参数并默认关闭双基准(smooth_w=1/use_dual=False) → v2 恢复原因果单遍扫描行为;
+    # 需要双基准/平滑请用 v3(签名完整)。
     """黄金坑检测 v2【2026-08-28 reasonix 重写】— 纯因果单遍扫描,无未来函数。
 
     修正点(对比 detect_golden_pit):
