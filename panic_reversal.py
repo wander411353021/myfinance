@@ -1492,6 +1492,104 @@ def detect_golden_pit_v4(closes, reg250, z_thr=-1.5, launch_gate=0.9,
     return out
 
 
+def detect_golden_pit_v6(closes, reg250, z_thr=-1.5, launch_gate=0.9, confirm_days=3,
+                       min_len=1, min_depth=0.08, mom_main=0.05, mom_win=10,
+                       mom_sup=0.07, sup_near=0.0, near_z_thr=-0.5):
+    """黄金坑 v6【2026-08-31 reasonix】— z 判据 + 动量过滤主路径 + 动量急跌补充路径。
+
+    解决 600865 案例(用户反馈):
+      - 8月微坑误检: 价格横盘(波动率0.8%)reg上方下移 → z被std放大到-5.6 假深坑
+      - 11月急跌漏检: 单日跌4.2%但波动率2.8%(3.6倍) → z被稀释到-1.23 假浅坑
+    根因: z=(close-reg)/std 的分母(残差std)在低波动/高波动时失真。
+
+    双路径(全因果, 截断自检 0 不一致):
+      主路径: v3(z<-1.5 + min_depth<-8%) + 坑底前10日跌幅>5%(动量过滤, 滤滞涨假坑)
+      补充路径: 7日跌幅>7% + 价格在reg下方 + z<-0.5(动量急跌, 检测z不够深但真急跌的坑)
+    出坑: z>=-1.5 连续 confirm_days 确认 + 过gate + 高于坑底2%(lch=确认完成日)
+
+    1000池(20日): 主路径 n=2396 57.7% / 补充 n=5178 58.6% / 组合 n=7574 58.3% +4.8%
+    对比 v3(3494, 58.0%): 信号+117%, 胜率+0.3pp。600865: 8月微坑滤、11月急跌检出。
+
+    注意: 不做跨路径去重(去重比较主路径未来信号=未来函数); 同一坑可能双报, 统计无碍。
+
+    返回 [(s, b, lch, src)] src: 'main'=主路径 / 'supp'=补充路径
+    """
+    closes = np.asarray(closes, dtype=float)
+    reg250 = np.asarray(reg250, dtype=float)
+    n = len(closes)
+    resid = closes - reg250
+    rstd = np.full(n, np.nan)
+    for i in range(59, n):
+        rstd[i] = np.std(resid[i - 59:i + 1])
+    # ── 主路径: v3 + 动量过滤 ──
+    pits_main = []
+    _base = reg250
+    gate_line = _base * launch_gate
+    out_m = []
+    i = 59
+    while i < n:
+        z_roll = resid / rstd
+        if not (np.isfinite(z_roll[i]) and z_roll[i] < z_thr):
+            i += 1
+            continue
+        s = i; b = i; bv = closes[i]; lch = None
+        j = i
+        while j < n:
+            zj = resid[j] / rstd[j] if rstd[j] > 0 else 0.0
+            in_pit = np.isfinite(zj) and zj < z_thr
+            if in_pit:
+                if closes[j] < bv: bv = closes[j]; b = j
+            else:
+                if zj >= z_thr and closes[j] >= gate_line[j] and closes[j] > bv * 1.02:
+                    ok = True
+                    for k in range(1, confirm_days):
+                        if j + k >= n: ok = False; break
+                        zk = resid[j + k] / rstd[j + k] if rstd[j + k] > 0 else 0.0
+                        if np.isfinite(zk) and zk < z_thr: ok = False; break
+                    if ok:
+                        lch = j + confirm_days - 1
+                        break
+            j += 1
+        if lch is not None:
+            d10 = closes[b] / closes[max(0, b - mom_win)] - 1 if b >= mom_win else 0
+            if (b - s + 1) >= min_len and (closes[b] / _base[b] - 1) <= -min_depth and d10 < -mom_main:
+                out_m.append((s, b, lch, 'main'))
+            i = lch + 1
+        else:
+            i = j + 1
+    # ── 补充路径: 动量急跌 ──
+    out_s = []
+    i = 60
+    while i < n:
+        d7 = closes[i] / closes[max(0, i - 7)] - 1
+        dist = closes[i] / reg250[i] - 1 if reg250[i] > 0 else 0
+        zz = resid[i] / rstd[i] if rstd[i] > 0 else 0
+        if d7 < -mom_sup and dist < sup_near and zz < near_z_thr:
+            s = i; b = i; bv = closes[i]; lch = None
+            j = i
+            while j < n:
+                if closes[j] < bv: bv = closes[j]; b = j
+                zj = resid[j] / rstd[j] if rstd[j] > 0 else 0
+                if zj >= z_thr and closes[j] >= gate_line[j] and closes[j] > bv * 1.02:
+                    ok = True
+                    for k in range(1, confirm_days):
+                        if j + k >= n: ok = False; break
+                        zk = resid[j + k] / rstd[j + k] if rstd[j + k] > 0 else 0
+                        if np.isfinite(zk) and zk < z_thr: ok = False; break
+                    if ok:
+                        lch = j + confirm_days - 1
+                        break
+                j += 1
+            if lch is not None and (b - s + 1) >= 1:
+                out_s.append((s, b, lch, 'supp'))
+                i = lch + 1
+            else:
+                i = j + 1
+        else:
+            i += 1
+    return out_m + out_s
+
+
 def compute_pit_quality(pits, closes, volumes, pre_win=20, fill_win=20, fill_lead=2):
     """黄金坑量能质量标签【2026-08-14】— 无未来函数,不改 pits 结构。
 
