@@ -1402,6 +1402,96 @@ def detect_violent_deviation(closes, reg250, window=10, drop=0.20):
     return out
 
 
+def detect_golden_pit_v4(closes, reg250, z_thr=-1.5, launch_gate=0.9,
+                          abs_drop_thr=0.08, near_reg_thr=0.05,
+                          near_drop_thr=0.07, near_drop_win=7, near_z_thr=-0.5,
+                          confirm_days=3, min_depth=0.08, min_pit_amp=0.15,
+                          b_min_abs_drop=0.08):
+    """
+    黄金坑v4双因子检测
+    返回: [(start_idx, bottom_idx, launch_idx, pit_type), ...]
+          pit_type: 'A'=标准超跌坑, 'B'=贴近reg急跌坑
+    """
+    closes = np.asarray(closes, dtype=float)
+    reg250 = np.asarray(reg250, dtype=float)
+    n = len(closes)
+    resid = closes - reg250
+    rstd = np.full(n, np.nan)
+    for i in range(59, n):
+        rstd[i] = np.std(resid[i-59:i+1])
+    z = np.where(rstd > 0, resid / rstd, 0.0)
+    gate_line = reg250 * launch_gate
+    out = []
+    i = 59
+    while i < n:
+        # === 双因子进坑判据 ===
+        in_pit = False
+        ptype = ''
+        # 路径A: 标准超跌坑
+        if np.isfinite(z[i]) and z[i] < z_thr:
+            hi60 = closes[max(0, i-60):i+1].max()
+            drop60 = closes[i] / hi60 - 1 if hi60 > 0 else 0
+            if drop60 < -abs_drop_thr:
+                in_pit = True
+                ptype = 'A'
+        # 路径B: 贴近reg急跌坑
+        if not in_pit:
+            dist_reg = closes[i] / reg250[i] - 1 if (np.isfinite(reg250[i]) and reg250[i] > 0) else 0
+            if (dist_reg > -near_reg_thr and np.isfinite(z[i]) and z[i] < near_z_thr
+                    and i >= near_drop_win):
+                dropN = closes[i] / closes[i-near_drop_win] - 1
+                if dropN < -near_drop_thr:
+                    in_pit = True
+                    ptype = 'B'
+        if not in_pit:
+            i += 1
+            continue
+        # === 坑内维护 + 出坑判定 ===
+        s = i
+        b = i
+        bv = closes[i]
+        lch = None
+        j = i
+        pre_hi = closes[max(0, i-10):i].max() if i > 0 else closes[i]
+        while j < n:
+            if closes[j] < bv:
+                bv = closes[j]
+                b = j
+            zj = z[j] if np.isfinite(z[j]) else 0
+            if (zj >= z_thr and closes[j] >= gate_line[j]
+                    and closes[j] > bv * 1.02):
+                # z连续确认
+                confirmed = True
+                for k in range(1, confirm_days):
+                    if j + k >= n:
+                        confirmed = False
+                        break
+                    zk = z[j+k] if np.isfinite(z[j+k]) else 0
+                    if np.isfinite(zk) and zk < z_thr:
+                        confirmed = False
+                        break
+                if confirmed:
+                    lch = j + confirm_days - 1  # 修复(2026-08-30 reasonix): 确认完成日, 非候选日
+                    # 原 lch=j 是未来函数: 确认检查了 j+1..j+confirm_days-1 的 z, 截断到 j 无法复现
+                    break
+            j += 1
+        # === 分路径过滤 ===
+        if lch is not None:
+            if ptype == 'A':
+                depth = closes[b] / reg250[b] - 1 if (np.isfinite(reg250[b]) and reg250[b] > 0) else 0
+                pit_hi = closes[s:lch+1].max()
+                pit_lo = closes[s:lch+1].min()
+                amp = pit_hi / pit_lo - 1 if pit_lo > 0 else 0
+                if depth <= -min_depth and amp >= min_pit_amp:
+                    out.append((s, b, lch, ptype))
+            else:  # 路径B: 用绝对跌幅(不用距reg深度, 因为贴近reg天然浅)
+                abs_drop = closes[b] / pre_hi - 1 if pre_hi > 0 else 0
+                if abs_drop <= -b_min_abs_drop:
+                    out.append((s, b, lch, ptype))
+        i = (lch + 1) if lch is not None else j + 1
+    return out
+
+
 def compute_pit_quality(pits, closes, volumes, pre_win=20, fill_win=20, fill_lead=2):
     """黄金坑量能质量标签【2026-08-14】— 无未来函数,不改 pits 结构。
 

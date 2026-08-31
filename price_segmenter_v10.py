@@ -1011,14 +1011,10 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             _frg2, _ = _crr(_fc, window=250, use_log=True)  # res 不含 reg,缺失时自算
         if _frg2 is not None:
             _fv = df_ohlc['volume'].values.astype(np.float64) if 'volume' in df_ohlc.columns else None
-            # 双基准(2026-08-28): reg120>reg250 时用 reg120 做 z 基准, 补牛市信号(信号+57%,胜率58.4%)
-            _frg120 = None
-            if reg_preds is not None:
-                _frg120 = np.asarray(reg_preds, dtype=np.float64)
-            else:
-                from mean_reversion.signal_residual import compute_rolling_regression as _crr120
-                _frg120, _ = _crr120(_fc, window=120, use_log=True)
-            _pits = _pr.detect_golden_pit_v3(_fc, _frg2, _frg120, use_dual=True)
+            # v4(2026-08-30 polo4111 + reasonix修复): 双因子进坑(A标准超跌/B贴近reg急跌)
+            _pits_raw = _pr.detect_golden_pit_v4(_fc, _frg2)
+            _pits = [(p[0], p[1], p[2]) for p in _pits_raw]  # 质量函数需三元组
+            _ptypes = [p[3] for p in _pits_raw]  # 'A' / 'B'
             _qual = _pr.compute_pit_quality(_pits, _fc, _fv) if _fv is not None else None
             _highpos = _pr.mark_high_pos(_pits, _fc)  # 高位坑软标注(坑前250日涨幅>150%)
             _super = _pr.mark_super_pits(_pits, _fc, _fv) if _fv is not None else None  # 超高胜率坑(93%)
@@ -1029,6 +1025,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             pit_mask = np.zeros(len(_fc))
             ax5.set_facecolor('#F5F5F5')
             for _k, (_s, _b, _lch) in enumerate(_pits):
+                _pt = _ptypes[_k] if _k < len(_ptypes) else 'A'  # v4 路径类型
                 _end = _lch if _lch is not None else _b  # 坑画到出坑日(启动日);未出坑画到坑底
                 _q = _qual[_k][2] if _qual is not None else 'normal'
                 _lv = _qh.get(_q, 0.7)
@@ -1049,7 +1046,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                         if _pits[_pk][2] is not None and _lch - _pits[_pk][2] <= 90:
                             _cnt += 1
                     _hi_win = _dd < -0.40 and _plen < 15 and _cnt <= 2
-                _col = '#FFC107' if _hi_win else ('#E53935' if _fast else _qcolor.get(_q, '#1565C0'))
+                _base_col = '#F9A825' if _pt == 'A' else '#E91E63'  # v4: A标准超跌(黄) / B贴近reg急跌(粉)
+                _col = '#FFC107' if _hi_win else _base_col
                 # ⚠️ 必须用窗口坐标(0..n-1):折线 x 是窗口坐标,fill 用全局坐标(+offset)会画到窗口外被裁剪
                 _x0w = _s - offset
                 _x1w = _end - offset + 1  # steps-post 需右闭边界
