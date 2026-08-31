@@ -1015,6 +1015,14 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             _pits_raw = _pr.detect_golden_pit_v6(_fc, _frg2)
             _pits = [(p[0], p[1], p[2]) for p in _pits_raw]
             _psrc = [p[3] for p in _pits_raw]  # 'main' / 'supp'
+            # reg120 基准坑(2026-08-31 用户要求标记): 短期趋势线深跌破位, 紫色标记
+            _frg120r = None
+            if reg_preds is not None:
+                _frg120r = np.asarray(reg_preds, dtype=np.float64)
+            else:
+                from mean_reversion.signal_residual import compute_rolling_regression as _crr120r
+                _frg120r, _ = _crr120r(_fc, window=120, use_log=True)
+            _pits120 = [p for p in _pr.detect_golden_pit_v3(_fc, _frg120r) if p[2] is not None]
             _qual = _pr.compute_pit_quality(_pits, _fc, _fv) if _fv is not None else None
             _highpos = _pr.mark_high_pos(_pits, _fc)  # 高位坑软标注(坑前250日涨幅>150%)
             _super = _pr.mark_super_pits(_pits, _fc, _fv) if _fv is not None else None  # 超高胜率坑(93%)
@@ -1078,6 +1086,15 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             ax5.set_ylabel('GOLD PIT', fontsize=8)
             ax5.grid(axis='y', alpha=0.3)
             ax5.legend(loc='upper left', fontsize=7)
+        # reg120 基准坑(短期趋势线破位): K线紫色背景 + GOLD PIT 紫色带(2026-08-31)
+        for _s120, _b120, _lch120 in _pits120:
+            _x0r = _s120 - offset - 0.5
+            _x1r = (_lch120 if _lch120 is not None else _b120) - offset + 0.5
+            if _x1r > 0 and _x0r < n:
+                ax0.axvspan(max(_x0r, -0.5), min(_x1r, n + 0.5), color='#7B1FA2', alpha=0.16, zorder=1)
+                ax5.axvspan(max(_x0r, -0.5), min(_x1r, n + 0.5), color='#7B1FA2', alpha=0.35, zorder=1)
+        if _pits120:
+            ax0.plot([], [], color='#7B1FA2', lw=3, alpha=0.6, label='Reg120 Pit')
     except Exception:
         pass
 
