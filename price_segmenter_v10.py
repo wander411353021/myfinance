@@ -1086,15 +1086,14 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             ax5.set_ylabel('GOLD PIT', fontsize=8)
             ax5.grid(axis='y', alpha=0.3)
             ax5.legend(loc='upper left', fontsize=7)
-        # reg120 基准坑(短期趋势线破位): K线紫色背景 + GOLD PIT 紫色带(2026-08-31)
+        # reg120 基准坑(短期趋势线破位): 仅 GOLD PIT 面板紫色带(2026-08-31, K线不标背景)
         for _s120, _b120, _lch120 in _pits120:
             _x0r = _s120 - offset - 0.5
             _x1r = (_lch120 if _lch120 is not None else _b120) - offset + 0.5
             if _x1r > 0 and _x0r < n:
-                ax0.axvspan(max(_x0r, -0.5), min(_x1r, n + 0.5), color='#7B1FA2', alpha=0.16, zorder=1)
                 ax5.axvspan(max(_x0r, -0.5), min(_x1r, n + 0.5), color='#7B1FA2', alpha=0.35, zorder=1)
         if _pits120:
-            ax0.plot([], [], color='#7B1FA2', lw=3, alpha=0.6, label='Reg120 Pit')
+            ax5.plot([], [], color='#7B1FA2', lw=3, alpha=0.7, label='Reg120 Pit')
     except Exception:
         pass
 
