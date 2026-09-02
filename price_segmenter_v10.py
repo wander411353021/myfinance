@@ -1022,7 +1022,9 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             else:
                 from mean_reversion.signal_residual import compute_rolling_regression as _crr120r
                 _frg120r, _ = _crr120r(_fc, window=120, use_log=True)
-            _pits120 = [p for p in _pr.detect_golden_pit_v3(_fc, _frg120r) if p[2] is not None]
+            _pits120 = [p for p in _pr.detect_golden_pit_v3(_fc, _frg120r, min_len=3) if p[2] is not None]
+            # min_len=3(2026-09-02): 滤单日/2日假坑——003040 3/23(len1,出坑后-33%)4/27(len2,-26%);
+            # 全池 reg120 坑坑长3-5 胜率63.3%(单日55.3%), 短坑是假坑重灾区
             _qual = _pr.compute_pit_quality(_pits, _fc, _fv) if _fv is not None else None
             _highpos = _pr.mark_high_pos(_pits, _fc)  # 高位坑软标注(坑前250日涨幅>150%)
             _super = _pr.mark_super_pits(_pits, _fc, _fv) if _fv is not None else None  # 超高胜率坑(93%)
