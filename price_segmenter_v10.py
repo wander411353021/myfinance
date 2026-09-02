@@ -658,10 +658,29 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             _gb250 = _frg2
         _gbase = np.maximum(_gb120, _gb250)
         # 2026-09-02 用户改: 只显示最上(+12%)最下(+3%)两根包络线(避免线多杂乱)
+        # 2026-09-02 用户再改: 股价离reg特别远时(深坑)向下扩展格栅线(绿色虚线, 支撑参考)
         _glev_col = [(0.03, '#42A5F5', 'Grid +3% (下沿)'), (0.12, '#8D6E63', 'Grid +12% (上沿)')]
         for _gl, _gc, _gt in _glev_col:
             _glv_line = _gbase[offset:offset + n] * (1 + _gl)
             ax0.plot(x, _glv_line, color=_gc, linewidth=2.4, linestyle='-', alpha=0.95, label=_gt)
+        # 向下扩展: 股价深坑时画 -3%/-9% 两条绿色虚线(支撑参考, 非信号; 2026-09-02 用户定: 最多2条)
+        try:
+            _gw_base = _gbase[offset:offset + n]
+            _gw_close = closes
+            _m_fin = np.isfinite(_gw_base) & np.isfinite(_gw_close)
+            if _m_fin.any():
+                _min_dev = float(np.min(_gw_close[_m_fin] / _gw_base[_m_fin] - 1))
+                # 向下扩展: 只显示 -3% 和 -9% 两条(最低到基准91%= -9%, 不再往下; 2026-09-02 用户定)
+                _down_lvs = [-0.03]
+                if _min_dev < -0.09:
+                    _down_lvs.append(-0.09)
+                for _down_lv in _down_lvs:
+                    _glv_line = _gbase[offset:offset + n] * (1 + _down_lv)
+                    ax0.plot(x, _glv_line, color='#2E7D32', linewidth=1.6,
+                             linestyle='--', alpha=0.7,
+                             label=f'Grid {_down_lv*100:.0f}% (下方支撑)')
+        except Exception as _e:
+            print(f'[grid down] 绘制失败: {_e}')
     except Exception as _e:
         print(f'[grid expect] 绘制失败: {_e}')
 
