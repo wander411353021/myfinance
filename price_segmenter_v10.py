@@ -664,8 +664,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         else:
             _gb250 = _frg2
         _gbase = np.maximum(_gb120, _gb250)
-        _glev_col = [(0.03, '#42A5F5', 'Grid +3%'), (0.06, '#AB47BC', 'Grid +6%'),
-                     (0.09, '#FF7043', 'Grid +9%'), (0.12, '#8D6E63', 'Grid +12%')]
+        # 2026-09-02 用户改: 只显示最上(+12%)最下(+3%)两根包络线(避免线多杂乱)
+        _glev_col = [(0.03, '#42A5F5', 'Grid +3% (下沿)'), (0.12, '#8D6E63', 'Grid +12% (上沿)')]
         for _gl, _gc, _gt in _glev_col:
             _glv_line = _gbase[offset:offset + n] * (1 + _gl)
             ax0.plot(x, _glv_line, color=_gc, linewidth=1.0, linestyle='--', alpha=0.9, label=_gt)
