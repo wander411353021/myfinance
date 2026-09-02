@@ -1019,6 +1019,25 @@ def detect_watch_pool(closes, reg250, z_lo=-0.5, z_hi=1.5, flat_amp=0.25, min_le
             out.append((s, e))
     return out
 
+def double_smooth_reg(reg, w1=5, w2=5):
+    """reg 序列两轮滚动平均平滑(2026-09-02 用户要求: 包络线更平滑)。
+
+    因果: 每轮只用当前及以前数据(滚动窗口), 有效起点 = w1+w2-2 之后。
+    返回与输入等长数组(前段为 nan)。
+    """
+    reg = np.asarray(reg, dtype=float)
+    n = len(reg)
+    def _ma(x, w):
+        out = np.full(n, np.nan)
+        for i in range(w - 1, n):
+            seg = x[i - w + 1:i + 1]
+            if np.all(np.isfinite(seg)):
+                out[i] = np.mean(seg)
+        return out
+    s1 = _ma(reg, w1)
+    return _ma(s1, w2)
+
+
 def detect_golden_pit(closes, reg250, z_thr=-1.5, merge_gap=15, launch_gate=0.9, use_pre_std=True,
                      max_pre_gain=None, require_below_gate=False):
     # require_below_gate(默认 False=关闭):坑需"价格跌破门控线"? 验证方向反了——

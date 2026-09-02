@@ -562,6 +562,16 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     ohlc = df_ohlc.tail(tail_days).copy().reset_index(drop=True)
     n = len(ohlc); x = np.arange(n); offset = len(df_ohlc) - n  # ohlc 是 df_ohlc 末尾 n 行，offset 为其在原序列中的起始下标（恒 >=0）
 
+    # 2026-09-02 用户要求: reg120/reg250 两轮平滑(5+5), 使包络线平滑(所有下游: 显示/坑检测/包络线共用)
+    try:
+        import panic_reversal as _prs
+        if reg_preds is not None:
+            reg_preds = _prs.double_smooth_reg(reg_preds, 5, 5)
+        if reg_preds_long is not None:
+            reg_preds_long = _prs.double_smooth_reg(reg_preds_long, 5, 5)
+    except Exception as _e:
+        print(f'[reg smooth] 失败: {_e}')
+
     if hide_mid_panels:
         fig, axes = plt.subplots(5, 1, figsize=(22, 16),
                                  sharex=True,
