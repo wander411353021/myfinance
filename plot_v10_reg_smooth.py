@@ -98,18 +98,20 @@ def draw(symbol, end_date, tail_days=150, smooth_w=10, out_path=None):
     try:
         _reg120_ds = pr.double_smooth_reg(reg120, 5, 5)
         _reg250_ds = pr.double_smooth_reg(reg250, 5, 5)
-        _gt, _gl = pr.compute_grid_target_price(c, _reg120_ds, _reg250_ds, max_dev=0.20)
+        _glv_def = (-0.09, -0.03, 0.03, 0.06, 0.09, 0.12)  # 与compute_grid_target_price默认一致(含向下档)
+        _gt, _gl = pr.compute_grid_target_price(c, _reg120_ds, _reg250_ds, levels=_glv_def, max_dev=0.20)
         _gt_win = _gt[offset:offset + tail_days]
         _x_win = np.arange(tail_days)
         _m = np.isfinite(_gt_win)
         if _m.any():
             ax0.plot(_x_win[_m], _gt_win[_m], color='#D81B60', lw=2.2,
                      alpha=0.9, zorder=13, label='Grid Target (阶梯, 偏离>20%置空)')
-            # 标注当前档位
+            # 标注当前档位(按实际档位显示百分比, 支持负档)
             _cur = _gl[-1]
             if _cur >= 0:
                 _tgt = _gt[-1]
-                ax0.annotate(f'目标{_tgt:.2f} (+{(_cur+1)*3}%)',
+                _pct = _glv_def[_cur] * 100
+                ax0.annotate(f'目标{_tgt:.2f} ({_pct:+.0f}%)',
                              (tail_days-1, _tgt), textcoords='offset points',
                              xytext=(-70, 22), fontsize=9, color='#D81B60',
                              fontweight='bold', arrowprops=dict(arrowstyle='-', color='#D81B60', lw=0.8))

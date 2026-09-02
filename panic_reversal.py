@@ -1648,12 +1648,14 @@ def detect_grid_break(closes, reg120, reg250,
 
 
 def compute_grid_target_price(closes, reg120, reg250,
-                              levels=(0.03, 0.06, 0.09, 0.12),
+                              levels=(-0.09, -0.03, 0.03, 0.06, 0.09, 0.12),
                               max_dev=0.20,
                               down_confirm=5):
     """阶梯式分段目标价(2026-09-02 polo4111, 严格无未来函数, 因果)。
 
     以 max(reg120, reg250) 为基准, 档位 levels 形成阶梯目标价。
+    levels 含向下档位(最低 -9% = 基准91%, 与格栅线向下扩展一致),
+    使深坑时目标价可下探到 reg 下方(2026-09-02 用户要求)。
 
     【严格因果/无未来函数】:
       - 每天目标价 = base[t]*(1+levels[cur]), 其中 cur 是**昨天收盘后确定**的状态;
