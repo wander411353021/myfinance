@@ -1607,23 +1607,24 @@ def detect_grid_break(closes, reg120, reg250,
     """
     closes = np.asarray(closes, dtype=float)
     n = len(closes)
-    regs = {'r120': np.asarray(reg120, dtype=float), 'r250': np.asarray(reg250, dtype=float)}
+    # 2026-09-02 用户改版: 格栅基准 = max(reg120, reg250)(两线取大, 上包络压制线),
+    # 只对这条合并基准线检测(单组格栅, 不再两条reg各一组)
+    base = np.maximum(np.asarray(reg120, dtype=float), np.asarray(reg250, dtype=float))
     out = []
-    for rname, reg in regs.items():
-        for lev in levels:
-            line = reg * (1 + lev)
-            sup_start = None
-            for i in range(n):
-                below = np.isfinite(line[i]) and closes[i] < line[i]
-                if below:
-                    if sup_start is None:
-                        sup_start = i
-                else:
-                    if sup_start is not None:
-                        sup_days = i - sup_start
-                        if sup_days >= min_suppress:
-                            out.append((sup_start, i, rname, lev, sup_days))
-                    sup_start = None
+    for lev in levels:
+        line = base * (1 + lev)
+        sup_start = None
+        for i in range(n):
+            below = np.isfinite(line[i]) and closes[i] < line[i]
+            if below:
+                if sup_start is None:
+                    sup_start = i
+            else:
+                if sup_start is not None:
+                    sup_days = i - sup_start
+                    if sup_days >= min_suppress:
+                        out.append((sup_start, i, 'max', lev, sup_days))
+                sup_start = None
     out.sort(key=lambda o: o[1])
     return out
 
