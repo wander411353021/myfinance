@@ -1591,7 +1591,7 @@ def detect_golden_pit_v6(closes, reg250, z_thr=-1.5, launch_gate=0.9, confirm_da
 
 
 def detect_grid_break(closes, reg120, reg250,
-                      levels=(0.05, 0.10, 0.15, 0.20),  # 2026-09-02 用户改: 只向上格栅(>=+5%), 不向下
+                      levels=(0.03, 0.06, 0.09, 0.12),  # 2026-09-02 用户改: 3%间隔(原5%太疏)
                       min_suppress=40):
     """格栅线压制突破信号(2026-09-02 用户定义)。
 

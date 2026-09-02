@@ -664,8 +664,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         else:
             _gb250 = _frg2
         _gbase = np.maximum(_gb120, _gb250)
-        _glev_col = [(0.05, '#42A5F5', 'Grid +5%'), (0.10, '#AB47BC', 'Grid +10%'),
-                     (0.15, '#FF7043', 'Grid +15%'), (0.20, '#8D6E63', 'Grid +20%')]
+        _glev_col = [(0.03, '#42A5F5', 'Grid +3%'), (0.06, '#AB47BC', 'Grid +6%'),
+                     (0.09, '#FF7043', 'Grid +9%'), (0.12, '#8D6E63', 'Grid +12%')]
         for _gl, _gc, _gt in _glev_col:
             _glv_line = _gbase[offset:offset + n] * (1 + _gl)
             ax0.plot(x, _glv_line, color=_gc, linewidth=1.0, linestyle='--', alpha=0.9, label=_gt)
@@ -1135,7 +1135,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         ax6.set_facecolor('#FAFAFA')
         ax6.set_ylim(0, 3)
         ax6.set_yticks([])
-        _lvl_map = {0.05: 0.6, 0.10: 1.2, 0.15: 1.8, 0.20: 2.4}  # 只向上格栅(用户要求)
+        _lvl_map = {0.03: 0.6, 0.06: 1.2, 0.09: 1.8, 0.12: 2.4}  # 3%间隔(2026-09-02 用户改)
         for _gs, _gb, _grn, _glv, _gdays in _gbrk:
             _x0g = _gs - offset - 0.5
             _x1g = _gb - offset + 0.5
