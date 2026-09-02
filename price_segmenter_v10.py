@@ -615,8 +615,23 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         sm = result['smooth'].values[offset:offset + n]
         ax0.plot(x, sm, color='#1565C0', linewidth=1.0, alpha=0.6, label='EMA')
     # 长周期回归线(250日):按趋势方向分段着色——20日斜率>0 绿色(reg 上行) / <0 红色(reg 下行)
-    # 2026-09-02 用户改: reg120/reg250 两条线隐藏(避免杂乱), 保留坑检测/网格计算逻辑
-    # (原: reg250 分段着色 绿/红粗线 + reg120 细线, 已按用户要求隐藏)
+    # 2026-09-02 用户改: 保留 reg250(粗线分段着色), reg120 隐藏
+    if reg_preds_long is not None:
+        from matplotlib.collections import LineCollection as _LC
+        rpl = reg_preds_long[offset:offset + n]
+        _segs = []; _cols = []
+        for _i in range(len(rpl) - 1):
+            if np.isfinite(rpl[_i]) and np.isfinite(rpl[_i + 1]):
+                _segs.append([(x[_i], rpl[_i]), (x[_i + 1], rpl[_i + 1])])
+                if _i >= 20 and np.isfinite(rpl[_i]) and np.isfinite(rpl[_i - 20]):
+                    _cols.append('#2E7D32' if rpl[_i] > rpl[_i - 20] else '#C62828')
+                else:
+                    _cols.append('#90A4AE')
+        if _segs:
+            _lc = _LC(_segs, colors=_cols, linewidth=1.8, alpha=0.9)
+            ax0.add_collection(_lc)
+            ax0.plot([], [], color='#2E7D32', lw=1.8, label=f'Reg Long up ({reg_win_long}d)')
+            ax0.plot([], [], color='#C62828', lw=1.8, label=f'Reg Long down ({reg_win_long}d)')
 
     # ── 格栅预期突破价线(2026-09-02): max(reg120,reg250)*(1+档位), 股价站上=该档突破 ──
     try:
@@ -768,10 +783,12 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     _overlay = [highs, lows]
     if not hide_ma:
         _overlay += [np.asarray(ma120), np.asarray(sm)]
-    if reg_preds is not None:
-        _overlay.append(np.asarray(rp))
-    if reg_preds_long is not None:
-        _overlay.append(np.asarray(rpl))
+    # reg_preds(reg120) 已隐藏, 不参与 y 轴范围; rpl(reg250) 在绘制块中已定义
+    if reg_preds_long is not None and 'rpl' in dir() or 'rpl' in locals():
+        try:
+            _overlay.append(np.asarray(rpl))
+        except Exception:
+            pass
     _all_y = np.concatenate([a[np.isfinite(a)] for a in _overlay])
     _y_hi = _all_y.max()
     _y_lo = _all_y.min()
