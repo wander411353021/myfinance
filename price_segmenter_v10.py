@@ -650,6 +650,28 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             ax0.plot([], [], color='#1B5E20', lw=1.0, label=f'Reg up ({reg_win}d)')
             ax0.plot([], [], color='#B71C1C', lw=1.0, label=f'Reg down ({reg_win}d)')
 
+    # ── 格栅预期突破价线(2026-09-02): max(reg120,reg250)*(1+档位), 股价站上=该档突破 ──
+    try:
+        _gb120 = None
+        if reg_preds is not None:
+            _gb120 = np.asarray(reg_preds, dtype=np.float64)
+        else:
+            from mean_reversion.signal_residual import compute_rolling_regression as _crrga2
+            _gb120, _ = _crrga2(df_ohlc['close'].values.astype(np.float64), window=120, use_log=True)
+        _gb250 = None
+        if reg_preds_long is not None:
+            _gb250 = np.asarray(reg_preds_long, dtype=np.float64)
+        else:
+            _gb250 = _frg2
+        _gbase = np.maximum(_gb120, _gb250)
+        _glev_col = [(0.05, '#42A5F5', 'Grid +5%'), (0.10, '#AB47BC', 'Grid +10%'),
+                     (0.15, '#FF7043', 'Grid +15%'), (0.20, '#8D6E63', 'Grid +20%')]
+        for _gl, _gc, _gt in _glev_col:
+            _glv_line = _gbase[offset:offset + n] * (1 + _gl)
+            ax0.plot(x, _glv_line, color=_gc, linewidth=1.0, linestyle='--', alpha=0.9, label=_gt)
+    except Exception as _e:
+        print(f'[grid expect] 绘制失败: {_e}')
+
     # 阴柱期转阳目标价线(仅阴柱日有值,阳柱/无柱日 NaN——阶梯线,突破该价次日转阳)
     try:
         import panic_reversal as _pr
