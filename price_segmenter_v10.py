@@ -1113,8 +1113,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         ax6.set_facecolor('#FAFAFA')
         ax6.set_ylim(0, 3)
         ax6.set_yticks([])
-        _lvl_map = {-0.20: 0.4, -0.15: 0.7, -0.10: 1.0, -0.05: 1.3,
-                    0.05: 1.7, 0.10: 2.0, 0.15: 2.3, 0.20: 2.6}
+        _lvl_map = {0.05: 0.6, 0.10: 1.2, 0.15: 1.8, 0.20: 2.4}  # 只向上格栅(用户要求)
         for _gs, _gb, _grn, _glv, _gdays in _gbrk:
             _x0g = _gs - offset - 0.5
             _x1g = _gb - offset + 0.5
@@ -1124,14 +1123,14 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             # 压制段: 灰蓝半透明; 突破日: 亮色竖线+点
             ax6.axvspan(max(_x0g, -0.5), min(_x1g, n + 0.5), ymin=0, ymax=_yl / 3.0,
                         color='#90A4AE', alpha=0.30)
-            _colg = '#1B5E20' if _glv < 0 else '#B71C1C'  # 下方档突破=绿(超跌反转), 上方档=红(反弹)
+            _colg = '#B71C1C'  # 向上档突破(压制后向上突破, 观察信号)
             ax6.axvline(min(_x1g, n + 0.5), ymin=0, ymax=_yl / 3.0, color=_colg, lw=1.2)
             ax6.plot(min(_x1g, n + 0.5), _yl, 'o', color=_colg, markersize=3)
         # 档位图例线
         for _glv, _yl in _lvl_map.items():
-            ax6.plot([], [], color='#B71C1C' if _glv > 0 else '#1B5E20', lw=1.5)
+            ax6.plot([], [], color='#B71C1C', lw=1.5)
         ax6.plot([], [], color='#90A4AE', lw=3, alpha=0.5, label='Suppress')
-        ax6.set_title('Grid-Break (reg120/250 格栅压制突破: 绿=下方档突破 红=上方档突破)', fontsize=9, loc='left', pad=2)
+        ax6.set_title('Grid-Break (max(reg120,250) 向上格栅压制突破: 长期压制后向上突破)', fontsize=9, loc='left', pad=2)
         ax6.grid(True, alpha=0.2)
     except Exception as _e:
         print(f'[grid_break] 绘制失败: {_e}')
