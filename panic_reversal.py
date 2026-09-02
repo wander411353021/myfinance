@@ -1590,6 +1590,44 @@ def detect_golden_pit_v6(closes, reg250, z_thr=-1.5, launch_gate=0.9, confirm_da
     return out_m + out_s
 
 
+def detect_grid_break(closes, reg120, reg250,
+                      levels=(-0.20, -0.15, -0.10, -0.05, 0.05, 0.10, 0.15, 0.20),
+                      min_suppress=40):
+    """格栅线压制突破信号(2026-09-02 用户定义)。
+
+    以 reg120/reg250 为基准, 上下平移 levels 形成格栅线;
+    某条格栅线"长期压制"股价(close 在其下方连续 >= min_suppress 天),
+    向上突破(收盘站上该线)后 = 信号。
+
+    验证(1000池, 20日): 下方档(-10~-15%)+压制80-150天 胜率~56%,
+    上方档(+5%以上)仅 48-50%(弱, 压制突破多是反弹结束)。
+    全部因果(只用<=突破日数据)。
+
+    返回 [(压制起点, 突破日, 基准reg类型'r120'/'r250', 档位, 压制天数)] 升序(按突破日)。
+    """
+    closes = np.asarray(closes, dtype=float)
+    n = len(closes)
+    regs = {'r120': np.asarray(reg120, dtype=float), 'r250': np.asarray(reg250, dtype=float)}
+    out = []
+    for rname, reg in regs.items():
+        for lev in levels:
+            line = reg * (1 + lev)
+            sup_start = None
+            for i in range(n):
+                below = np.isfinite(line[i]) and closes[i] < line[i]
+                if below:
+                    if sup_start is None:
+                        sup_start = i
+                else:
+                    if sup_start is not None:
+                        sup_days = i - sup_start
+                        if sup_days >= min_suppress:
+                            out.append((sup_start, i, rname, lev, sup_days))
+                    sup_start = None
+    out.sort(key=lambda o: o[1])
+    return out
+
+
 def compute_pit_quality(pits, closes, volumes, pre_win=20, fill_win=20, fill_lead=2):
     """黄金坑量能质量标签【2026-08-14】— 无未来函数,不改 pits 结构。
 
