@@ -93,6 +93,33 @@ def draw(symbol, end_date, tail_days=150, smooth_w=10, out_path=None):
             ax0.text(midx, c[max(0, s):lch + 1].min() * 0.97, f'坑长{lch - s}d',
                     fontsize=7, color='#F57F17', ha='center', fontweight='bold', zorder=10)
 
+    # 阶梯分段目标价(2026-09-02 polo4111): max(reg120,250)阶梯, 偏离>20%置空
+    # 必须用与V10内部一致的 double_smooth(5,5) reg 计算, 否则目标价线与图上reg250线口径不一致(目标可能显示低于reg250)
+    try:
+        _reg120_ds = pr.double_smooth_reg(reg120, 5, 5)
+        _reg250_ds = pr.double_smooth_reg(reg250, 5, 5)
+        _gt, _gl = pr.compute_grid_target_price(c, _reg120_ds, _reg250_ds, max_dev=0.20)
+        _gt_win = _gt[offset:offset + tail_days]
+        _x_win = np.arange(tail_days)
+        _m = np.isfinite(_gt_win)
+        if _m.any():
+            ax0.plot(_x_win[_m], _gt_win[_m], color='#D81B60', lw=2.2,
+                     alpha=0.9, zorder=13, label='Grid Target (阶梯, 偏离>20%置空)')
+            # 标注当前档位
+            _cur = _gl[-1]
+            if _cur >= 0:
+                _tgt = _gt[-1]
+                ax0.annotate(f'目标{_tgt:.2f} (+{(_cur+1)*3}%)',
+                             (tail_days-1, _tgt), textcoords='offset points',
+                             xytext=(-70, 22), fontsize=9, color='#D81B60',
+                             fontweight='bold', arrowprops=dict(arrowstyle='-', color='#D81B60', lw=0.8))
+            else:
+                ax0.annotate('目标置空(偏离reg>20%)', (tail_days-1, c[-1]),
+                             textcoords='offset points', xytext=(-110, -8),
+                             fontsize=8, color='#888888', fontweight='bold')
+    except Exception as _e:
+        print(f'[grid target] 绘制失败: {_e}')
+
     if out_path is None:
         out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'result')
         os.makedirs(out_dir, exist_ok=True)

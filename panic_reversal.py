@@ -1647,6 +1647,75 @@ def detect_grid_break(closes, reg120, reg250,
     return out
 
 
+def compute_grid_target_price(closes, reg120, reg250,
+                              levels=(0.03, 0.06, 0.09, 0.12),
+                              max_dev=0.20,
+                              down_confirm=5):
+    """阶梯式分段目标价(2026-09-02 polo4111, 严格无未来函数, 因果)。
+
+    以 max(reg120, reg250) 为基准, 档位 levels 形成阶梯目标价。
+
+    【严格因果/无未来函数】:
+      - 每天目标价 = base[t]*(1+levels[cur]), 其中 cur 是**昨天收盘后确定**的状态;
+      - 当天收盘价 closes[t] 只在收盘后用于更新状态(升/降档/置空), 影响**明天**的目标价;
+      - 当天的价格不参与当天的目标价计算。
+
+    状态机:
+      升档: 收盘 >= base*(1+levels[cur]) 且未到最高档 -> cur+=1(当天确认, 次日生效)
+      降档: 连续 down_confirm 天收盘 < base*(1+levels[cur-1]) -> cur-=1(延迟确认, 防急降)
+      置空: 收盘偏离 base 超过 max_dev -> 次日目标置NaN, cur重置0;
+            待偏离回到<=max_dev -> 次日从最低档重新开始。
+
+    返回 (target, level_idx):
+      target[n]: 每日目标价(置空日为NaN)
+      level_idx[n]: 目标档位索引(0..len-1, 置空日=-1)
+    """
+    closes = np.asarray(closes, dtype=float)
+    base = np.maximum(np.asarray(reg120, dtype=float), np.asarray(reg250, dtype=float))
+    n = len(closes)
+    cur = 0        # 档位状态(昨天收盘后确定)
+    void = False   # 置空状态(昨天收盘后确定)
+    down_cnt = 0   # 连续降档确认计数
+    target = np.full(n, np.nan)
+    lvl = np.full(n, -1, dtype=int)
+    for t in range(n):
+        if not np.isfinite(base[t]):
+            continue
+        # 1) 用昨天的状态 + 今天的 base 计算今天目标价(当天价格不参与)
+        if void:
+            target[t] = np.nan
+            lvl[t] = -1
+        else:
+            target[t] = base[t] * (1 + levels[cur])
+            lvl[t] = cur
+        # 2) 收盘后: 用今天收盘更新状态(影响明天)
+        if not np.isfinite(closes[t]):
+            continue
+        dev = closes[t] / base[t] - 1
+        if dev > max_dev:
+            void = True
+            cur = 0
+            down_cnt = 0
+            continue
+        if void:
+            # 回归(偏离回到<=max_dev): 重置, 次日从最低档重新开始
+            void = False
+            cur = 0
+            down_cnt = 0
+        # 升档: 站上当前目标线(当天确认, 次日生效)
+        while cur < len(levels) - 1 and closes[t] >= base[t] * (1 + levels[cur]):
+            cur += 1
+        # 降档: 连续 down_confirm 天跌破上一档线才降(延迟, 防急降)
+        if cur > 0 and closes[t] < base[t] * (1 + levels[cur - 1]):
+            down_cnt += 1
+            if down_cnt >= down_confirm:
+                cur -= 1
+                down_cnt = 0
+        else:
+            down_cnt = 0
+    return target, lvl
+
+
 def compute_pit_quality(pits, closes, volumes, pre_win=20, fill_win=20, fill_lead=2):
     """黄金坑量能质量标签【2026-08-14】— 无未来函数,不改 pits 结构。
 
