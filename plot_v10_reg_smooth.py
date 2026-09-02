@@ -98,14 +98,14 @@ def draw(symbol, end_date, tail_days=150, smooth_w=10, out_path=None):
     try:
         _reg120_ds = pr.double_smooth_reg(reg120, 5, 5)
         _reg250_ds = pr.double_smooth_reg(reg250, 5, 5)
-        _glv_def = (-0.09, -0.03, 0.03, 0.06, 0.09, 0.12)  # 与compute_grid_target_price默认一致(含向下档)
-        _gt, _gl = pr.compute_grid_target_price(c, _reg120_ds, _reg250_ds, levels=_glv_def, max_dev=0.20)
+        _glv_def = (-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12)  # 完整3%间隔网格(含图上未显示的-6%/0%/+6%/+9%等档)
+        _gt, _gl = pr.compute_grid_target_price(c, _reg120_ds, _reg250_ds, levels=_glv_def, max_dev=0.20, down_confirm=10)
         _gt_win = _gt[offset:offset + tail_days]
         _x_win = np.arange(tail_days)
         _m = np.isfinite(_gt_win)
         if _m.any():
-            ax0.plot(_x_win[_m], _gt_win[_m], color='#D81B60', lw=2.2,
-                     alpha=0.9, zorder=13, label='Grid Target (阶梯, 偏离>20%置空)')
+            ax0.plot(_x_win[_m], _gt_win[_m], color='#D81B60', lw=3.2,
+                     alpha=1.0, zorder=13, label='Grid Target (阶梯, 偏离>20%置空)')
             # 标注当前档位(按实际档位显示百分比, 支持负档)
             _cur = _gl[-1]
             if _cur >= 0:

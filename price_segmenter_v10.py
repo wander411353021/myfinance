@@ -624,25 +624,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         ax0.plot(x, ma120, color='#7B1FA2', linewidth=1.2, alpha=0.8, label='MA120')
         sm = result['smooth'].values[offset:offset + n]
         ax0.plot(x, sm, color='#1565C0', linewidth=1.0, alpha=0.6, label='EMA')
-    # 长周期回归线(250日):按趋势方向分段着色——20日斜率>0 绿色(reg 上行) / <0 红色(reg 下行)
-    # 2026-09-02 用户改: 保留 reg250(粗线分段着色), reg120 隐藏
-    if reg_preds_long is not None:
-        from matplotlib.collections import LineCollection as _LC
-        rpl = reg_preds_long[offset:offset + n]
-        _segs = []; _cols = []
-        for _i in range(len(rpl) - 1):
-            if np.isfinite(rpl[_i]) and np.isfinite(rpl[_i + 1]):
-                _segs.append([(x[_i], rpl[_i]), (x[_i + 1], rpl[_i + 1])])
-                if _i >= 20 and np.isfinite(rpl[_i]) and np.isfinite(rpl[_i - 20]):
-                    _cols.append('#2E7D32' if rpl[_i] > rpl[_i - 20] else '#C62828')
-                else:
-                    _cols.append('#90A4AE')
-        if _segs:
-            _lc = _LC(_segs, colors=_cols, linewidth=1.8, alpha=0.9)
-            ax0.add_collection(_lc)
-            ax0.plot([], [], color='#2E7D32', lw=1.8, label=f'Reg Long up ({reg_win_long}d)')
-            ax0.plot([], [], color='#C62828', lw=1.8, label=f'Reg Long down ({reg_win_long}d)')
-
+    # 长周期回归线(250日): 2026-09-02 用户要求 reg250 线不显示(格栅/目标价计算仍用它)
     # ── 格栅预期突破价线(2026-09-02): max(reg120,reg250)*(1+档位), 股价站上=该档突破 ──
     try:
         _gb120 = None
@@ -662,7 +644,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         _glev_col = [(0.03, '#42A5F5', 'Grid +3% (下沿)'), (0.12, '#8D6E63', 'Grid +12% (上沿)')]
         for _gl, _gc, _gt in _glev_col:
             _glv_line = _gbase[offset:offset + n] * (1 + _gl)
-            ax0.plot(x, _glv_line, color=_gc, linewidth=2.4, linestyle='-', alpha=0.95, label=_gt)
+            ax0.plot(x, _glv_line, color=_gc, linewidth=1.2, linestyle='--', alpha=0.85, label=_gt)
         # 向下扩展: 股价深坑时画 -3%/-9% 两条绿色虚线(支撑参考, 非信号; 2026-09-02 用户定: 最多2条)
         try:
             _gw_base = _gbase[offset:offset + n]
@@ -676,7 +658,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                     _down_lvs.append(-0.09)
                 for _down_lv in _down_lvs:
                     _glv_line = _gbase[offset:offset + n] * (1 + _down_lv)
-                    ax0.plot(x, _glv_line, color='#2E7D32', linewidth=1.6,
+                    ax0.plot(x, _glv_line, color='#2E7D32', linewidth=1.2,
                              linestyle='--', alpha=0.7,
                              label=f'Grid {_down_lv*100:.0f}% (下方支撑)')
         except Exception as _e:
@@ -812,12 +794,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     _overlay = [highs, lows]
     if not hide_ma:
         _overlay += [np.asarray(ma120), np.asarray(sm)]
-    # reg_preds(reg120) 已隐藏, 不参与 y 轴范围; rpl(reg250) 在绘制块中已定义
-    if reg_preds_long is not None and 'rpl' in dir() or 'rpl' in locals():
-        try:
-            _overlay.append(np.asarray(rpl))
-        except Exception:
-            pass
+    # reg_preds(reg120) 与 reg250 均不显示, 不参与 y 轴范围
     _all_y = np.concatenate([a[np.isfinite(a)] for a in _overlay])
     _y_hi = _all_y.max()
     _y_lo = _all_y.min()
@@ -842,8 +819,6 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         Patch(facecolor='cyan', alpha=0.15, label='DOWN (pending)'),
         Line2D([0], [0], color='#B71C1C', linewidth=1.0, linestyle='--', label='UP zone high'),
         Line2D([0], [0], color='#1B5E20', linewidth=1.0, linestyle='--', label='DOWN zone low'),
-        Line2D([0], [0], color='#d62728', linewidth=2.0, linestyle='--', label=f'Reg ({reg_win}d)'),
-        Line2D([0], [0], color='#1565C0', linewidth=1.5, linestyle='-', label=f'Reg Long ({reg_win_long}d)'),
         Line2D([0], [0], marker='v', color='r', linestyle='None', markersize=6, label='PEAK'),
         Line2D([0], [0], marker='^', color='g', linestyle='None', markersize=6, label='TROUGH'),
         Patch(facecolor='#1B5E20', alpha=0.30, label='Gap'),

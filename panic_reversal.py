@@ -1648,9 +1648,9 @@ def detect_grid_break(closes, reg120, reg250,
 
 
 def compute_grid_target_price(closes, reg120, reg250,
-                              levels=(-0.09, -0.03, 0.03, 0.06, 0.09, 0.12),
+                              levels=(-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12),
                               max_dev=0.20,
-                              down_confirm=5):
+                              down_confirm=10):
     """阶梯式分段目标价(2026-09-02 polo4111, 严格无未来函数, 因果)。
 
     以 max(reg120, reg250) 为基准, 档位 levels 形成阶梯目标价。
@@ -1664,7 +1664,7 @@ def compute_grid_target_price(closes, reg120, reg250,
 
     状态机:
       升档: 收盘 >= base*(1+levels[cur]) 且未到最高档 -> cur+=1(当天确认, 次日生效)
-      降档: 连续 down_confirm 天收盘 < base*(1+levels[cur-1]) -> cur-=1(延迟确认, 防急降)
+      降档: 连续 down_confirm 天收盘 < base*(1+levels[cur-1]) -> cur-=1(延迟确认, 防急降, down_confirm=10)
       置空: 收盘偏离 base 超过 max_dev -> 次日目标置NaN, cur重置0;
             待偏离回到<=max_dev -> 次日从最低档重新开始。
 
