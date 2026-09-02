@@ -615,40 +615,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         sm = result['smooth'].values[offset:offset + n]
         ax0.plot(x, sm, color='#1565C0', linewidth=1.0, alpha=0.6, label='EMA')
     # 长周期回归线(250日):按趋势方向分段着色——20日斜率>0 绿色(reg 上行) / <0 红色(reg 下行)
-    # 2026-08-27:黄金坑+reg上行验证(94.9% vs 下行86.0%),着色直观显示方向
-    if reg_preds_long is not None:
-        from matplotlib.collections import LineCollection as _LC
-        rpl = reg_preds_long[offset:offset + n]
-        _segs = []; _cols = []
-        for _i in range(len(rpl) - 1):
-            if np.isfinite(rpl[_i]) and np.isfinite(rpl[_i + 1]):
-                _segs.append([(x[_i], rpl[_i]), (x[_i + 1], rpl[_i + 1])])
-                if _i >= 20 and np.isfinite(rpl[_i]) and np.isfinite(rpl[_i - 20]):
-                    _cols.append('#2E7D32' if rpl[_i] > rpl[_i - 20] else '#C62828')
-                else:
-                    _cols.append('#90A4AE')
-        if _segs:
-            _lc = _LC(_segs, colors=_cols, linewidth=1.8, alpha=0.9)
-            ax0.add_collection(_lc)
-            ax0.plot([], [], color='#2E7D32', lw=1.8, label=f'Reg Long up ({reg_win_long}d)')
-            ax0.plot([], [], color='#C62828', lw=1.8, label=f'Reg Long down ({reg_win_long}d)')
-    # 中周期回归线(120日):分段着色(细线,辅助)——与 250 日同绿 = 最强置信区(reg120+250双上行 97.7%)
-    if reg_preds is not None:
-        from matplotlib.collections import LineCollection as _LC2
-        rp = reg_preds[offset:offset + n]
-        _segs2 = []; _cols2 = []
-        for _i in range(len(rp) - 1):
-            if np.isfinite(rp[_i]) and np.isfinite(rp[_i + 1]):
-                _segs2.append([(x[_i], rp[_i]), (x[_i + 1], rp[_i + 1])])
-                if _i >= 20 and np.isfinite(rp[_i]) and np.isfinite(rp[_i - 20]):
-                    _cols2.append('#1B5E20' if rp[_i] > rp[_i - 20] else '#B71C1C')
-                else:
-                    _cols2.append('#B0BEC5')
-        if _segs2:
-            _lc2 = _LC2(_segs2, colors=_cols2, linewidth=1.0, alpha=0.65)
-            ax0.add_collection(_lc2)
-            ax0.plot([], [], color='#1B5E20', lw=1.0, label=f'Reg up ({reg_win}d)')
-            ax0.plot([], [], color='#B71C1C', lw=1.0, label=f'Reg down ({reg_win}d)')
+    # 2026-09-02 用户改: reg120/reg250 两条线隐藏(避免杂乱), 保留坑检测/网格计算逻辑
+    # (原: reg250 分段着色 绿/红粗线 + reg120 细线, 已按用户要求隐藏)
 
     # ── 格栅预期突破价线(2026-09-02): max(reg120,reg250)*(1+档位), 股价站上=该档突破 ──
     try:
@@ -668,7 +636,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         _glev_col = [(0.03, '#42A5F5', 'Grid +3% (下沿)'), (0.12, '#8D6E63', 'Grid +12% (上沿)')]
         for _gl, _gc, _gt in _glev_col:
             _glv_line = _gbase[offset:offset + n] * (1 + _gl)
-            ax0.plot(x, _glv_line, color=_gc, linewidth=1.0, linestyle='--', alpha=0.9, label=_gt)
+            ax0.plot(x, _glv_line, color=_gc, linewidth=2.4, linestyle='-', alpha=0.95, label=_gt)
     except Exception as _e:
         print(f'[grid expect] 绘制失败: {_e}')
 
