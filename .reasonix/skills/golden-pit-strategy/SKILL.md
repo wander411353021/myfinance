@@ -792,3 +792,11 @@ if confirmed:
 - **tdx 周末过滤**: get_daily_kline_from_tdx 加 weekday<5 过滤(防御豆包报告的非交易日 bar 混入; 验证5股无异常)
 - **Grid Target 接入 V10**: 豆包 compute_grid_target_price 只在独立工具 plot_v10_reg_smooth.py 绘制, streamlit 主绘图缺失——已补入(粉色阶梯 #D81B60, 偏离>13%置空断线)
 - **v4 lch bug 复现**: 豆包 7d11a95 的 golden_pit_v4.py 仍是 lch=j(未来函数), reasonix 修复版需每次 pull 后检查是否被覆盖(git stash pop 保留)
+
+### ✅ 更正: tdx周末bar为误报(2026-09-03 polo4111)
+- **上节"tdx混入非交易日bar"是误报**, 数据实际正常:
+  - 用 pandas `df['date'].dt.weekday` 统计: 300251 全量1200根周末=0, 序列全是真实交易日
+  - 误报根因: 用 `datetime.date.fromisoformat(str(d)[:10])` 解析带时区 datetime64[ns,Asia/Shanghai]
+    时区字段导致日期截取错位, 误判出234个周末bar(如把9/27误显示为9/29, 10/8误显示为10/07)
+- **教训**: 校验日期/星期必须用 pandas dt.weekday 或 timezone-aware 解析, 禁止 str()[:10] 截取带时区datetime
+- **reasonix 的 weekday<5 过滤**: 防御性保险, 无害可保留
