@@ -1199,7 +1199,10 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                      dur_horizon=120, touch_norm=3,
                      reg_window=120, reg_window_long=250,
                      hide_ma=True,
-                     code=None, end_date=None, panic_index=None):
+                     code=None, end_date=None, panic_index=None,
+                     enable_panic=False):
+    # enable_panic=False(2026-09-03): 默认不计算 panic_reversal.signal(该函数会拉额外数据,
+    # 通达信超时时可卡2分钟+)。streamlit/回测默认无需 panic_info(None 时面板显示提示)。
     """fast_mode: True=跳过画图，返回 bool（最后一天有买入信号）。
     返回 (c_result, bs_signal, bs_reason, bs_strength, all_levels)；
     bs_strength 为 BrkLvl/BrkLow 的 0~1 分量评分；all_levels 为阻力/支撑位生命周期列表。
@@ -1241,7 +1244,7 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
             if c.isdigit():                                # 纯6位数字 → 推断交易所前缀
                 c = ('sh' if c[0] in '69' else 'sz') + c
             code = c
-    if code is not None:
+    if enable_panic and code is not None:
         try:
             from panic_reversal import signal as _panic_signal
             panic_info = _panic_signal(code, end_date=end_date)
