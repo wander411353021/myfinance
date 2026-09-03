@@ -1650,7 +1650,8 @@ def detect_grid_break(closes, reg120, reg250,
 def compute_grid_target_price(closes, reg120, reg250,
                               levels=(-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12),
                               max_dev=0.13,
-                              down_confirm=10):
+                              down_confirm=10,
+                              up_confirm=5):
     """阶梯式分段目标价(2026-09-02 polo4111, 严格无未来函数, 因果)。
 
     以 max(reg120, reg250) 为基准, 档位 levels 形成阶梯目标价。
@@ -1663,10 +1664,11 @@ def compute_grid_target_price(closes, reg120, reg250,
       - 当天的价格不参与当天的目标价计算。
 
     状态机:
-      升档: 收盘 >= base*(1+levels[cur]) 且未到最高档 -> cur+=1(当天确认, 次日生效)
+      升档: 连续 up_confirm 天收盘 >= base*(1+levels[cur]) 且未到最高档 -> cur+=1(延迟确认, 防-9~+3横跳抖动, up_confirm=5)
       降档: 连续 down_confirm 天收盘 < base*(1+levels[cur-1]) -> cur-=1(延迟确认, 防急降, down_confirm=10)
       置空: 收盘偏离 base 超过 max_dev -> 次日目标置NaN, cur重置0;
-            待偏离回到<=max_dev -> 次日从最低档重新开始。
+            待偏离回到<=max_dev -> 次日从"当前价格上方第一个格栅档位"重新开始
+            (2026-09-03 polo4111: 目标价作为上方压力位, 至少高于当前价格一个格栅3%)。
             max_dev=0.13 = 顶档(+12%)+1%缓冲, 超顶档即置空(2026-09-03 用户: 消除+12%~+20%无意义横线段)
 
     返回 (target, level_idx):
@@ -1679,6 +1681,7 @@ def compute_grid_target_price(closes, reg120, reg250,
     cur = 0        # 档位状态(昨天收盘后确定)
     void = False   # 置空状态(昨天收盘后确定)
     down_cnt = 0   # 连续降档确认计数
+    up_cnt = 0     # 连续升档确认计数
     target = np.full(n, np.nan)
     lvl = np.full(n, -1, dtype=int)
     for t in range(n):
@@ -1699,15 +1702,35 @@ def compute_grid_target_price(closes, reg120, reg250,
             void = True
             cur = 0
             down_cnt = 0
+            up_cnt = 0
             continue
         if void:
-            # 回归(偏离回到<=max_dev): 重置, 次日从最低档重新开始
+            # 回归(偏离回到<=max_dev): 次日从"当前价格上方第一个格栅档位"重新开始
+            # (2026-09-03 polo4111: 目标价应作为上方压力位, 至少高于当前价格一个格栅3%)
+            # 例: 偏离+8% -> 从+9%档起(目标价≈base*1.09, 高于价格); 偏离-5% -> 从-3%档起
+            # 当天价格仅用于初始化, 影响明天, 无未来函数
             void = False
+            dev_now = closes[t] / base[t] - 1
             cur = 0
+            for li, lv in enumerate(levels):
+                if lv > dev_now:
+                    cur = li
+                    break
+            else:
+                cur = len(levels) - 1  # 价格已超最高档(dev>+12%), 取最高档
             down_cnt = 0
-        # 升档: 站上当前目标线(当天确认, 次日生效)
-        while cur < len(levels) - 1 and closes[t] >= base[t] * (1 + levels[cur]):
-            cur += 1
+            up_cnt = 0
+        # 升档: 连续 up_confirm 天站上当前目标线才升(延迟确认, 防-9~+3横跳抖动)
+        if cur < len(levels) - 1:
+            if closes[t] >= base[t] * (1 + levels[cur]):
+                up_cnt += 1
+                if up_cnt >= up_confirm:
+                    cur += 1
+                    up_cnt = 0
+            else:
+                up_cnt = 0
+        else:
+            up_cnt = 0
         # 降档: 连续 down_confirm 天跌破上一档线才降(延迟, 防急降)
         if cur > 0 and closes[t] < base[t] * (1 + levels[cur - 1]):
             down_cnt += 1

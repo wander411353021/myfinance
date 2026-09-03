@@ -99,7 +99,7 @@ def draw(symbol, end_date, tail_days=150, smooth_w=10, out_path=None):
         _reg120_ds = pr.double_smooth_reg(reg120, 5, 5)
         _reg250_ds = pr.double_smooth_reg(reg250, 5, 5)
         _glv_def = (-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12)  # 完整3%间隔网格(含图上未显示的-6%/0%/+6%/+9%等档)
-        _gt, _gl = pr.compute_grid_target_price(c, _reg120_ds, _reg250_ds, levels=_glv_def, max_dev=0.13, down_confirm=10)
+        _gt, _gl = pr.compute_grid_target_price(c, _reg120_ds, _reg250_ds, levels=_glv_def, max_dev=0.13, down_confirm=10, up_confirm=5)
         _gt_win = _gt[offset:offset + tail_days]
         _x_win = np.arange(tail_days)
         # 注意: 必须直接plot含NaN数组, matplotlib自动在置空(NaN)处断线;
