@@ -85,7 +85,8 @@ def detect_golden_pit_v4(closes, reg250, z_thr=-1.5, launch_gate=0.9,
                         confirmed = False
                         break
                 if confirmed:
-                    lch = j
+                    lch = j + confirm_days - 1  # 修复(2026-08-30 reasonix): 确认完成日, 非候选日
+                    # 原 lch=j 是未来函数: 确认检查了 j+1..j+confirm_days-1 的 z, 截断到 j 无法复现
                     break
             j += 1
         # === 分路径过滤 ===
