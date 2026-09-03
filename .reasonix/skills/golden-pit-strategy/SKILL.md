@@ -785,3 +785,10 @@ if confirmed:
 - **待修方向**: ① eltdx 分页改用能正确对齐锚点的调用方式; ② 或数据加载后按 A 股交易日历过滤
   (剔除周六/周日/法定节假日, 或校验相邻bar间隔); ③ 修复后全池重跑体检确认无周末bar残留
 - **红线**: 此问题影响所有下游时间序列计算(reg/坑/目标价), 修复后必须重跑因果截断自检
+
+### 性能与数据层修复(2026-09-03)
+- **panic 卡顿修复**: run_segmentation 默认 enable_panic=False——panic_reversal.signal() 内部会拉额外数据, 通达信超时时可卡 2分钟+; streamlit 无需 panic_info(默认显示提示)
+- **性能实测**: 信号计算全部 <40ms(v6/reg120坑/格栅/目标价); 绘图+savefig ~1.7s(22x16 inch @ dpi120 matplotlib 大图, 正常范围, 不追100ms硬指标)
+- **tdx 周末过滤**: get_daily_kline_from_tdx 加 weekday<5 过滤(防御豆包报告的非交易日 bar 混入; 验证5股无异常)
+- **Grid Target 接入 V10**: 豆包 compute_grid_target_price 只在独立工具 plot_v10_reg_smooth.py 绘制, streamlit 主绘图缺失——已补入(粉色阶梯 #D81B60, 偏离>13%置空断线)
+- **v4 lch bug 复现**: 豆包 7d11a95 的 golden_pit_v4.py 仍是 lch=j(未来函数), reasonix 修复版需每次 pull 后检查是否被覆盖(git stash pop 保留)

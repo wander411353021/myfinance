@@ -433,3 +433,11 @@ python panic_reversal.py one sz300437  # 单只检测+画图
 - **实现**: plot_v10_reg_smooth.py, 用法 `python3 plot_v10_reg_smooth.py <code> <end_date> <tail_days> [smooth_w]`
 - **注意**: 平滑窗口越大reg越平缓, 但对价格变化响应越滞后; 推荐smooth_w=10
 - **坑检测**: v3用平滑后reg时设smooth_w=1(不再二次平滑), 避免重复平滑
+
+## V10 线型迭代(2026-09-02/03 用户与豆包)
+- **reg 线**: reg120 隐藏(2026-09-02); reg250 用户曾要求保留→豆包 6b23d1a 又隐藏→用户 2026-09-03 确认"不用显示"(维持隐藏, 计算仍用)
+- **reg 双平滑**: double_smooth_reg(5,5) 在 plot 开头应用, 全下游(显示/坑检测/包络线/目标价)口径统一
+- **包络线**: max(reg120,reg250)*(1+档位); 只显示 +3%(蓝)/+12%(棕) 上下沿粗实线(用户); 深坑时向下扩展 -3%/-9% 绿色虚线(豆包, 支撑参考)
+- **Grid Target 阶梯目标价**: compute_grid_target_price(8档 -9%~+12%, max_dev=0.13 置空, down_confirm=10); 粉色阶梯 #D81B60 在 K 线(streamlit 需 plot_price_segmentation_v10 内绘制, 豆包只在 plot_v10_reg_smooth.py)
+- **目标价因果红线**: 当天价格不参与当天目标价(用昨日状态+今日base), 升档当日确认次日生效
+- **reg250 分段着色绘制代码仍保留**(隐藏由注释控制, 需要时可恢复)
