@@ -93,19 +93,20 @@ def draw(symbol, end_date, tail_days=150, smooth_w=10, out_path=None):
             ax0.text(midx, c[max(0, s):lch + 1].min() * 0.97, f'坑长{lch - s}d',
                     fontsize=7, color='#F57F17', ha='center', fontweight='bold', zorder=10)
 
-    # 阶梯分段目标价(2026-09-02 polo4111): max(reg120,250)阶梯, 偏离>20%置空
+    # 阶梯分段目标价(2026-09-02 polo4111): max(reg120,250)阶梯, 偏离>13%置空
     # 必须用与V10内部一致的 double_smooth(5,5) reg 计算, 否则目标价线与图上reg250线口径不一致(目标可能显示低于reg250)
     try:
         _reg120_ds = pr.double_smooth_reg(reg120, 5, 5)
         _reg250_ds = pr.double_smooth_reg(reg250, 5, 5)
         _glv_def = (-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12)  # 完整3%间隔网格(含图上未显示的-6%/0%/+6%/+9%等档)
-        _gt, _gl = pr.compute_grid_target_price(c, _reg120_ds, _reg250_ds, levels=_glv_def, max_dev=0.20, down_confirm=10)
+        _gt, _gl = pr.compute_grid_target_price(c, _reg120_ds, _reg250_ds, levels=_glv_def, max_dev=0.13, down_confirm=10)
         _gt_win = _gt[offset:offset + tail_days]
         _x_win = np.arange(tail_days)
-        _m = np.isfinite(_gt_win)
-        if _m.any():
-            ax0.plot(_x_win[_m], _gt_win[_m], color='#D81B60', lw=3.2,
-                     alpha=1.0, zorder=13, label='Grid Target (阶梯, 偏离>20%置空)')
+        # 注意: 必须直接plot含NaN数组, matplotlib自动在置空(NaN)处断线;
+        #       若先过滤NaN再plot会把置空段前后两点连成一条横线(用户发现的bug, 2026-09-03)
+        if np.any(np.isfinite(_gt_win)):
+            ax0.plot(_x_win, _gt_win, color='#D81B60', lw=3.2,
+                     alpha=1.0, zorder=13, label='Grid Target (阶梯, 偏离>13%置空)')
             # 标注当前档位(按实际档位显示百分比, 支持负档)
             _cur = _gl[-1]
             if _cur >= 0:
@@ -116,7 +117,7 @@ def draw(symbol, end_date, tail_days=150, smooth_w=10, out_path=None):
                              xytext=(-70, 22), fontsize=9, color='#D81B60',
                              fontweight='bold', arrowprops=dict(arrowstyle='-', color='#D81B60', lw=0.8))
             else:
-                ax0.annotate('目标置空(偏离reg>20%)', (tail_days-1, c[-1]),
+                ax0.annotate('目标置空(偏离reg>13%)', (tail_days-1, c[-1]),
                              textcoords='offset points', xytext=(-110, -8),
                              fontsize=8, color='#888888', fontweight='bold')
     except Exception as _e:

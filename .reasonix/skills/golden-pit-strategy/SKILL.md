@@ -773,3 +773,15 @@ if confirmed:
   4. **目标价实线加粗**: color='#D81B60', lw=3.2, alpha=1.0(用户: "目标价实线加粗")
   5. legend 需同步移除 Reg(120d)/Reg Long(250d) 幽灵条目(线不画但图例残留会误导)
 - **调用约定(plot_v10_reg_smooth.py)**: compute_grid_target_price 显式传 levels=完整3%网格 + down_confirm=10; V10内部对reg再double_smooth(5,5), 目标价必须用同口径reg
+
+### ⚠️ tdx_quant 日线数据混入非交易日bar(2026-09-03 polo4111 发现, 待reasonix修复)
+- **现象**: get_daily_kline_from_tdx 返回的日线序列混入周末/节假日bar(300251: 234/1200=19.5%是周六日)
+  - 例: 2024-09-29(周日)、2024-10-07(国庆假期)、2024-10-13(周日) 等均为非交易日却有条bar
+- **影响**: 会把非交易日K线当交易日计算; 目标价/格栅/坑检测的"连续天数"口径被污染
+- **根因定位(初步)**: eltdx 原始 bars.get 单页返回日期正常(纯工作日); 分页拼接后出现周末bar,
+  疑似 eltdx start 参数语义问题(eltdx bars.get 的 start 可能是"从最早往后的偏移"而非"从锚点往前的偏移",
+  导致分页区间重叠/错位)。已在 get_daily_kline_from_tdx 中 sort(key=time) 且 drop_duplicates(subset=date),
+  但未剔除周末bar。
+- **待修方向**: ① eltdx 分页改用能正确对齐锚点的调用方式; ② 或数据加载后按 A 股交易日历过滤
+  (剔除周六/周日/法定节假日, 或校验相邻bar间隔); ③ 修复后全池重跑体检确认无周末bar残留
+- **红线**: 此问题影响所有下游时间序列计算(reg/坑/目标价), 修复后必须重跑因果截断自检
