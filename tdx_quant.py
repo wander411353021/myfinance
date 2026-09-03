@@ -35,6 +35,8 @@ def get_daily_kline_from_tdx(code, end_date, datalen=800):
     df = df[df['close'] > 0].reset_index(drop=True)
     df['date'] = pd.to_datetime(df['date']).dt.normalize()  # 去 15:00:00 收盘时间戳,统一为纯日期(00:00:00)
     df = df.drop_duplicates(subset='date').reset_index(drop=True)
+    # 2026-09-03 防御(豆包报告偶发混入非交易日bar): 日线只应含周一~周五交易日
+    df = df[df['date'].dt.weekday < 5].reset_index(drop=True)
     df = df.tail(datalen).reset_index(drop=True)
     return df
 
