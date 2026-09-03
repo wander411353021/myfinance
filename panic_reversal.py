@@ -1667,8 +1667,8 @@ def compute_grid_target_price(closes, reg120, reg250,
       升档: 连续 up_confirm 天收盘 >= base*(1+levels[cur]) 且未到最高档 -> cur+=1(延迟确认, 防-9~+3横跳抖动, up_confirm=5)
       降档: 连续 down_confirm 天收盘 < base*(1+levels[cur-1]) -> cur-=1(延迟确认, 防急降, down_confirm=10)
       置空: 收盘偏离 base 超过 max_dev -> 次日目标置NaN, cur重置0;
-            待偏离回到<=max_dev -> 次日从"当前价格上方第一个格栅档位"重新开始
-            (2026-09-03 polo4111: 目标价作为上方压力位, 至少高于当前价格一个格栅3%)。
+            待偏离回到<=max_dev -> 次日从"当前价格上方6%的格栅档位"重新开始
+            (2026-09-03 polo4111: 目标价作为上方压力位, 高于当前价格约6%, 落在3%间隔格栅线上)。
             max_dev=0.13 = 顶档(+12%)+1%缓冲, 超顶档即置空(2026-09-03 用户: 消除+12%~+20%无意义横线段)
 
     返回 (target, level_idx):
@@ -1705,19 +1705,20 @@ def compute_grid_target_price(closes, reg120, reg250,
             up_cnt = 0
             continue
         if void:
-            # 回归(偏离回到<=max_dev): 次日从"当前价格上方第一个格栅档位"重新开始
-            # (2026-09-03 polo4111: 目标价应作为上方压力位, 至少高于当前价格一个格栅3%)
-            # 例: 偏离+8% -> 从+9%档起(目标价≈base*1.09, 高于价格); 偏离-5% -> 从-3%档起
+            # 回归(偏离回到<=max_dev): 次日从"当前价格上方6%的格栅档位"重新开始
+            # (2026-09-03 polo4111: 目标价作为上方压力位, 高于当前价格约6%, 落在3%间隔格栅线上)
+            # 例: 偏离+8% -> 目标价≈价格*1.06, 取该值最近的格栅档位(≥dev+6%的最小档)
             # 当天价格仅用于初始化, 影响明天, 无未来函数
             void = False
             dev_now = closes[t] / base[t] - 1
+            req = (1.0 + dev_now) * 1.06 - 1.0  # 目标档位需使 目标价>=价格*1.06
             cur = 0
             for li, lv in enumerate(levels):
-                if lv > dev_now:
+                if lv >= req:
                     cur = li
                     break
             else:
-                cur = len(levels) - 1  # 价格已超最高档(dev>+12%), 取最高档
+                cur = len(levels) - 1  # 目标已超最高档, 取最高档
             down_cnt = 0
             up_cnt = 0
         # 升档: 连续 up_confirm 天站上当前目标线才升(延迟确认, 防-9~+3横跳抖动)
