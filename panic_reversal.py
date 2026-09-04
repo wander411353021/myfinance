@@ -1674,7 +1674,6 @@ def compute_press_grid(closes, reg250, step=0.03, lev_min=-0.30, lev_max=0.30,
     line_arr = np.full(n, np.nan)
     k = None
     up_cnt = 0; dn_cnt = 0
-    line_fixed = np.nan  # 段内固定的压制线价格(段起点取的格栅值, 2026-09-04 用户: 不用逐日reg漂移值)
     for t in range(n):
         if not (np.isfinite(reg250[t]) and np.isfinite(closes[t]) and reg250[t] > 0):
             k_arr[t] = -99
@@ -1685,17 +1684,15 @@ def compute_press_grid(closes, reg250, step=0.03, lev_min=-0.30, lev_max=0.30,
             if k >= len(levs): k = len(levs) - 1
             if k < 0: k = 0
             up_cnt = dn_cnt = 0
-            line_fixed = reg250[t] * (1 + levs[k])  # 段起点固定格栅值
-        line = reg250[t] * (1 + levs[k])  # 实时线(仅用于切换判定)
+        line = reg250[t] * (1 + levs[k])  # 压制线 = 当前压制档对应格栅线的值(逐日, 随reg250平滑)
         k_arr[t] = k
-        line_arr[t] = line_fixed  # 显示用段内固定值(水平段, 切换才跳)
-        # 收盘后状态更新(影响后续); 档位/段起点变化时刷新 line_fixed
+        line_arr[t] = line
+        # 收盘后状态更新(影响后续)
         if k < len(levs) - 1:
             if closes[t] >= line:
                 up_cnt += 1
                 if up_cnt >= up_conf:
                     k += 1; up_cnt = 0; dn_cnt = 0
-                    line_fixed = reg250[t] * (1 + levs[k])
             else:
                 up_cnt = 0
         if k > 0:
@@ -1704,7 +1701,6 @@ def compute_press_grid(closes, reg250, step=0.03, lev_min=-0.30, lev_max=0.30,
                 dn_cnt += 1
                 if dn_cnt >= down_conf:
                     k -= 1; dn_cnt = 0; up_cnt = 0
-                    line_fixed = reg250[t] * (1 + levs[k])
             else:
                 dn_cnt = 0
     return k_arr, line_arr, levs
