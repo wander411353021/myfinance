@@ -678,6 +678,9 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             if np.any(np.isfinite(_pline_win)):
                 ax0.plot(x, _pline_win, color='#E53935', lw=2.8, drawstyle='steps-post',
                          alpha=0.95, label='压制格栅线(分段)')
+                # 第二条 = 当前压制线 ×1.20(相对 +20%增幅, 2026-09-04 用户 B)
+                ax0.plot(x, _pline_win * 1.20, color='#8D6E63', lw=2.2, drawstyle='steps-post',
+                         alpha=0.9, label='压制 +20%增幅')
                 # 标注当前档位
                 if np.isfinite(_pline[-1]):
                     _pk_cur = _pk[-1]
