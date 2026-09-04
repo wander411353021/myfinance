@@ -674,20 +674,12 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             _fc_ps = df_ohlc['close'].values.astype(np.float64)
             _pk, _pline, _plvs = _prps.compute_press_grid(_fc_ps, _ps250)
             _pw = slice(offset, offset + n)
-            _pline_win = _pline[_pw].copy()
-            _pk_win = _pk[_pw]
+            _pline_win = _pline[_pw]
             if np.any(np.isfinite(_pline_win)):
-                # 平滑绘制: 压制线 = 对应格栅线值(随reg250平滑); 档位切换处断开(NaN)让跳变不连斜线/不画成小台阶
-                for _ti in range(1, len(_pline_win)):
-                    if np.isfinite(_pline_win[_ti]) and np.isfinite(_pline_win[_ti - 1])                             and _pk_win[_ti] != -99 and _pk_win[_ti - 1] != -99                             and _pk_win[_ti] != _pk_win[_ti - 1]:
-                        _pline_win[_ti - 1] = np.nan  # 断开切换点
+                # 平滑连续绘制: 压制线 = 对应格栅线值(随reg250平滑), 切换处直接连线(2026-09-04 用户: 不要断线)
                 ax0.plot(x, _pline_win, color='#E53935', lw=2.8, alpha=0.95, label='压制格栅线(分段)')
-                # 第二条 = 当前压制线 ×1.20(相对 +20%增幅, 2026-09-04 用户 B)
-                _p20_win = _pline_win * 1.20
-                for _ti in range(1, len(_pline_win)):
-                    if np.isnan(_pline_win[_ti]) and not np.isnan(_pline_win[_ti - 1]):
-                        _p20_win[_ti] = np.nan
-                ax0.plot(x, _p20_win, color='#8D6E63', lw=2.2, alpha=0.9, label='压制 +20%增幅')
+                # 第二条 = 当前压制线 ×1.20(相对 +20%增幅)
+                ax0.plot(x, _pline_win * 1.20, color='#8D6E63', lw=2.2, alpha=0.9, label='压制 +20%增幅')
                 # 标注当前档位
                 if np.isfinite(_pline[-1]):
                     _pk_cur = _pk[-1]
