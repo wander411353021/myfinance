@@ -1647,6 +1647,65 @@ def detect_grid_break(closes, reg120, reg250,
     return out
 
 
+def compute_press_grid(closes, reg250, step=0.03, lev_min=-0.30, lev_max=0.30,
+                      up_conf=10, down_conf=10, hyst=2):
+    """分段压制格栅(2026-09-04 用户定义, B方案: confirm=10 + 滞回2档)。
+
+    reg250 的 step 间隔格栅线集合(lev_min~lev_max); 状态机每段选出
+    "当前压制股价的格栅线"(股价在其下方最近的线), 突破/跌破**确认后**切换档位:
+
+      升档(突破): 连续 up_conf 日 close >= line_k(当前压制线) -> k+1
+      降档(跌破): 连续 down_conf 日 close < line_{k-hyst}(当前档下方 hyst 档) -> k-1
+        (滞回 hyst=2: 股价须跌破当前压制线下 2 档才降, 避免 reg 附近 ±3% 震荡来回切)
+
+    每段(两次确认切换间)压制线恒定 → 图上看分段清晰不乱跳。
+    验证: 002265(围绕reg) 段数大幅减少; 300251(深下方) 逐档跟随涨跌。
+    全部因果(只用<=t 数据)。
+
+    返回 (k_arr, line_arr, levs):
+      k_arr[t]: 压制档索引(-99=无效)
+      line_arr[t]: 压制线价格
+    """
+    closes = np.asarray(closes, dtype=float)
+    reg250 = np.asarray(reg250, dtype=float)
+    n = len(closes)
+    levs = np.arange(lev_min, lev_max + 1e-9, step)
+    k_arr = np.full(n, -99, dtype=int)
+    line_arr = np.full(n, np.nan)
+    k = None
+    up_cnt = 0; dn_cnt = 0
+    for t in range(n):
+        if not (np.isfinite(reg250[t]) and np.isfinite(closes[t]) and reg250[t] > 0):
+            k_arr[t] = -99
+            continue
+        if k is None:
+            dev = closes[t] / reg250[t] - 1
+            k = int(np.searchsorted(levs, dev))
+            if k >= len(levs): k = len(levs) - 1
+            if k < 0: k = 0
+            up_cnt = dn_cnt = 0
+        line = reg250[t] * (1 + levs[k])
+        k_arr[t] = k
+        line_arr[t] = line
+        # 收盘后状态更新(影响后续)
+        if k < len(levs) - 1:
+            if closes[t] >= line:
+                up_cnt += 1
+                if up_cnt >= up_conf:
+                    k += 1; up_cnt = 0; dn_cnt = 0
+            else:
+                up_cnt = 0
+        if k > 0:
+            lw = reg250[t] * (1 + levs[max(0, k - hyst)])
+            if closes[t] < lw:
+                dn_cnt += 1
+                if dn_cnt >= down_conf:
+                    k -= 1; dn_cnt = 0; up_cnt = 0
+            else:
+                dn_cnt = 0
+    return k_arr, line_arr, levs
+
+
 def compute_grid_target_price(closes, reg120, reg250,
                               levels=(-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12),
                               max_dev=0.13,
