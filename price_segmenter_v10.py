@@ -573,13 +573,13 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         print(f'[reg smooth] 失败: {_e}')
 
     if hide_mid_panels:
-        fig, axes = plt.subplots(5, 1, figsize=(22, 16),
+        fig, axes = plt.subplots(4, 1, figsize=(22, 14),
                                  sharex=True,
-                                 gridspec_kw={'height_ratios': [4, 1.3, 0.55, 0.6, 0.55]})
+                                 gridspec_kw={'height_ratios': [4, 1.3, 0.55, 0.6]})
     else:
-        fig, axes = plt.subplots(7, 1, figsize=(22, 20),
+        fig, axes = plt.subplots(6, 1, figsize=(22, 18),
                                  sharex=True,
-                                 gridspec_kw={'height_ratios': [4, 1.3, 0.45, 0.9, 0.55, 0.6, 0.55]})
+                                 gridspec_kw={'height_ratios': [4, 1.3, 0.45, 0.9, 0.55, 0.6]})
     fig.suptitle(f'{name}  Price Segmentation V10 (Level Breakout)', fontsize=14, fontweight='bold')
 
     ax0 = axes[0]; opens = ohlc['open'].values; highs = ohlc['high'].values
@@ -986,7 +986,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     # ── Panic-Reversal Signal Panel (5th panel: per-stock 5d drop bars, share x-axis with K-line) ──
     ax4 = axes[2] if hide_mid_panels else axes[4]
     ax5 = axes[3] if hide_mid_panels else axes[5]  # 黄金坑 0/1 方波面板
-    ax6 = axes[4] if hide_mid_panels else axes[6]  # 格栅突破面板(2026-09-02)
+
     ax4.set_facecolor('#FAFAFA')
     # v4 strength 柱(死区滤波:波幅/ATR + 收盘位移方向,±30 饱和压缩)
     try:
@@ -1153,41 +1153,6 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             ax5.plot([], [], color='#7B1FA2', lw=3, alpha=0.7, label='Reg120 Pit')
     except Exception:
         pass
-
-    # ── 格栅突破面板(2026-09-02): reg120/250 上下平移档线, 长期压制→突破 = 信号 ──
-    try:
-        _reg120a = None
-        if reg_preds is not None:
-            _reg120a = np.asarray(reg_preds, dtype=np.float64)
-        else:
-            from mean_reversion.signal_residual import compute_rolling_regression as _crrga
-            _reg120a, _ = _crrga(_fc, window=120, use_log=True)
-        _gbrk = _pr.detect_grid_break(_fc, _reg120a, _frg2)  # 全量, 全局索引
-        # 面板底色
-        ax6.set_facecolor('#FAFAFA')
-        ax6.set_ylim(0, 3)
-        ax6.set_yticks([])
-        _lvl_map = {0.03: 0.6, 0.06: 1.2, 0.09: 1.8, 0.12: 2.4}  # 3%间隔(2026-09-02 用户改)
-        for _gs, _gb, _grn, _glv, _gdays in _gbrk:
-            _x0g = _gs - offset - 0.5
-            _x1g = _gb - offset + 0.5
-            if _x1g <= 0 or _x0g >= n:
-                continue
-            _yl = _lvl_map.get(round(_glv, 2), 1.0)
-            # 压制段: 灰蓝半透明; 突破日: 亮色竖线+点
-            ax6.axvspan(max(_x0g, -0.5), min(_x1g, n + 0.5), ymin=0, ymax=_yl / 3.0,
-                        color='#90A4AE', alpha=0.30)
-            _colg = '#B71C1C'  # 向上档突破(压制后向上突破, 观察信号)
-            ax6.axvline(min(_x1g, n + 0.5), ymin=0, ymax=_yl / 3.0, color=_colg, lw=1.2)
-            ax6.plot(min(_x1g, n + 0.5), _yl, 'o', color=_colg, markersize=3)
-        # 档位图例线
-        for _glv, _yl in _lvl_map.items():
-            ax6.plot([], [], color='#B71C1C', lw=1.5)
-        ax6.plot([], [], color='#90A4AE', lw=3, alpha=0.5, label='Suppress')
-        ax6.set_title('Grid-Break (max(reg120,250) 向上格栅压制突破: 长期压制后向上突破)', fontsize=9, loc='left', pad=2)
-        ax6.grid(True, alpha=0.2)
-    except Exception as _e:
-        print(f'[grid_break] 绘制失败: {_e}')
 
     # ── 统一 x 轴日期刻度（落在最底层面板）──
     ts2 = max(1, n // 12); dates = ohlc['date'].values
