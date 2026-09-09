@@ -666,6 +666,17 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     except Exception as _e:
         print(f'[grid expect] 绘制失败: {_e}')
 
+    # ── 第二压制线(2026-09-09 用户): base=max(reg120,250) × 1.12, 稳定高线(粉线上方参考) ──
+    try:
+        _s2_120 = reg_preds if reg_preds is not None else None
+        _s2_250 = reg_preds_long if reg_preds_long is not None else _frg2
+        if _s2_120 is not None and _s2_250 is not None:
+            _s2_base = np.maximum(np.asarray(_s2_120), np.asarray(_s2_250))
+            ax0.plot(x, (_s2_base * 1.12)[offset:offset + n], color='#1B5E20', lw=2.6,
+                     alpha=0.95, label='第二压制线 (base×1.12)')
+    except Exception as _e:
+        print(f'[up2] 绘制失败: {_e}')
+
     # ── 阶梯分段目标价 Grid Target(2026-09-03 接入V10): max(reg120,250)阶梯, 偏离>13%置空 ──
     # (豆包 2026-09-02/03 只在 plot_v10_reg_smooth.py 绘制, streamlit 未接入——这里补上, 口径与独立工具一致)
     try:
