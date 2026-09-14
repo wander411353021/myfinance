@@ -625,108 +625,20 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         sm = result['smooth'].values[offset:offset + n]
         ax0.plot(x, sm, color='#1565C0', linewidth=1.0, alpha=0.6, label='EMA')
     # 长周期回归线(250日): 2026-09-02 用户要求 reg250 线不显示(格栅/目标价计算仍用它)
-    # ── 格栅预期突破价线(2026-09-02): max(reg120,reg250)*(1+档位), 股价站上=该档突破 ──
-    try:
-        _gb120 = None
-        if reg_preds is not None:
-            _gb120 = np.asarray(reg_preds, dtype=np.float64)
-        else:
-            from mean_reversion.signal_residual import compute_rolling_regression as _crrga2
-            _gb120, _ = _crrga2(df_ohlc['close'].values.astype(np.float64), window=120, use_log=True)
-        _gb250 = None
-        if reg_preds_long is not None:
-            _gb250 = np.asarray(reg_preds_long, dtype=np.float64)
-        else:
-            _gb250 = _frg2
-        _gbase = np.maximum(_gb120, _gb250)
-        # 2026-09-02 用户改: 只显示最上(+12%)最下(+3%)两根包络线(避免线多杂乱)
-        # 2026-09-02 用户再改: 股价离reg特别远时(深坑)向下扩展格栅线(绿色虚线, 支撑参考)
-        _glev_col = [(0.03, '#42A5F5', 'Grid +3% (下沿)'), (0.12, '#8D6E63', 'Grid +12% (上沿)')]
-        for _gl, _gc, _gt in _glev_col:
-            _glv_line = _gbase[offset:offset + n] * (1 + _gl)
-            ax0.plot(x, _glv_line, color=_gc, linewidth=1.2, linestyle='--', alpha=0.85, label=_gt)
-        # 向下扩展: 股价深坑时画 -3%/-9% 两条绿色虚线(支撑参考, 非信号; 2026-09-02 用户定: 最多2条)
-        try:
-            _gw_base = _gbase[offset:offset + n]
-            _gw_close = closes
-            _m_fin = np.isfinite(_gw_base) & np.isfinite(_gw_close)
-            if _m_fin.any():
-                _min_dev = float(np.min(_gw_close[_m_fin] / _gw_base[_m_fin] - 1))
-                # 向下扩展: 只显示 -3% 和 -9% 两条(最低到基准91%= -9%, 不再往下; 2026-09-02 用户定)
-                _down_lvs = [-0.03]
-                if _min_dev < -0.09:
-                    _down_lvs.append(-0.09)
-                for _down_lv in _down_lvs:
-                    _glv_line = _gbase[offset:offset + n] * (1 + _down_lv)
-                    ax0.plot(x, _glv_line, color='#2E7D32', linewidth=1.2,
-                             linestyle='--', alpha=0.7,
-                             label=f'Grid {_down_lv*100:.0f}% (下方支撑)')
-        except Exception as _e:
-            print(f'[grid down] 绘制失败: {_e}')
-    except Exception as _e:
-        print(f'[grid expect] 绘制失败: {_e}')
-
-    # ── 第二压制线(2026-09-09 用户): base=max(reg120,250) × 1.12, 稳定高线(粉线上方参考) ──
+    # ── REG 基准线 + 格栅压制线(2026-09-14 用户: 只显示这两条, 去掉多余格栅线) ──
     try:
         _s2_120 = reg_preds if reg_preds is not None else None
         _s2_250 = reg_preds_long if reg_preds_long is not None else _frg2
         if _s2_120 is not None and _s2_250 is not None:
             _s2_base = np.maximum(np.asarray(_s2_120), np.asarray(_s2_250))
+            # REG 基准线(max(reg120,250))
+            ax0.plot(x, _s2_base[offset:offset + n], color='#546E7A', lw=2.0,
+                     alpha=0.95, label='REG 基准 max(reg120,250)')
+            # 格栅压制线(基准×1.12)
             ax0.plot(x, (_s2_base * 1.12)[offset:offset + n], color='#1B5E20', lw=2.6,
-                     alpha=0.95, label='第二压制线 (base×1.12)')
+                     alpha=0.95, label='格栅压制线 (基准×1.12)')
     except Exception as _e:
-        print(f'[up2] 绘制失败: {_e}')
-
-    # ── 阶梯分段目标价 Grid Target(2026-09-03 接入V10): max(reg120,250)阶梯, 偏离>13%置空 ──
-    # (豆包 2026-09-02/03 只在 plot_v10_reg_smooth.py 绘制, streamlit 未接入——这里补上, 口径与独立工具一致)
-    try:
-        # plot 开头已对 reg_preds/reg_preds_long 做 double_smooth(5,5), 直接用
-        _gt120 = reg_preds if reg_preds is not None else None
-        _gt250 = reg_preds_long if reg_preds_long is not None else _frg2
-        if _gt120 is not None and _gt250 is not None:
-            import panic_reversal as _prgt
-            _glv_def = (-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12)
-            _fc_gt = df_ohlc['close'].values.astype(np.float64)
-            _gt, _gl = _prgt.compute_grid_target_price(_fc_gt, _gt120, _gt250,
-                                                       levels=_glv_def, max_dev=0.13, down_confirm=10)
-            _gt_win = _gt[offset:offset + n]
-            if np.any(np.isfinite(_gt_win)):
-                # 直接plot含NaN数组, matplotlib在置空(NaN)处自动断线(勿先过滤NaN, 会连成横线)
-                ax0.plot(x, _gt_win, color='#D81B60', lw=3.2, alpha=1.0, zorder=13,
-                         label='Grid Target (阶梯, 偏离>13%置空)')
-                _cur = _gl[-1]
-                if _cur >= 0 and np.isfinite(_gt[-1]):
-                    _tgt = _gt[-1]
-                    _pct = _glv_def[_cur] * 100
-                    ax0.annotate(f'目标{_tgt:.2f} ({_pct:+.0f}%)', (n - 1, _tgt),
-                                 textcoords='offset points', xytext=(-70, 22),
-                                 fontsize=9, color='#D81B60', fontweight='bold',
-                                 arrowprops=dict(arrowstyle='-', color='#D81B60', lw=0.8))
-                else:
-                    ax0.annotate('目标置空(偏离reg>13%)', (n - 1, closes[-1]),
-                                 textcoords='offset points', xytext=(-110, -8),
-                                 fontsize=8, color='#888888', fontweight='bold')
-    except Exception as _e:
-        print(f'[grid target] 绘制失败: {_e}')
-
-    # 阴柱期转阳目标价线(仅阴柱日有值,阳柱/无柱日 NaN——阶梯线,突破该价次日转阳)
-    try:
-        import panic_reversal as _pr
-        _fc = df_ohlc['close'].values.astype(np.float64)
-        _fh = df_ohlc['high'].values.astype(np.float64)
-        _fl = df_ohlc['low'].values.astype(np.float64)
-        _fo = df_ohlc['open'].values.astype(np.float64)
-        _frg = None
-        if reg_preds_long is not None:
-            _frg = np.asarray(reg_preds_long, dtype=np.float64)
-        elif reg_preds is not None:
-            _frg = np.asarray(reg_preds, dtype=np.float64)
-        _tp = _pr.compute_turn_positive_prices(_fc, _fh, _fl, opens=_fo, reg_preds=_frg)
-        tp_win = _tp[offset:offset + n]
-        ax0.plot(x, tp_win, drawstyle='steps-post', color='#1565C0', linewidth=2.6,
-                 linestyle='--', alpha=0.95, label='Turn-Up Target')
-    except Exception:
-        pass
+        print(f'[press lines] 绘制失败: {_e}')
 
     for si, (s, e, p, _) in enumerate(intervals):
         if p == "UP" and e > s:
