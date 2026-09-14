@@ -634,12 +634,40 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             # REG 基准线(max(reg120,250))
             ax0.plot(x, _s2_base[offset:offset + n], color='#546E7A', lw=2.0,
                      alpha=0.95, label='REG 基准 max(reg120,250)')
-            # 格栅预期突破价线: 基准×(1+档位), 股价站上=该档突破(最下+3% / 最上+12%)
-            for _gl, _gc, _gt in ((0.03, '#42A5F5', '格栅预期价 +3%'), (0.12, '#8D6E63', '格栅预期价 +12%')):
-                ax0.plot(x, (_s2_base * (1 + _gl))[offset:offset + n], color=_gc,
-                         lw=1.6, linestyle='--', alpha=0.9, label=_gt)
     except Exception as _e:
-        print(f'[expect lines] 绘制失败: {_e}')
+        print(f'[reg base] 绘制失败: {_e}')
+
+    # ── 阶梯分段目标价 Grid Target(2026-09-03 接入V10): max(reg120,250)阶梯, 偏离>13%置空 ──
+    # (豆包 2026-09-02/03 只在 plot_v10_reg_smooth.py 绘制, streamlit 未接入——这里补上, 口径与独立工具一致)
+    try:
+        # plot 开头已对 reg_preds/reg_preds_long 做 double_smooth(5,5), 直接用
+        _gt120 = reg_preds if reg_preds is not None else None
+        _gt250 = reg_preds_long if reg_preds_long is not None else _frg2
+        if _gt120 is not None and _gt250 is not None:
+            import panic_reversal as _prgt
+            _glv_def = (-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12)
+            _fc_gt = df_ohlc['close'].values.astype(np.float64)
+            _gt, _gl = _prgt.compute_grid_target_price(_fc_gt, _gt120, _gt250,
+                                                       levels=_glv_def, max_dev=0.13, down_confirm=10)
+            _gt_win = _gt[offset:offset + n]
+            if np.any(np.isfinite(_gt_win)):
+                # 直接plot含NaN数组, matplotlib在置空(NaN)处自动断线(勿先过滤NaN, 会连成横线)
+                ax0.plot(x, _gt_win, color='#D81B60', lw=3.2, alpha=1.0, zorder=13,
+                         label='Grid Target (阶梯, 偏离>13%置空)')
+                _cur = _gl[-1]
+                if _cur >= 0 and np.isfinite(_gt[-1]):
+                    _tgt = _gt[-1]
+                    _pct = _glv_def[_cur] * 100
+                    ax0.annotate(f'目标{_tgt:.2f} ({_pct:+.0f}%)', (n - 1, _tgt),
+                                 textcoords='offset points', xytext=(-70, 22),
+                                 fontsize=9, color='#D81B60', fontweight='bold',
+                                 arrowprops=dict(arrowstyle='-', color='#D81B60', lw=0.8))
+                else:
+                    ax0.annotate('目标置空(偏离reg>13%)', (n - 1, closes[-1]),
+                                 textcoords='offset points', xytext=(-110, -8),
+                                 fontsize=8, color='#888888', fontweight='bold')
+    except Exception as _e:
+        print(f'[grid target] 绘制失败: {_e}')
 
     for si, (s, e, p, _) in enumerate(intervals):
         if p == "UP" and e > s:
