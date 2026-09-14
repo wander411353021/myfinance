@@ -625,7 +625,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         sm = result['smooth'].values[offset:offset + n]
         ax0.plot(x, sm, color='#1565C0', linewidth=1.0, alpha=0.6, label='EMA')
     # 长周期回归线(250日): 2026-09-02 用户要求 reg250 线不显示(格栅/目标价计算仍用它)
-    # ── REG 基准线 + 格栅压制线(2026-09-14 用户: 只显示这两条, 去掉多余格栅线) ──
+    # ── REG 基准线 + 格栅预期突破价线(2026-09-14 用户: 只显示这两类) ──
     try:
         _s2_120 = reg_preds if reg_preds is not None else None
         _s2_250 = reg_preds_long if reg_preds_long is not None else _frg2
@@ -634,11 +634,12 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             # REG 基准线(max(reg120,250))
             ax0.plot(x, _s2_base[offset:offset + n], color='#546E7A', lw=2.0,
                      alpha=0.95, label='REG 基准 max(reg120,250)')
-            # 格栅压制线(基准×1.12)
-            ax0.plot(x, (_s2_base * 1.12)[offset:offset + n], color='#1B5E20', lw=2.6,
-                     alpha=0.95, label='格栅压制线 (基准×1.12)')
+            # 格栅预期突破价线: 基准×(1+档位), 股价站上=该档突破(最下+3% / 最上+12%)
+            for _gl, _gc, _gt in ((0.03, '#42A5F5', '格栅预期价 +3%'), (0.12, '#8D6E63', '格栅预期价 +12%')):
+                ax0.plot(x, (_s2_base * (1 + _gl))[offset:offset + n], color=_gc,
+                         lw=1.6, linestyle='--', alpha=0.9, label=_gt)
     except Exception as _e:
-        print(f'[press lines] 绘制失败: {_e}')
+        print(f'[expect lines] 绘制失败: {_e}')
 
     for si, (s, e, p, _) in enumerate(intervals):
         if p == "UP" and e > s:
