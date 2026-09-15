@@ -693,7 +693,11 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                         _cur = _tk; _cnt = 0
                 else:
                     _cnt = 0
-                _gt2[_ti] = _s3_base[_ti] * (1 + _levs1[_cur])
+                # 2026-09-15 用户: 第二阶梯不得低于第一阶梯(粉线)值(慢速跟随滞后时以粉线封底)
+                _v2 = _s3_base[_ti] * (1 + _levs1[_cur])
+                if np.isfinite(_gt_p[_ti]) and _v2 < _gt_p[_ti]:
+                    _v2 = _gt_p[_ti]
+                _gt2[_ti] = _v2
             _gt2_win = _gt2[offset:offset + n]
             if np.any(np.isfinite(_gt2_win)):
                 ax0.plot(x, _gt2_win, color='#4A148C', lw=2.4, alpha=0.95, zorder=12,
