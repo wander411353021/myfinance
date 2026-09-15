@@ -669,21 +669,35 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     except Exception as _e:
         print(f'[grid target] 绘制失败: {_e}')
 
-    # ── 第二阶梯(2026-09-15 用户): 档位整体+3%(更高) + 确认up40/down40(更慢), 深紫 ──
+    # ── 第二阶梯(2026-09-15 用户定版): 粉线档+2档(+6% 固定间距) + confirm=40 慢速, 深紫 ──
     try:
         _s3_120 = reg_preds if reg_preds is not None else None
         _s3_250 = reg_preds_long if reg_preds_long is not None else _frg2
         if _s3_120 is not None and _s3_250 is not None:
-            import panic_reversal as _prs3
-            _levs_hi = (-0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12, 0.15)
-            _fc_s3 = df_ohlc['close'].values.astype(np.float64)
-            _gt2, _gl2 = _prs3.compute_grid_target_price(_fc_s3, _s3_120, _s3_250,
-                                                         levels=_levs_hi, max_dev=0.16,
-                                                         down_confirm=40, up_confirm=40)
+            _levs1 = (-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12)
+            _s3_base = np.maximum(np.asarray(_s3_120), np.asarray(_s3_250))
+            _gt_p, _gl_p = _prgt.compute_grid_target_price(
+                df_ohlc['close'].values.astype(np.float64), _s3_120, _s3_250,
+                levels=_levs1, max_dev=0.13, down_confirm=10)
+            _gt2 = np.full(len(_s3_base), np.nan)
+            _cur = None; _cnt = 0
+            for _ti in range(len(_s3_base)):
+                if _gl_p[_ti] < 0 or not np.isfinite(_s3_base[_ti]):
+                    continue
+                _tk = min(_gl_p[_ti] + 2, len(_levs1) - 1)  # 粉线档+2档(封顶)
+                if _cur is None:
+                    _cur = _tk; _cnt = 0
+                elif _tk != _cur:
+                    _cnt += 1
+                    if _cnt >= 40:
+                        _cur = _tk; _cnt = 0
+                else:
+                    _cnt = 0
+                _gt2[_ti] = _s3_base[_ti] * (1 + _levs1[_cur])
             _gt2_win = _gt2[offset:offset + n]
             if np.any(np.isfinite(_gt2_win)):
                 ax0.plot(x, _gt2_win, color='#4A148C', lw=2.4, alpha=0.95, zorder=12,
-                         label='第二阶梯 (档+3%, up40/down40)')
+                         label='第二阶梯 (粉线档+2档, confirm40)')
     except Exception as _e:
         print(f'[step2] 绘制失败: {_e}')
 
