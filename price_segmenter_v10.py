@@ -669,6 +669,24 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     except Exception as _e:
         print(f'[grid target] 绘制失败: {_e}')
 
+    # ── 第二阶梯(2026-09-15 用户): 档位整体+3%(更高) + 确认up40/down40(更慢), 深紫 ──
+    try:
+        _s3_120 = reg_preds if reg_preds is not None else None
+        _s3_250 = reg_preds_long if reg_preds_long is not None else _frg2
+        if _s3_120 is not None and _s3_250 is not None:
+            import panic_reversal as _prs3
+            _levs_hi = (-0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12, 0.15)
+            _fc_s3 = df_ohlc['close'].values.astype(np.float64)
+            _gt2, _gl2 = _prs3.compute_grid_target_price(_fc_s3, _s3_120, _s3_250,
+                                                         levels=_levs_hi, max_dev=0.16,
+                                                         down_confirm=40, up_confirm=40)
+            _gt2_win = _gt2[offset:offset + n]
+            if np.any(np.isfinite(_gt2_win)):
+                ax0.plot(x, _gt2_win, color='#4A148C', lw=2.4, alpha=0.95, zorder=12,
+                         label='第二阶梯 (档+3%, up40/down40)')
+    except Exception as _e:
+        print(f'[step2] 绘制失败: {_e}')
+
     for si, (s, e, p, _) in enumerate(intervals):
         if p == "UP" and e > s:
             ax0.hlines(highs[s:e + 1].max(), s - 0.5, e + 0.5, colors='#B71C1C',
