@@ -1,11 +1,76 @@
 import os
 import ast
+import numpy as np
 import pandas as pd
 
 _PAGE = 800  # eltdx 单次返回上限(协议限制,count>800 报 ProtocolError)
 
-def get_daily_kline_from_tdx(code, end_date, datalen=800):
-    """通达信直连拉日线(前复权)。列: date/open/high/low/close/volume。
+def _historical_float_shares_records(code):
+    """通达信历史流通股本记录: {日期: 流通股本(股)}。
+    来源 corporate.capital_changes 中 category_raw in (5,9) 的 c3_value;
+    无未来函数: 只取记录日期≤某天的最后一条, 第 i 天换手率只用 ≤i 天的股本。
+    记录为空(次新股/无变动记录)时返回 {}, 调用方 fallback 当前快照并告警。
+    """
+    from eltdx import TdxClient
+    recs = {}
+    with TdxClient() as client:
+        cc = client.corporate.capital_changes(code)
+        for r in cc.records:
+            # 流通股本只在这些类别中出现(c3字段=流通股本, 单位股):
+            #   2=送配股上市 / 3=非流通股上市(全流通) / 5=股本变化 / 9=转配股上市
+            #   category 1(除权除息)/14(送认沽权证) 的 c3 是比例系数(如6/1/16), 严禁混入
+            if r.category_raw in (2, 3, 5, 9) and r.c3_value and r.c3_value > 0:
+                d = pd.to_datetime(r.date).normalize()
+                recs[d] = float(r.c3_value)
+    return recs
+
+
+def _current_float_shares(code):
+    """当前流通股本快照(股) — 仅作历史记录缺失时的 fallback(会告警)。"""
+    from eltdx import TdxClient
+    with TdxClient() as client:
+        rows = client.helpers.daily_share_capital([code]).rows
+    if not rows:
+        return None
+    return float(rows[0].circulating_shares)
+
+
+def add_turnover(df, code, end_date):
+    """给日线 df 附加换手率列(无未来函数, 逐日历史股本):
+      turnover    float  换手率 = 成交量(股)/当日流通股本(股), 小数(可>1, 如次新/暴涨日)
+      circ_shares float  当日流通股本(股), 来自历史资本变动记录(≤当日), 无记录时 fallback 当前快照
+    volume 单位是手(volume_lots), 需 ×100 转股。
+    """
+    recs = _historical_float_shares_records(code)
+    dates = df['date'].values
+    vol_shares = df['volume'].values.astype(float) * 100.0   # 手→股
+    circ = np.empty(len(df), dtype=float)
+    if recs:
+        rec_dates = np.array(sorted(recs.keys()), dtype='datetime64[ns]')
+        rec_vals = np.array([recs[pd.Timestamp(d)] for d in rec_dates], dtype=float)
+        idx = np.searchsorted(rec_dates, dates, side='right') - 1
+        circ[:] = rec_vals[np.clip(idx, 0, len(rec_dates)-1)]
+    else:
+        circ[:] = np.nan
+    if np.isnan(circ).any():
+        cur = _current_float_shares(code)
+        if cur is None:
+            raise RuntimeError(f'{code} 无历史股本记录且当前快照不可用, 无法计算换手率')
+        if np.isnan(circ).all():
+            print(f'⚠ {code} 无历史资本变动记录, 换手率用当前流通股本快照({cur/1e8:.2f}亿股)替代 (解禁/增发前会高估)')
+        else:
+            print(f'⚠ {code} 部分日期无股本记录({int(np.isnan(circ).sum())}天), 用当前快照替代')
+        circ[np.isnan(circ)] = cur
+    df = df.copy()
+    df['circ_shares'] = circ
+    df['turnover'] = vol_shares / circ
+    return df
+
+
+def get_daily_kline_from_tdx(code, end_date, datalen=800, with_turnover=True):
+    """通达信直连拉日线(前复权)。列: date/open/high/low/close/volume
+    若 with_turnover=True(默认), 额外附加 turnover(换手率)/circ_shares(当日流通股本),
+    换手率用逐日历史股本计算(无未来函数), 见 add_turnover。
 
     datalen>800 时自动分页拼接(eltdx 单次 count>800 报 ProtocolError):
     start=0/800/1600... 逐页拉取,按时间升序拼接。datalen=2400 ≈ 10 年。
@@ -38,6 +103,8 @@ def get_daily_kline_from_tdx(code, end_date, datalen=800):
     # 2026-09-03 防御(豆包报告偶发混入非交易日bar): 日线只应含周一~周五交易日
     df = df[df['date'].dt.weekday < 5].reset_index(drop=True)
     df = df.tail(datalen).reset_index(drop=True)
+    if with_turnover:
+        df = add_turnover(df, code, end_date)
     return df
 
 
