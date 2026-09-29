@@ -929,4 +929,8 @@ if confirmed:
   - 600199 误差8.5%(6.06亿→6.58亿)/300251 误差1%(27.81亿→27.53亿)/300204 误差0%——低换手票(600519)受害最深
 - **⚠️ 600519 低换手属性**: 日换手仅0.27%, 首日播种全流通盘会形成高位"幽灵峰"(1517→1454), 必须播种窗口+decay缓解——低换手股的真实属性, 非算法缺陷
 - **换手率口径(已内置接口)**: `tdx_quant.get_daily_kline_from_tdx(code, end, datalen, with_turnover=True)` 默认返回 `turnover`(换手率=成交量(手)×100/当日流通股本, 小数可>1) + `circ_shares`(当日流通股本) 两列; `with_turnover=False` 退回旧6列兼容
+- **📡 股本获取接口链路(eltdx/通达信协议直连, 非爬虫)**:
+  - **主路径(历史股本, 换手率用)**: `client.corporate.capital_changes(code)` — 通达信 F10 股本变动接口, 含逐日历史记录(日期+category+c1~c4); 经 `category_raw in (2,3,5,9) 且 c3_value>0` 筛选后, c3_value 即该日起生效的流通股本(股), 供逐日 searchsorted 因果重建
+  - **兜底路径(仅历史记录缺失)**: `client.helpers.daily_share_capital([code])` — 通达信每日股本接口, 取 `rows[0].circulating_shares` = **当前快照**; 仅当 capital_changes 无记录(次新股/无变动)时才用并打印告警 `⚠ 无历史资本变动记录, 换手率用当前流通股本快照替代(解禁/增发前会高估)`
+  - **严禁直接用快照算历史**: daily_share_capital 无逐日历史, 拿当前快照算历史换手率=未来函数(600519 被低估174%的病根); 故快照只作 fallback 并显式告警
 - **画图脚本**: `chip_band_plot.py <code> <end> <N> [out] [vmax]` (vmax=VMULT默认3), 已改用接口 turnover 列
