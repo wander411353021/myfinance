@@ -99,9 +99,10 @@ def get_stock_items_cached():
 
 @st.cache_data(show_spinner=False)
 def fetch_tdx_kline(code, end_date, datalen=800):
-    """通达信直连拉日线（前复权）。end_date 透传给 anchor_date;datalen>800 自动分页(最长10年)。"""
+    """通达信直连拉日线（前复权）。end_date 透传给 anchor_date;datalen>800 自动分页(最长10年)。
+    带 with_turnover=True: 返回 turnover/circ_shares 列, 供 V10 筹码带(show_chip)使用。"""
     from tdx_quant import get_daily_kline_from_tdx
-    df = get_daily_kline_from_tdx(code, end_date, datalen=datalen)
+    df = get_daily_kline_from_tdx(code, end_date, datalen=datalen, with_turnover=True)
     if df is None or len(df) == 0:
         raise RuntimeError(f"通达信返回为空（代码 {code}）")
     # 标准化：时间升序、剔除空收盘，保证 run_segmentation 的 tail 取到最近 N 根
@@ -110,10 +111,11 @@ def fetch_tdx_kline(code, end_date, datalen=800):
 
 
 # ── 计算 + 存 session（绘图代码零改动）──
-def compute_and_store(df, tail_days, name):
+def compute_and_store(df, tail_days, name, code=None, end_date=None):
     fd, tmp_png = tempfile.mkstemp(suffix=".png")
     os.close(fd)
-    out = run_segmentation(df, tail_days=tail_days, name=name, save_path=tmp_png)
+    out = run_segmentation(df, tail_days=tail_days, name=name, save_path=tmp_png,
+                           show_chip=True, code=code, end_date=end_date)
     st.session_state["last_png"] = tmp_png
     st.session_state["last_out"] = out
     st.session_state["last_name"] = name
@@ -258,7 +260,8 @@ if go or auto_go:
                        f"该股票可能已退市 / 停牌 / 无行情数据，已保留上一只股票的图表。")
     if df_full is not None and len(df_full) >= 2:
         st.success(f"已拉取 {len(df_full)} 根，日期 {df_full['date'].iloc[0].date()} ~ {df_full['date'].iloc[-1].date()}（前复权）")
-        compute_and_store(df_full, tail_days, f"{code}")
+        _end_str = end_date.strftime("%Y%m%d") if hasattr(end_date, "strftime") else str(end_date).replace("-", "")
+        compute_and_store(df_full, tail_days, f"{code}", code=code, end_date=_end_str)
         # 注意：同行业列表不再随主图加载自动刷新（避免卡顿与误刷新）。
         # 仅在输入框手动改码 / 板块导航点股票时清空，需用户手动点「刷新同行业个股」按钮重新查询。
     elif df_full is not None:
