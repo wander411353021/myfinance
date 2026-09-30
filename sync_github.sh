@@ -11,10 +11,10 @@ REPO="$(cd "$(dirname "$0")" && pwd)"
 CLONE="/tmp/myfinance_gh"
 GH_URL="git@github.com:wander411353021/myfinance.git"
 
-# 1. 重建克隆(保证与远端最新一致)
+# 1. 重建克隆(保证与远端最新一致, 明确检出 master 分支)
 rm -rf "$CLONE"
-echo "[1/4] clone github 远端 ..."
-timeout 180 git clone "$GH_URL" "$CLONE"
+echo "[1/4] clone github 远端(master) ..."
+timeout 180 git clone --branch master --single-branch "$GH_URL" "$CLONE"
 
 # 2. rsync 同步代码/skills(排除私钥/缓存/图集)
 echo "[2/4] rsync 本地代码 -> 克隆 ..."
@@ -38,6 +38,6 @@ fi
 
 # 4. force push(GitHub master 始终以 gitee 为准)
 echo "[4/4] force push github ..."
-timeout 180 git push --force origin master 2>&1 | tail -3
+timeout 180 git push --force origin master
 echo "✅ 已同步: gitee -> GitHub myfinance"
 git log --oneline -1
