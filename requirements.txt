@@ -12,6 +12,7 @@ scipy==1.17.1
 matplotlib==3.10.8
 streamlit==1.59.2
 eltdx==1.0.2
+fengwo==0.0.7
 pytdx==1.72
 requests==2.32.5
 
