@@ -36,8 +36,10 @@ else
   git commit -m "sync: 镜像同步(以gitee为准) $(date +%Y-%m-%d)"
 fi
 
-# 4. force push(GitHub master 始终以 gitee 为准)
-echo "[4/4] force push github ..."
+# 4. force push(GitHub 以 gitee 为准, 双分支 master+main 都要同步:
+#    main 是 GitHub 默认分支, 用户网页端默认看 main, 只推 master 会看到旧代码)
+echo "[4/4] force push github (master + main) ..."
 timeout 180 git push --force origin master
-echo "✅ 已同步: gitee -> GitHub myfinance"
+timeout 180 git push --force origin master:main
+echo "✅ 已同步: gitee -> GitHub myfinance (master + main)"
 git log --oneline -1

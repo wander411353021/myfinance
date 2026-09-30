@@ -57,6 +57,28 @@ bash sync_github.sh     # 5. GitHub 再推(脚本见下), 输出含 "✅" 才算
 - GitHub master 始终以 gitee 为唯一权威, force push 保证两端完全一致。
 - 依赖 ~/.ssh/github_ed25519(备份于 .ssh_backup/, 环境重置后先恢复)。
 
+## ⚠ 教训 1: GitHub 默认分支是 main, 必须双分支同步(2026-09-30 实测)
+- **现象**: GitHub 仓库 `wander411353021/myfinance` 的**默认分支是 `main`**(不是 master),
+  网页端打开仓库默认看到 main。此前一直只同步 master → 用户网页上看到旧代码
+  (streamlit 无 show_chip 修复), 误以为"GitHub 没更新"。
+- **修复**: 每次 sync_github.sh 除 force push master 外, **还必须 force push main**(同一内容):
+  ```bash
+  git push --force origin master
+  git push --force origin main
+  ```
+- **验证**: 远端直查 `git ls-remote git@github.com:wander411353021/myfinance.git`
+  需同时看到 main/master 两个 refs 均为最新。同步脚本后续迭代时把 main 一并纳入。
+
+## ⚠ 教训 2: 创空间缺依赖时异常被吞、页面无提示(2026-09-30 实测)
+- **现象**: ModelScope 创空间重启后 COST10-90 筹码淡蓝带不显示, 代码已是新版、页面无任何报错。
+- **根因**: 筹码计算 `chip_panel.cost_series` 依赖 **fengwo** 库(`import fengwo`),
+  但创空间 `requirements.txt` 缺该包 → 云端 `ModuleNotFoundError` 被代码里
+  `except Exception: print(...)` 吞掉(只打印在服务端日志, 用户页面不可见) → 图照常出但无筹码带。
+- **修复**: requirements.txt 补 `fengwo==0.0.7`; 创空间重启后自动安装。
+- **教训**: ① 新增第三方库必须同步更新 requirements.txt 并三仓推送;
+  ② 云端"图能出但某个图层缺失+无报错"= 先查被 except 吞掉的依赖/数据链路,
+     再看服务端日志, 不要只怀疑部署/缓存; ③ 提交前本地模拟创空间依赖清单跑一遍。
+
 ## 排除项(严禁上传)
 - `.ssh_backup/`(SSH 私钥, 最高优先级禁止; 已在 .gitignore 第43行)
 - `result/`、`*.png` 图集、`hsperfdata_root/`、`node-compile-cache/`、`playwright-artifacts-*/`、`persistent-sync/`
