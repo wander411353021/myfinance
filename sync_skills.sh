@@ -11,7 +11,7 @@ REPO_SKILL="$(cd "$(dirname "$0")" && pwd)/.reasonix/skills"
 SYS_SKILL="/home/user/.super_doubao/super-doubao-runtime/workspace/.user_skills"
 [ -d "$SYS_SKILL" ] || mkdir -p "$SYS_SKILL"
 
-for sk in golden-pit-strategy; do
+for sk in golden-pit-strategy git-dual-push; do
   if [ -d "$REPO_SKILL/$sk" ]; then
     echo "syncing $sk ..."
     rsync -a --delete "$REPO_SKILL/$sk/" "$SYS_SKILL/$sk/"
