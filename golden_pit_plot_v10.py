@@ -1,48 +1,37 @@
 # -*- coding: utf-8 -*-
-"""V10 画图 + 最新黄金坑算法(GOLD PIT面板)。
-用 tdx 拉完整数据(含open), 调 run_segmentation 画 V10 图(6面板含 GOLD PIT)。
-用法: python3 golden_pit_plot_v10.py sh600234 [tail_days]
+"""V10 画图 + 最新黄金坑算法 + 筹码色带(fengwo) 3面板。
+数据走 tdx_quant.get_daily_kline_from_tdx(带 turnover/circ_shares 逐日历史股本, 无未来函数),
+调 run_segmentation(show_chip=True) 画 K线+量+筹码 3 面板(隐藏恐慌反转/黄金坑方波, K线保留坑标记)。
+用法: python3 golden_pit_plot_v10.py sh600234 [tail_days] [end_date]
 """
 import os, sys
-import numpy as np, pandas as pd
+import pandas as pd
 import matplotlib; matplotlib.use('Agg')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from price_segmenter_v10 import run_segmentation
+from tdx_quant import get_daily_kline_from_tdx
 
 
-def fetch_tdx(symbol, end_date='20260828'):
-    from eltdx import TdxClient
-    with TdxClient() as client:
-        data = client.bars.get(symbol, period='day', count=1023,
-                               adjust='qfq', anchor_date=end_date, all_pages=True)
-    bars = getattr(data, 'bars', None)
-    if not bars:
+def fetch_tdx(symbol, end_date='20260928', datalen=1023):
+    df = get_daily_kline_from_tdx(symbol, end_date, datalen=datalen, with_turnover=True)
+    if df is None or len(df) == 0:
         return None
-    rows = []
-    for b in bars:
-        if float(b.close) > 0:
-            rows.append({
-                'date': b.time, 'open': float(b.open), 'high': float(b.high),
-                'low': float(b.low), 'close': float(b.close), 'volume': float(b.volume_lots),
-            })
-    rows.sort(key=lambda r: r['date'])  # all_pages 顺序可能乱,必须排序
-    df = pd.DataFrame(rows)
-    df['date'] = pd.to_datetime(df['date']).dt.tz_localize(None)
     return df.reset_index(drop=True)
 
 
 def main():
     symbol = sys.argv[1] if len(sys.argv) > 1 else 'sh600234'
     tail_days = int(sys.argv[2]) if len(sys.argv) > 2 else 260
-    df = fetch_tdx(symbol)
+    end_date = sys.argv[3] if len(sys.argv) > 3 else '20260928'
+    df = fetch_tdx(symbol, end_date=end_date)
     if df is None or len(df) < 300:
         print(f'{symbol} 数据不足'); return
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'result',
-                       f'v10_{symbol}.png')
+                       f'v10_{symbol}_{end_date}.png')
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    # tail_days 足够大, 让 2026 年的坑完整显示
     run_segmentation(df, tail_days=tail_days, name=symbol,
-                     save_path=out, code=symbol)
+                     save_path=out, code=symbol, end_date=end_date,
+                     show_chip=True)
     print('已生成:', out)
 
 

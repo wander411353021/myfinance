@@ -556,9 +556,13 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 strength_win=10,
                                 dir_atr=2.0,
                                 despeckle=False,
-                                hide_mid_panels=True):
+                                hide_mid_panels=True,
+                                show_chip=False,
+                                code=None, end_date=None):
     """5面板: K线 + 成交量 + 买卖信号(柱高=突破分量) + 阻力/支撑位生命周期 + 极速杀跌反转signal。
-    panic_info: panic_reversal.signal() 返回的 dict(含 signal 状态与门控明细),None 则面板显示提示。"""
+    panic_info: panic_reversal.signal() 返回的 dict(含 signal 状态与门控明细),None 则面板显示提示。
+    show_chip=True(2026-09-29): 精简为 3 面板(K线+量+筹码fengwo色带), 隐藏恐慌反转/黄金坑方波面板,
+    K线上保留黄金坑标记(金色高胜率背景/加仓★/reg120紫带)。df_ohlc 需含 turnover 列(来自 tdx_quant)。"""
     ohlc = df_ohlc.tail(tail_days).copy().reset_index(drop=True)
     n = len(ohlc); x = np.arange(n); offset = len(df_ohlc) - n  # ohlc 是 df_ohlc 末尾 n 行，offset 为其在原序列中的起始下标（恒 >=0）
 
@@ -572,7 +576,11 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     except Exception as _e:
         print(f'[reg smooth] 失败: {_e}')
 
-    if hide_mid_panels:
+    if show_chip:
+        fig, axes = plt.subplots(2, 1, figsize=(22, 11),
+                                 sharex=True,
+                                 gridspec_kw={'height_ratios': [4, 1.3]})
+    elif hide_mid_panels:
         fig, axes = plt.subplots(4, 1, figsize=(22, 14),
                                  sharex=True,
                                  gridspec_kw={'height_ratios': [4, 1.3, 0.55, 0.6]})
@@ -894,7 +902,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     ax1.set_ylabel('Volume', fontsize=9); ax1.grid(True, alpha=0.2)
     ax1.set_title('Volume (red=expanding, green=shrinking; bg=cluster)', fontsize=9, loc='left', pad=2)
 
-    ax2 = axes[2] if not hide_mid_panels else None
+    ax2 = axes[2] if (not hide_mid_panels and not show_chip) else None
     if ax2 is not None:
         # ── 信号面板（ax2）：柱高编码突破分量；顶端圆点大小随分量增大 ──
         bsl = bs_signal[offset:offset + n]; brl = bs_reason[offset:offset + n]
@@ -920,7 +928,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         ax2.set_title('Buy/Sell Signals (V10: Level Breakout) — bar height & dot size = breakout conviction (strength)',
                       fontsize=8, loc='left', pad=2)
 
-    ax3 = axes[3] if not hide_mid_panels else None
+    ax3 = axes[3] if (not hide_mid_panels and not show_chip) else None
     if ax3 is not None:
         # ── 阻力/支撑位生命周期面板（ax3）：★形成 · ▽/▲测试 · ●突破 ──
         # 只显示落在 ax0 聚焦价格区间内的价位（_focus_lo/_focus_hi），
@@ -961,73 +969,77 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
 
 
     # ── Panic-Reversal Signal Panel (5th panel: per-stock 5d drop bars, share x-axis with K-line) ──
-    ax4 = axes[2] if hide_mid_panels else axes[4]
-    ax5 = axes[3] if hide_mid_panels else axes[5]  # 黄金坑 0/1 方波面板
+    if show_chip:
+        ax4 = ax5 = ax6 = None       # 隐藏: 恐慌反转 + 黄金坑方波 + 筹码 panel(COST50线已并入K线主图)
+    else:
+        ax4 = axes[2] if hide_mid_panels else axes[4]
+        ax5 = axes[3] if hide_mid_panels else axes[5]  # 黄金坑 0/1 方波面板
 
-    ax4.set_facecolor('#FAFAFA')
-    # v4 strength 柱(死区滤波:波幅/ATR + 收盘位移方向,±30 饱和压缩)
-    try:
-        import panic_reversal as _pr
-        _sc4 = df_ohlc['close'].values.astype(np.float64)
-        _sh4 = df_ohlc['high'].values.astype(np.float64)
-        _sl4 = df_ohlc['low'].values.astype(np.float64)
-        _rg4 = None
-        # 回归线门控优先用 250 日(reg_preds_long)——低于长期回归线时反转不可信
-        if reg_preds_long is not None:
-            _rg4 = np.asarray(reg_preds_long, dtype=np.float64)
-        elif reg_preds is not None:
-            _rg4 = np.asarray(reg_preds, dtype=np.float64)
-        _so4 = df_ohlc['open'].values.astype(np.float64)
-        strength4 = _pr.compute_strength(_sc4, _sh4, _sl4, win=strength_win, dir_atr=dir_atr,
-                                         reg_preds=_rg4, opens=_so4)
-        # despeckle_strength 用到右侧(未来)柱段判断,存在未来函数,默认关闭,
-        # 仅用于事后可视化参考,绝不用于 signal()/实盘判定。
-        if despeckle:
-            strength4 = _pr.despeckle_strength(strength4)   # 在完整序列上同化后再切片
-        strength4 = strength4[offset:offset + n]
-        has_str = True
-    except Exception:
-        strength4 = np.zeros(n); has_str = False
-    for _i in range(n):
-        if has_str and np.isfinite(strength4[_i]) and abs(strength4[_i]) >= 1e-9:
-            ax4.bar(x[_i], strength4[_i], width=0.65,
-                    color='#E8403F' if strength4[_i] > 0 else '#2ECC40', alpha=0.85)
-    ax4.axhline(0, color='#AAAAAA', lw=0.8)
-    # 事件日/确认日标注(单只股票,来自 signal())
-    _pi4 = panic_info or {}
-    _dts = ohlc['date'].dt.strftime('%Y%m%d').values
-    pt4, cf4 = _pi4.get('panic_t'), _pi4.get('confirm')
-    if pt4 and has_str:
-        _i = np.where(_dts == str(pt4))[0]
-        if len(_i):
-            ax4.scatter([_i[0]], [min(strength4[_i[0]], -2.0)], color='#C0392B', s=80, zorder=6, marker='v')
-    if cf4 and has_str:
-        _i = np.where(_dts == str(cf4))[0]
-        if len(_i):
-            ax4.scatter([_i[0]], [min(strength4[_i[0]], -2.0)], color='#2ECC40', s=70, zorder=6, marker='o')
-    sig4 = _pi4.get('signal', 'N/A')
-    _y4 = float(strength4[-1]) if has_str and np.isfinite(strength4[-1]) else 0.0
-    _st4v = _pi4.get('strength_t')
-    _pt4s = _pi4.get('panic_t')
-    _suf = ''
-    if _pt4s:
-        _suf += ' @' + str(_pt4s)[-8:]
-    if _st4v is not None:
-        _suf += ' str=%.1f' % float(_st4v)
-    if sig4 == 'BUY':
-        ax4.annotate('BUY' + _suf, xy=(n - 1, _y4), xytext=(8, 8),
-                     textcoords='offset points', fontsize=13, fontweight='bold', color='#27AE60')
-    elif sig4 == 'WATCH':
-        ax4.annotate('WATCH' + _suf, xy=(n - 1, _y4), xytext=(8, 8),
-                     textcoords='offset points', fontsize=11, fontweight='bold', color='#E67E22')
-    elif sig4 == 'NONE':
-        ax4.text(n - 1, -28.0, 'NONE', fontsize=10, fontweight='bold',
-                 color='#7F8C8D', ha='right')
-    ax4.set_ylim(-30, 30)
-    ax4.set_ylabel('Strength', fontsize=9)
-    ax4.grid(True, alpha=0.2)
-    ax4.set_title('Panic-Reversal Signal (deadzone-filtered strength v4, +/-30; red=up, green=down; v=event, o=confirm)',
-                  fontsize=9, loc='left', pad=2)
+    if ax4 is not None:
+        ax4.set_facecolor('#FAFAFA')
+        # v4 strength 柱(死区滤波:波幅/ATR + 收盘位移方向,±30 饱和压缩)
+        try:
+            import panic_reversal as _pr
+            _sc4 = df_ohlc['close'].values.astype(np.float64)
+            _sh4 = df_ohlc['high'].values.astype(np.float64)
+            _sl4 = df_ohlc['low'].values.astype(np.float64)
+            _rg4 = None
+            # 回归线门控优先用 250 日(reg_preds_long)——低于长期回归线时反转不可信
+            if reg_preds_long is not None:
+                _rg4 = np.asarray(reg_preds_long, dtype=np.float64)
+            elif reg_preds is not None:
+                _rg4 = np.asarray(reg_preds, dtype=np.float64)
+            _so4 = df_ohlc['open'].values.astype(np.float64)
+            strength4 = _pr.compute_strength(_sc4, _sh4, _sl4, win=strength_win, dir_atr=dir_atr,
+                                             reg_preds=_rg4, opens=_so4)
+            # despeckle_strength 用到右侧(未来)柱段判断,存在未来函数,默认关闭,
+            # 仅用于事后可视化参考,绝不用于 signal()/实盘判定。
+            if despeckle:
+                strength4 = _pr.despeckle_strength(strength4)   # 在完整序列上同化后再切片
+            strength4 = strength4[offset:offset + n]
+            has_str = True
+        except Exception:
+            strength4 = np.zeros(n); has_str = False
+        for _i in range(n):
+            if has_str and np.isfinite(strength4[_i]) and abs(strength4[_i]) >= 1e-9:
+                ax4.bar(x[_i], strength4[_i], width=0.65,
+                        color='#E8403F' if strength4[_i] > 0 else '#2ECC40', alpha=0.85)
+        ax4.axhline(0, color='#AAAAAA', lw=0.8)
+        # 事件日/确认日标注(单只股票,来自 signal())
+        _pi4 = panic_info or {}
+        _dts = ohlc['date'].dt.strftime('%Y%m%d').values
+        pt4, cf4 = _pi4.get('panic_t'), _pi4.get('confirm')
+        if pt4 and has_str:
+            _i = np.where(_dts == str(pt4))[0]
+            if len(_i):
+                ax4.scatter([_i[0]], [min(strength4[_i[0]], -2.0)], color='#C0392B', s=80, zorder=6, marker='v')
+        if cf4 and has_str:
+            _i = np.where(_dts == str(cf4))[0]
+            if len(_i):
+                ax4.scatter([_i[0]], [min(strength4[_i[0]], -2.0)], color='#2ECC40', s=70, zorder=6, marker='o')
+        sig4 = _pi4.get('signal', 'N/A')
+        _y4 = float(strength4[-1]) if has_str and np.isfinite(strength4[-1]) else 0.0
+        _st4v = _pi4.get('strength_t')
+        _pt4s = _pi4.get('panic_t')
+        _suf = ''
+        if _pt4s:
+            _suf += ' @' + str(_pt4s)[-8:]
+        if _st4v is not None:
+            _suf += ' str=%.1f' % float(_st4v)
+        if sig4 == 'BUY':
+            ax4.annotate('BUY' + _suf, xy=(n - 1, _y4), xytext=(8, 8),
+                         textcoords='offset points', fontsize=13, fontweight='bold', color='#27AE60')
+        elif sig4 == 'WATCH':
+            ax4.annotate('WATCH' + _suf, xy=(n - 1, _y4), xytext=(8, 8),
+                         textcoords='offset points', fontsize=11, fontweight='bold', color='#E67E22')
+        elif sig4 == 'NONE':
+            ax4.text(n - 1, -28.0, 'NONE', fontsize=10, fontweight='bold',
+                     color='#7F8C8D', ha='right')
+        ax4.set_ylim(-30, 30)
+        ax4.set_ylabel('Strength', fontsize=9)
+        ax4.grid(True, alpha=0.2)
+        ax4.set_title('Panic-Reversal Signal (deadzone-filtered strength v4, +/-30; red=up, green=down; v=event, o=confirm)',
+                      fontsize=9, loc='left', pad=2)
 
     # ── 第6面板:黄金坑 0/1 方波(坑内=1,其他=0)──
     try:
@@ -1065,7 +1077,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             # 颜色对比拉开: strong=橙 / normal=蓝 / weak=灰(快启动=红,四种互不混淆)
             _qcolor = {'strong': '#E65100', 'normal': '#1565C0', 'weak': '#BDBDBD'}
             pit_mask = np.zeros(len(_fc))
-            ax5.set_facecolor('#F5F5F5')
+            if ax5 is not None:
+                ax5.set_facecolor('#F5F5F5')
             for _k, (_s, _b, _lch) in enumerate(_pits):
                 _ps = _psrc[_k] if _k < len(_psrc) else 'main'  # v6 路径: 主/补充
                 _end = _lch if _lch is not None else _b  # 坑画到出坑日(启动日);未出坑画到坑底
@@ -1094,9 +1107,10 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 # ⚠️ 必须用窗口坐标(0..n-1):折线 x 是窗口坐标,fill 用全局坐标(+offset)会画到窗口外被裁剪
                 _x0w = _s - offset
                 _x1w = _end - offset + 1  # steps-post 需右闭边界
-                ax5.fill_between(np.arange(_x0w, _x1w + 1), 0, _lv, step='post',
-                                 color=_col, alpha=0.95 if _hi_win else (0.85 if _fast else 0.60),
-                                 hatch='//' if _hp else None)  # 高位坑加斜纹标注
+                if ax5 is not None:
+                    ax5.fill_between(np.arange(_x0w, _x1w + 1), 0, _lv, step='post',
+                                     color=_col, alpha=0.95 if _hi_win else (0.85 if _fast else 0.60),
+                                     hatch='//' if _hp else None)  # 高位坑加斜纹标注
                 if _hi_win:  # 高胜率坑:K线面板金色背景区域标记(73.3%)
                     ax0.axvspan(_x0w - 0.5, _x1w + 0.5, color='#FFD54F', alpha=0.22, zorder=1)
                 if _sp:  # 加仓确认(出坑后7天巨量):金色★标在 K 线加仓位(放量堆起点)
@@ -1112,24 +1126,50 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                         ax0.annotate('加仓', (_add, highs[_add] * 1.05), textcoords='offset points',
                                      xytext=(0, 8), ha='center', fontsize=7, color='#B26A00',
                                      fontweight='bold', zorder=9)
-            pit_win = pit_mask[offset:offset + n]
-            ax5.plot(x, pit_win, drawstyle='steps-post', color='#0D47A1', linewidth=1.2)
-            ax5.set_ylim(-0.1, 1.15)
-            ax5.set_yticks([0, 0.4, 0.7, 1.0])
-            ax5.set_yticklabels(['0', 'weak', 'normal', 'strong'], fontsize=6)
-            ax5.set_ylabel('GOLD PIT', fontsize=8)
-            ax5.grid(axis='y', alpha=0.3)
-            ax5.legend(loc='upper left', fontsize=7)
-        # reg120 基准坑(短期趋势线破位): 仅 GOLD PIT 面板紫色带(2026-08-31, K线不标背景)
-        for _s120, _b120, _lch120 in _pits120:
-            _x0r = _s120 - offset - 0.5
-            _x1r = (_lch120 if _lch120 is not None else _b120) - offset + 0.5
-            if _x1r > 0 and _x0r < n:
-                ax5.axvspan(max(_x0r, -0.5), min(_x1r, n + 0.5), color='#7B1FA2', alpha=0.35, zorder=1)
-        if _pits120:
-            ax5.plot([], [], color='#7B1FA2', lw=3, alpha=0.7, label='Reg120 Pit')
+            if ax5 is not None:
+                pit_win = pit_mask[offset:offset + n]
+                ax5.plot(x, pit_win, drawstyle='steps-post', color='#0D47A1', linewidth=1.2)
+                ax5.set_ylim(-0.1, 1.15)
+                ax5.set_yticks([0, 0.4, 0.7, 1.0])
+                ax5.set_yticklabels(['0', 'weak', 'normal', 'strong'], fontsize=6)
+                ax5.set_ylabel('GOLD PIT', fontsize=8)
+                ax5.grid(axis='y', alpha=0.3)
+                ax5.legend(loc='upper left', fontsize=7)
+            # reg120 基准坑(短期趋势线破位): 仅 GOLD PIT 面板紫色带(2026-08-31, K线不标背景)
+            if ax5 is not None:
+                for _s120, _b120, _lch120 in _pits120:
+                    _x0r = _s120 - offset - 0.5
+                    _x1r = (_lch120 if _lch120 is not None else _b120) - offset + 0.5
+                    if _x1r > 0 and _x0r < n:
+                        ax5.axvspan(max(_x0r, -0.5), min(_x1r, n + 0.5), color='#7B1FA2', alpha=0.35, zorder=1)
+                if _pits120:
+                    ax5.plot([], [], color='#7B1FA2', lw=3, alpha=0.7, label='Reg120 Pit')
     except Exception:
         pass
+
+    # ── 筹码集中区(show_chip=True): 淡蓝色标记 COST10~COST90 区间带, alpha 0.35, 画在 K 线主图 ax0 上 ──
+    if show_chip:
+        try:
+            from chip_panel import cost_series as _cost_series, _ensure_turnover as _et
+            _d = _et(df_ohlc, code, end_date)
+            _d = _d.sort_values('date').reset_index(drop=True)
+            if 'turnover' not in _d.columns:
+                raise RuntimeError('无 turnover 列(需 tdx_quant.get_daily_kline_from_tdx)')
+            _H = _d['high'].values.astype(float); _L = _d['low'].values.astype(float)
+            _V = _d['volume'].values.astype(float)
+            _turn = _d['turnover'].values.astype(float).clip(0, 1)
+            _c10 = _cost_series(_H, _L, _V, _turn, 0.10)[offset:offset + n]
+            _c90 = _cost_series(_H, _L, _V, _turn, 0.90)[offset:offset + n]
+            # 集中区: 每天 COST10~COST90 淡蓝色带(统一颜色, alpha 0.35)
+            for _k in range(n):
+                _lo, _hi = _c10[_k], _c90[_k]
+                if _hi <= _lo:
+                    continue
+                ax0.add_patch(plt.Rectangle((_k - 0.5, _lo), 1.0, _hi - _lo,
+                             facecolor='#64B5F6', edgecolor='none', alpha=0.35, zorder=1))
+            ax0.plot([], [], color='#64B5F6', lw=4, alpha=0.35, label='集中区(COST10-90)')
+        except Exception as _e:
+            print(f'[chip 集中区] 失败: {_e}')
 
     # ── 统一 x 轴日期刻度（落在最底层面板）──
     ts2 = max(1, n // 12); dates = ohlc['date'].values
@@ -1153,9 +1193,10 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                      reg_window=120, reg_window_long=250,
                      hide_ma=True,
                      code=None, end_date=None, panic_index=None,
-                     enable_panic=False):
+                     enable_panic=False, show_chip=False):
     # enable_panic=False(2026-09-03): 默认不计算 panic_reversal.signal(该函数会拉额外数据,
     # 通达信超时时可卡2分钟+)。streamlit/回测默认无需 panic_info(None 时面板显示提示)。
+    # show_chip=True(2026-09-29): 3面板(K线+量+筹码), 隐藏恐慌反转/黄金坑方波面板; df_ohlc 需含 turnover。
     """fast_mode: True=跳过画图，返回 bool（最后一天有买入信号）。
     返回 (c_result, bs_signal, bs_reason, bs_strength, all_levels)；
     bs_strength 为 BrkLvl/BrkLow 的 0~1 分量评分；all_levels 为阻力/支撑位生命周期列表。
@@ -1211,5 +1252,6 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                                 reg_preds=reg_preds, reg_preds_long=reg_preds_long,
                                 hide_ma=hide_ma,
                                 reg_win=reg_window, reg_win_long=reg_window_long,
-                                panic_info=panic_info)
+                                panic_info=panic_info,
+                                show_chip=show_chip, code=code, end_date=end_date)
     return c_result, bs_signal, bs_reason, bs_strength, all_levels
