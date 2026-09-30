@@ -11,7 +11,6 @@ pandas==2.3.3
 scipy==1.17.1
 matplotlib==3.10.8
 streamlit==1.59.2
-easy-tdx==1.20.3
 eltdx==1.0.2
 pytdx==1.72
 requests==2.32.5
