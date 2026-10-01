@@ -1211,6 +1211,15 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                          zorder=3, label='筹码峰上沿(COST75,Ehlers 60)')
                 ax0.plot(_x, _sm_avg_n, color='#0D47A1', lw=2.0, alpha=0.95, zorder=4,
                          label='筹码峰中线((COST35+COST75)/2,Ehlers 60)')
+                # COST90 5日平滑线(2026-10-01 用户): 更上方的筹码上沿参考
+                _c90_pk = _cs2(_H, _L, _V, _turn, 0.90)
+                _c90_ma5 = np.full(len(_c90_pk), np.nan)
+                for _k5 in range(4, len(_c90_pk)):
+                    _seg5 = _c90_pk[_k5-4:_k5+1]
+                    if np.all(np.isfinite(_seg5)):
+                        _c90_ma5[_k5] = np.mean(_seg5)
+                ax0.plot(_x, _c90_ma5[offset:offset + n], color='#FF6F00', lw=1.6, alpha=0.9,
+                         linestyle='-', zorder=3, label='COST90 (5日平滑)')
             except Exception as _e2:
                 print(f'[chip 峰带] 失败: {_e2}')
         except Exception as _e:
