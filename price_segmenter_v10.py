@@ -1204,7 +1204,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _below = closes < _sm_n
                 if np.any(_below):
                     ax0.fill_between(_x, closes, _sm_n, where=_below,
-                                     color='#E53935', alpha=0.22, zorder=1.5,
+                                     color='#2E7D32', alpha=0.30, zorder=1.5,
                                      label='跌破COST35(杀破筹码区)')
                 ax0.plot(_x, _sm75_n, color='#D0451F', lw=1.2, alpha=0.9, linestyle='--',
                          zorder=3, label='筹码峰上沿(COST75,Ehlers 10)')
