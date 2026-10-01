@@ -1162,16 +1162,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             _H = _d['high'].values.astype(float); _L = _d['low'].values.astype(float)
             _V = _d['volume'].values.astype(float)
             _turn = _d['turnover'].values.astype(float).clip(0, 1)
-            _c10 = _cost_series(_H, _L, _V, _turn, 0.10)[offset:offset + n]
-            _c90 = _cost_series(_H, _L, _V, _turn, 0.90)[offset:offset + n]
-            # 集中区: 每天 COST10~COST90 淡蓝色带(统一颜色, alpha 0.35)
-            for _k in range(n):
-                _lo, _hi = _c10[_k], _c90[_k]
-                if _hi <= _lo:
-                    continue
-                ax0.add_patch(plt.Rectangle((_k - 0.5, _lo), 1.0, _hi - _lo,
-                             facecolor='#64B5F6', edgecolor='none', alpha=0.35, zorder=1))
-            ax0.plot([], [], color='#64B5F6', lw=4, alpha=0.35, label='集中区(COST10-90)')
+            # 2026-10-01 用户: 隐藏 COST10-90 集中区蓝色带(只保留 COST35/75/50 峰带)
+            pass
             # 筹码峰下沿(每天 COST35, 逐日递推无未来), Ehlers SuperSmoother 平滑(二阶IIR低通)
             # 特性: 因果(第k天只用≤k数据, 无未来函数) + 平滑度高 + 滞后仅为等效SMA的一半
             try:
