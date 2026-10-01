@@ -946,3 +946,11 @@ if confirmed:
 - **修正后的主升规律**: 震荡=带内包裹(价格95%+在带内); 主升启动=突破COST90带外(前10日36.7%曾突破)+带宽扩张(1.2x); 主升持续=带内偏上运行(≥带中线)+带体扩张; 主升结束=带子钝化收窄+跌破带中线
 - **验证脚本(可改STOCKS重跑)**: `/tmp/verify_band_outside.py`(段内带外统计)、`/tmp/verify_band_contrast.py`(主升vs震荡)、`/tmp/verify_launch_point.py`/`/tmp/verify_launch_gain.py`(启动点分型); 口径=全量800天递推COST10/90, 60日涨幅>40%/60%定义主升
 - **未决**: "突破COST90带外+放量+带宽扩张"启动信号尚未固化为策略; 13张批量图已验收但本地代码未push(2026-09-30)
+
+## V10 ax0 线条显隐开关(2026-10-01 豆包, 已入库)
+- **背景**: 用户嫌 ax0 线太多(MA120/EMA/REG基准/Grid Target主目标/第二阶梯+区域线+COST), 要求隐藏非 COST 的 5 条趋势线, 并记录以便恢复
+- **隐藏的 5 条线(2026-10-01 起默认隐藏)**: ①MA120(紫#7B1FA2) ②EMA平滑价(蓝#1565C0) ③REG基准 max(reg120,250)(灰#546E7A) ④Grid Target主目标价(洋红#D81B60 阶梯, 含目标文字标注) ⑤Grid Target第二阶梯(深紫#4A148C)
+- **实现**: `price_segmenter_v10.py` 的 `plot_price_segmentation_v10` / `run_segmentation` 新增参数 `hide_overlay_lines=False`; V10 入口 `golden_pit_plot_v10.py` 调用时传 `hide_overlay_lines=True`
+- **恢复方法**: 把 `golden_pit_plot_v10.py` 中 `hide_overlay_lines=True` 改回 `False` 即可全部恢复显示(4 处绘制块各自包在 `if not hide_overlay_lines:` 内, 不相互影响)
+- **保留不动的线**: K线蜡烛、UP zone high(红虚线)、DOWN zone low(绿虚线)、Gap line(绿点线)、Key candle(橙虚线)、Resistance(红点划线)、COST10-90淡蓝带、COST35峰下沿(深绿, Ehlers60平滑)、COST80峰上沿(深红, Ehlers60平滑)
+- **注意**: 轴范围计算同步条件为 `if not hide_ma and not hide_overlay_lines`(隐藏时 MA120/EMA 不参与 y 轴范围, 避免变量未定义)
