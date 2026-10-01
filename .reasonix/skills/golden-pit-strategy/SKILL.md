@@ -967,3 +967,24 @@ if confirmed:
 - **恢复方法**: 把 `golden_pit_plot_v10.py` 中 `hide_overlay_lines=True` 改回 `False` 即可全部恢复显示(4 处绘制块各自包在 `if not hide_overlay_lines:` 内, 不相互影响)
 - **保留不动的线**: K线蜡烛、UP zone high(红虚线)、DOWN zone low(绿虚线)、Gap line(绿点线)、Key candle(橙虚线)、Resistance(红点划线)、COST10-90淡蓝带、COST35峰下沿(深绿, Ehlers60平滑)、COST80峰上沿(深红, Ehlers60平滑)
 - **注意**: 轴范围计算同步条件为 `if not hide_ma and not hide_overlay_lines`(隐藏时 MA120/EMA 不参与 y 轴范围, 避免变量未定义)
+
+## V10 筹码带显示迭代 + 筹码打散速度调参(2026-10-01 polo4111)
+**筹码"打散速度"调参发现(fengwo)**:
+- `fengwo.COST/WINNER` 参数只有 HIGH/LOW/VOL/**Turnrate**/winpercent/avg/radio —— **没有衰减系数**; 筹码消散完全由换手率驱动
+- 通达信原版衰减偏"粘": 003040(换手 5.1%/日, 180天股价-50%) 实测 COST50 仍高出股价 **30%**(高位筹码滞留); 下跌段 COST75 连续 7 个月停在下跌前价位
+- **等效调参 = 放大换手率输入**: ×2 → COST50 偏离 -3.1%; ×3 → -0.3%; ×5 → +0.7%(筹码几乎完全跟随价格)
+  - 实测脚本 `result/chip_boost_cmp.py`, 图 `result/chipboost_x1/x2/x3.png`
+- **用户最终决定: 回撤 ×3, 保持通达信原版 ×1**(TURN_BOOST 已 revert) —— 筹码"粘"本身是有用信息(高位套牢盘未割)
+
+**V10 筹码带最终显示态(定版)**:
+| 元素 | 颜色/线型 | 平滑 |
+|---|---|---|
+| COST35(筹码峰下沿) | 深绿虚线 #1B5E20 | Ehlers 60 |
+| COST75(筹码峰上沿) | 橙红虚线 #D0451F | **Ehlers 10**(60→20→10, 用户要求降平滑/延时的结果) |
+| COST50(峰中线) | 深蓝粗实线 #0D47A1 | Ehlers 60 |
+| **跌破 COST35 区段** | **深绿填充 #2E7D32 alpha 0.30** | 用平滑 COST35 判定 |
+| ~~COST10-90 集中区蓝带~~ | 已隐藏(2026-10-01) | — |
+| ~~COST90 线~~ | 已加后删(用户: 不好) | — |
+
+**"跌破 COST35"填充标记**: `fill_between(x, closes, _sm_n, where=closes < _sm_n)` —— 标出所有"股价杀破 65% 筹码区"的区段与击穿厚度(用户用途: 一眼看出杀破大部分筹码区的位置)。
+**Ehlers SuperSmoother 因果性已验**: `out[k] = c1*(x[k]+x[k-1])/2 + c2*out[k-1] + c3*out[k-2]` 只用当根/前一根+历史输出, 无未来函数。
