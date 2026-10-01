@@ -1190,8 +1190,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _sm_n = _sm[offset:offset + n]                # 平滑完成后再截取显示段
                 # COST75 峰上沿, 同样 Ehlers60 平滑
                 _c75 = _cs2(_H, _L, _V, _turn, 0.75)
-                # 2026-10-01 用户: COST75 线降低平滑与延时(Ehlers period 60→20)
-                _sm75 = _ehlers_smooth(_c75, 20)
+                # 2026-10-01 用户: COST75 线降低平滑与延时(Ehlers period 60→20→10)
+                _sm75 = _ehlers_smooth(_c75, 10)
                 _sm75_n = _sm75[offset:offset + n]
                 # 平均线 = (COST35+COST75)/2, 同样 Ehlers60 平滑, 实线
                 _cavg = (_c35 + _c75) / 2.0
@@ -1201,7 +1201,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 ax0.plot(_x, _sm_n, color='#1B5E20', lw=1.2, alpha=0.9, linestyle='--',
                          zorder=3, label='筹码峰下沿(COST35,Ehlers 60)')
                 ax0.plot(_x, _sm75_n, color='#D0451F', lw=1.2, alpha=0.9, linestyle='--',
-                         zorder=3, label='筹码峰上沿(COST75,Ehlers 20)')
+                         zorder=3, label='筹码峰上沿(COST75,Ehlers 10)')
                 ax0.plot(_x, _sm_avg_n, color='#0D47A1', lw=2.0, alpha=0.95, zorder=4,
                          label='筹码峰中线((COST35+COST75)/2,Ehlers 60)')
             except Exception as _e2:
