@@ -60,6 +60,16 @@ def chip_density_grid(H, L, V, turn, ngrid=1500, nwin=None, ext=0.2):
     return grid, mult
 
 
+def chip_peak_band(H, L, V, turn, p_lo=0.35, p_hi=0.65):
+    """筹码峰带(每天): 峰下沿=COST(p_lo), 峰上沿=COST(p_hi)。
+    用 COST 分位表达筹码最集中的主体区间(默认 35%~65%, 即中位成本附近峰体),
+    逐日递推只用 ≤i 数据 → 严格无未来函数(截断一致性=0)。
+    返回 (peak_lo, peak_hi) 两条全量长度序列。"""
+    c_lo = cost_series(H, L, V, turn, float(p_lo))
+    c_hi = cost_series(H, L, V, turn, float(p_hi))
+    return np.asarray(c_lo, dtype=float), np.asarray(c_hi, dtype=float)
+
+
 def _ensure_turnover(df_ohlc, code, end_date):
     """df_ohlc 缺 turnover 时, 用 code+end_date 从 tdx_quant 补拉并按键对齐。"""
     if 'turnover' in df_ohlc.columns:

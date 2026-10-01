@@ -558,7 +558,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 despeckle=False,
                                 hide_mid_panels=True,
                                 show_chip=False,
-                                code=None, end_date=None):
+                                code=None, end_date=None,
+                                hide_overlay_lines=False):
     """5面板: K线 + 成交量 + 买卖信号(柱高=突破分量) + 阻力/支撑位生命周期 + 极速杀跌反转signal。
     panic_info: panic_reversal.signal() 返回的 dict(含 signal 状态与门控明细),None 则面板显示提示。
     show_chip=True(2026-09-29): 精简为 3 面板(K线+量+筹码fengwo色带), 隐藏恐慌反转/黄金坑方波面板,
@@ -627,91 +628,94 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                     facecolor=c, edgecolor=c, linewidth=0.4))
 
     fc = df_ohlc['close'].values
-    if not hide_ma:
+    if not hide_ma and not hide_overlay_lines:
         ma120 = pd.Series(fc).rolling(120, min_periods=1).mean().values[-tail_days:]
         ax0.plot(x, ma120, color='#7B1FA2', linewidth=1.2, alpha=0.8, label='MA120')
         sm = result['smooth'].values[offset:offset + n]
         ax0.plot(x, sm, color='#1565C0', linewidth=1.0, alpha=0.6, label='EMA')
     # 长周期回归线(250日): 2026-09-02 用户要求 reg250 线不显示(格栅/目标价计算仍用它)
-    # ── REG 基准线 + 格栅预期突破价线(2026-09-14 用户: 只显示这两类) ──
-    try:
-        _s2_120 = reg_preds if reg_preds is not None else None
-        _s2_250 = reg_preds_long if reg_preds_long is not None else _frg2
-        if _s2_120 is not None and _s2_250 is not None:
-            _s2_base = np.maximum(np.asarray(_s2_120), np.asarray(_s2_250))
-            # REG 基准线(max(reg120,250))
-            ax0.plot(x, _s2_base[offset:offset + n], color='#546E7A', lw=2.0,
-                     alpha=0.95, label='REG 基准 max(reg120,250)')
-    except Exception as _e:
-        print(f'[reg base] 绘制失败: {_e}')
+    # ── REG 基准线 + 格栅预期突破价线(2026-09-14 用户: 只显示这两类; 2026-10-01 隐藏开关 hide_overlay_lines) ──
+    if not hide_overlay_lines:
+        try:
+            _s2_120 = reg_preds if reg_preds is not None else None
+            _s2_250 = reg_preds_long if reg_preds_long is not None else _frg2
+            if _s2_120 is not None and _s2_250 is not None:
+                _s2_base = np.maximum(np.asarray(_s2_120), np.asarray(_s2_250))
+                # REG 基准线(max(reg120,250))
+                ax0.plot(x, _s2_base[offset:offset + n], color='#546E7A', lw=2.0,
+                         alpha=0.95, label='REG 基准 max(reg120,250)')
+        except Exception as _e:
+            print(f'[reg base] 绘制失败: {_e}')
 
     # ── 阶梯分段目标价 Grid Target(2026-09-03 接入V10): max(reg120,250)阶梯, 偏离>13%置空 ──
     # (豆包 2026-09-02/03 只在 plot_v10_reg_smooth.py 绘制, streamlit 未接入——这里补上, 口径与独立工具一致)
-    try:
-        # plot 开头已对 reg_preds/reg_preds_long 做 double_smooth(5,5), 直接用
-        _gt120 = reg_preds if reg_preds is not None else None
-        _gt250 = reg_preds_long if reg_preds_long is not None else _frg2
-        if _gt120 is not None and _gt250 is not None:
-            import panic_reversal as _prgt
-            _glv_def = (-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12)
-            _fc_gt = df_ohlc['close'].values.astype(np.float64)
-            _gt, _gl = _prgt.compute_grid_target_price(_fc_gt, _gt120, _gt250,
-                                                       levels=_glv_def, max_dev=0.13, down_confirm=10)
-            _gt_win = _gt[offset:offset + n]
-            if np.any(np.isfinite(_gt_win)):
-                # 直接plot含NaN数组, matplotlib在置空(NaN)处自动断线(勿先过滤NaN, 会连成横线)
-                ax0.plot(x, _gt_win, color='#D81B60', lw=3.2, alpha=1.0, zorder=13,
-                         label='Grid Target (阶梯, 偏离>13%置空)')
-                _cur = _gl[-1]
-                if _cur >= 0 and np.isfinite(_gt[-1]):
-                    _tgt = _gt[-1]
-                    _pct = _glv_def[_cur] * 100
-                    ax0.annotate(f'目标{_tgt:.2f} ({_pct:+.0f}%)', (n - 1, _tgt),
-                                 textcoords='offset points', xytext=(-70, 22),
-                                 fontsize=9, color='#D81B60', fontweight='bold',
-                                 arrowprops=dict(arrowstyle='-', color='#D81B60', lw=0.8))
-                else:
-                    ax0.annotate('目标置空(偏离reg>13%)', (n - 1, closes[-1]),
-                                 textcoords='offset points', xytext=(-110, -8),
-                                 fontsize=8, color='#888888', fontweight='bold')
-    except Exception as _e:
-        print(f'[grid target] 绘制失败: {_e}')
+    if not hide_overlay_lines:
+        try:
+            # plot 开头已对 reg_preds/reg_preds_long 做 double_smooth(5,5), 直接用
+            _gt120 = reg_preds if reg_preds is not None else None
+            _gt250 = reg_preds_long if reg_preds_long is not None else _frg2
+            if _gt120 is not None and _gt250 is not None:
+                import panic_reversal as _prgt
+                _glv_def = (-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12)
+                _fc_gt = df_ohlc['close'].values.astype(np.float64)
+                _gt, _gl = _prgt.compute_grid_target_price(_fc_gt, _gt120, _gt250,
+                                                           levels=_glv_def, max_dev=0.13, down_confirm=10)
+                _gt_win = _gt[offset:offset + n]
+                if np.any(np.isfinite(_gt_win)):
+                    # 直接plot含NaN数组, matplotlib在置空(NaN)处自动断线(勿先过滤NaN, 会连成横线)
+                    ax0.plot(x, _gt_win, color='#D81B60', lw=3.2, alpha=1.0, zorder=13,
+                             label='Grid Target (阶梯, 偏离>13%置空)')
+                    _cur = _gl[-1]
+                    if _cur >= 0 and np.isfinite(_gt[-1]):
+                        _tgt = _gt[-1]
+                        _pct = _glv_def[_cur] * 100
+                        ax0.annotate(f'目标{_tgt:.2f} ({_pct:+.0f}%)', (n - 1, _tgt),
+                                     textcoords='offset points', xytext=(-70, 22),
+                                     fontsize=9, color='#D81B60', fontweight='bold',
+                                     arrowprops=dict(arrowstyle='-', color='#D81B60', lw=0.8))
+                    else:
+                        ax0.annotate('目标置空(偏离reg>13%)', (n - 1, closes[-1]),
+                                     textcoords='offset points', xytext=(-110, -8),
+                                     fontsize=8, color='#888888', fontweight='bold')
+        except Exception as _e:
+            print(f'[grid target] 绘制失败: {_e}')
 
     # ── 第二阶梯(2026-09-15 用户定版): 粉线档+2档(+6% 固定间距) + confirm=40 慢速, 深紫 ──
-    try:
-        _s3_120 = reg_preds if reg_preds is not None else None
-        _s3_250 = reg_preds_long if reg_preds_long is not None else _frg2
-        if _s3_120 is not None and _s3_250 is not None:
-            _levs1 = (-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12)
-            _s3_base = np.maximum(np.asarray(_s3_120), np.asarray(_s3_250))
-            _gt_p, _gl_p = _prgt.compute_grid_target_price(
-                df_ohlc['close'].values.astype(np.float64), _s3_120, _s3_250,
-                levels=_levs1, max_dev=0.13, down_confirm=10)
-            _gt2 = np.full(len(_s3_base), np.nan)
-            _cur = None; _cnt = 0
-            for _ti in range(len(_s3_base)):
-                if _gl_p[_ti] < 0 or not np.isfinite(_s3_base[_ti]):
-                    continue
-                _tk = min(_gl_p[_ti] + 2, len(_levs1) - 1)  # 粉线档+2档(封顶)
-                if _cur is None:
-                    _cur = _tk; _cnt = 0
-                elif _tk != _cur:
-                    _cnt += 1
-                    if _cnt >= 40:
+    if not hide_overlay_lines:
+        try:
+            _s3_120 = reg_preds if reg_preds is not None else None
+            _s3_250 = reg_preds_long if reg_preds_long is not None else _frg2
+            if _s3_120 is not None and _s3_250 is not None:
+                _levs1 = (-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12)
+                _s3_base = np.maximum(np.asarray(_s3_120), np.asarray(_s3_250))
+                _gt_p, _gl_p = _prgt.compute_grid_target_price(
+                    df_ohlc['close'].values.astype(np.float64), _s3_120, _s3_250,
+                    levels=_levs1, max_dev=0.13, down_confirm=10)
+                _gt2 = np.full(len(_s3_base), np.nan)
+                _cur = None; _cnt = 0
+                for _ti in range(len(_s3_base)):
+                    if _gl_p[_ti] < 0 or not np.isfinite(_s3_base[_ti]):
+                        continue
+                    _tk = min(_gl_p[_ti] + 2, len(_levs1) - 1)  # 粉线档+2档(封顶)
+                    if _cur is None:
                         _cur = _tk; _cnt = 0
-                else:
-                    _cnt = 0
-                # 2026-09-15 用户: 第二阶梯不得低于第一阶梯(粉线)值(慢速跟随滞后时以粉线封底)
-                _v2 = _s3_base[_ti] * (1 + _levs1[_cur])
-                if np.isfinite(_gt_p[_ti]) and _v2 < _gt_p[_ti]:
-                    _v2 = _gt_p[_ti]
-                _gt2[_ti] = _v2
-            _gt2_win = _gt2[offset:offset + n]
-            if np.any(np.isfinite(_gt2_win)):
-                ax0.plot(x, _gt2_win, color='#4A148C', lw=2.4, alpha=0.95, zorder=12,
-                         label='第二阶梯 (粉线档+2档, confirm40)')
-    except Exception as _e:
-        print(f'[step2] 绘制失败: {_e}')
+                    elif _tk != _cur:
+                        _cnt += 1
+                        if _cnt >= 40:
+                            _cur = _tk; _cnt = 0
+                    else:
+                        _cnt = 0
+                    # 2026-09-15 用户: 第二阶梯不得低于第一阶梯(粉线)值(慢速跟随滞后时以粉线封底)
+                    _v2 = _s3_base[_ti] * (1 + _levs1[_cur])
+                    if np.isfinite(_gt_p[_ti]) and _v2 < _gt_p[_ti]:
+                        _v2 = _gt_p[_ti]
+                    _gt2[_ti] = _v2
+                _gt2_win = _gt2[offset:offset + n]
+                if np.any(np.isfinite(_gt2_win)):
+                    ax0.plot(x, _gt2_win, color='#4A148C', lw=2.4, alpha=0.95, zorder=12,
+                             label='第二阶梯 (粉线档+2档, confirm40)')
+        except Exception as _e:
+            print(f'[step2] 绘制失败: {_e}')
 
     for si, (s, e, p, _) in enumerate(intervals):
         if p == "UP" and e > s:
@@ -820,7 +824,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     _last_cv = closes[-1]
     # 收集所有可见曲线的 y 值（K线极值 + 叠加均线/回归线），统一参与轴范围计算
     _overlay = [highs, lows]
-    if not hide_ma:
+    if not hide_ma and not hide_overlay_lines:
         _overlay += [np.asarray(ma120), np.asarray(sm)]
     # reg_preds(reg120) 与 reg250 均不显示, 不参与 y 轴范围
     _all_y = np.concatenate([a[np.isfinite(a)] for a in _overlay])
@@ -1168,6 +1172,47 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 ax0.add_patch(plt.Rectangle((_k - 0.5, _lo), 1.0, _hi - _lo,
                              facecolor='#64B5F6', edgecolor='none', alpha=0.35, zorder=1))
             ax0.plot([], [], color='#64B5F6', lw=4, alpha=0.35, label='集中区(COST10-90)')
+            # 筹码峰下沿(每天 COST35, 逐日递推无未来), Ehlers SuperSmoother 平滑(二阶IIR低通)
+            # 特性: 因果(第k天只用≤k数据, 无未来函数) + 平滑度高 + 滞后仅为等效SMA的一半
+            try:
+                from chip_panel import cost_series as _cs2
+                _c35 = _cs2(_H, _L, _V, _turn, 0.35)          # 全量长度
+                def _ehlers_smooth(_x, _period):
+                    _x = np.asarray(_x, dtype=float)
+                    _n = len(_x)
+                    _out = np.full(_n, np.nan)
+                    if _n < 2:
+                        return _out
+                    _a1 = np.exp(-1.414 * np.pi / _period)
+                    _b1 = 2 * _a1 * np.cos(1.414 * np.pi / _period)
+                    _c3 = -_a1 * _a1
+                    _c2 = _b1
+                    _c1 = 1.0 - _c2 - _c3
+                    _out[0] = _x[0]
+                    _out[1] = _c1 * (_x[1] + _x[0]) / 2 + (_c2 + _c3) * _x[0]
+                    for _k in range(2, _n):
+                        _out[_k] = (_c1 * (_x[_k] + _x[_k - 1]) / 2
+                                    + _c2 * _out[_k - 1] + _c3 * _out[_k - 2])
+                    return _out
+                _sm = _ehlers_smooth(_c35, 60)               # period=60: 更平滑, 滞后~25日
+                _sm_n = _sm[offset:offset + n]                # 平滑完成后再截取显示段
+                # COST75 峰上沿, 同样 Ehlers60 平滑
+                _c75 = _cs2(_H, _L, _V, _turn, 0.75)
+                _sm75 = _ehlers_smooth(_c75, 60)
+                _sm75_n = _sm75[offset:offset + n]
+                # 平均线 = (COST35+COST75)/2, 同样 Ehlers60 平滑, 实线
+                _cavg = (_c35 + _c75) / 2.0
+                _sm_avg = _ehlers_smooth(_cavg, 60)
+                _sm_avg_n = _sm_avg[offset:offset + n]
+                _x = np.arange(n)
+                ax0.plot(_x, _sm_n, color='#1B5E20', lw=1.2, alpha=0.9, linestyle='--',
+                         zorder=3, label='筹码峰下沿(COST35,Ehlers 60)')
+                ax0.plot(_x, _sm75_n, color='#D0451F', lw=1.2, alpha=0.9, linestyle='--',
+                         zorder=3, label='筹码峰上沿(COST75,Ehlers 60)')
+                ax0.plot(_x, _sm_avg_n, color='#0D47A1', lw=2.0, alpha=0.95, zorder=4,
+                         label='筹码峰中线((COST35+COST75)/2,Ehlers 60)')
+            except Exception as _e2:
+                print(f'[chip 峰带] 失败: {_e2}')
         except Exception as _e:
             print(f'[chip 集中区] 失败: {_e}')
 
@@ -1193,10 +1238,10 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                      reg_window=120, reg_window_long=250,
                      hide_ma=True,
                      code=None, end_date=None, panic_index=None,
-                     enable_panic=False, show_chip=False):
-    # enable_panic=False(2026-09-03): 默认不计算 panic_reversal.signal(该函数会拉额外数据,
-    # 通达信超时时可卡2分钟+)。streamlit/回测默认无需 panic_info(None 时面板显示提示)。
-    # show_chip=True(2026-09-29): 3面板(K线+量+筹码), 隐藏恐慌反转/黄金坑方波面板; df_ohlc 需含 turnover。
+                     enable_panic=False, show_chip=False,
+                     hide_overlay_lines=False):
+    # hide_overlay_lines=True(2026-10-01 用户): 隐藏 MA120/EMA/REG基准/Grid Target 主目标价/第二阶梯 5条线,
+    # 仅保留 K线+UP/DOWN zone+Gap+Key candle+Resistance+COST 系列; 恢复=改回 False。
     """fast_mode: True=跳过画图，返回 bool（最后一天有买入信号）。
     返回 (c_result, bs_signal, bs_reason, bs_strength, all_levels)；
     bs_strength 为 BrkLvl/BrkLow 的 0~1 分量评分；all_levels 为阻力/支撑位生命周期列表。
@@ -1253,5 +1298,6 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                                 hide_ma=hide_ma,
                                 reg_win=reg_window, reg_win_long=reg_window_long,
                                 panic_info=panic_info,
-                                show_chip=show_chip, code=code, end_date=end_date)
+                                show_chip=show_chip, code=code, end_date=end_date,
+                                hide_overlay_lines=hide_overlay_lines)
     return c_result, bs_signal, bs_reason, bs_strength, all_levels

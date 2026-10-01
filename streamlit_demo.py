@@ -115,7 +115,8 @@ def compute_and_store(df, tail_days, name, code=None, end_date=None):
     fd, tmp_png = tempfile.mkstemp(suffix=".png")
     os.close(fd)
     out = run_segmentation(df, tail_days=tail_days, name=name, save_path=tmp_png,
-                           show_chip=True, code=code, end_date=end_date)
+                           show_chip=True, code=code, end_date=end_date,
+                           hide_overlay_lines=True)
     st.session_state["last_png"] = tmp_png
     st.session_state["last_out"] = out
     st.session_state["last_name"] = name

@@ -959,3 +959,11 @@ if confirmed:
 **关键澄清**: V10 画的是**统一淡蓝色带**(COST10~90), 不调用 `chip_density_grid` → ① 网格取景框未来函数在 V10 中**不存在**(仅影响未启用的 `draw_chip_panel` 密度色带, 待启用时再修: 改 `c_lo[-2*nwin:-nwin]` 用纯历史窗口)。
 
 **已知未修(用户暂缓)**: `add_turnover` 在无历史股本记录时 fallback **当前快照**算历史换手率(次新/无记录股 → 该段换手率高估, 豆包已告警)。修法: 该日之前无记录时置 NaN 或用最早已知记录前推, 而非当前快照。
+
+## V10 ax0 线条显隐开关(2026-10-01 豆包, 已入库)
+- **背景**: 用户嫌 ax0 线太多(MA120/EMA/REG基准/Grid Target主目标/第二阶梯+区域线+COST), 要求隐藏非 COST 的 5 条趋势线, 并记录以便恢复
+- **隐藏的 5 条线(2026-10-01 起默认隐藏)**: ①MA120(紫#7B1FA2) ②EMA平滑价(蓝#1565C0) ③REG基准 max(reg120,250)(灰#546E7A) ④Grid Target主目标价(洋红#D81B60 阶梯, 含目标文字标注) ⑤Grid Target第二阶梯(深紫#4A148C)
+- **实现**: `price_segmenter_v10.py` 的 `plot_price_segmentation_v10` / `run_segmentation` 新增参数 `hide_overlay_lines=False`; V10 入口 `golden_pit_plot_v10.py` 调用时传 `hide_overlay_lines=True`
+- **恢复方法**: 把 `golden_pit_plot_v10.py` 中 `hide_overlay_lines=True` 改回 `False` 即可全部恢复显示(4 处绘制块各自包在 `if not hide_overlay_lines:` 内, 不相互影响)
+- **保留不动的线**: K线蜡烛、UP zone high(红虚线)、DOWN zone low(绿虚线)、Gap line(绿点线)、Key candle(橙虚线)、Resistance(红点划线)、COST10-90淡蓝带、COST35峰下沿(深绿, Ehlers60平滑)、COST80峰上沿(深红, Ehlers60平滑)
+- **注意**: 轴范围计算同步条件为 `if not hide_ma and not hide_overlay_lines`(隐藏时 MA120/EMA 不参与 y 轴范围, 避免变量未定义)
