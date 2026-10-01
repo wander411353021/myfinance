@@ -20,11 +20,6 @@ from matplotlib.colors import LinearSegmentedColormap
 CHIP_CMAP = LinearSegmentedColormap.from_list(
     'chip', ['#eef6ff', '#c9dcf7', '#94bdee', '#5f9fd8',
              '#f5b15e', '#e87a3a', '#d0451f'])
-# 换手率放大系数(2026-10-01 用户定 ×3): 通达信原版筹码衰减偏"粘",
-# 下跌段高位筹码滞留过久(003040 实测 COST50 高出股价 30%); ×3 使筹码随价迁移更合理。
-# 用途: 传给 fengwo.COST/WINNER 的 turn 先乘此系数(上限 clip 1.0)。1.0 = 通达信原版。
-TURN_BOOST = 3.0
-
 # 浅色不显示: 密度 t = (rel*strength)^0.85 < CHIP_VMIN 的格子跳过(透明),
 # 颜色映射范围不变(浅蓝→深红), 只是蓝色等浅色段不画
 # 0.67 = 橙色锚点 #f5b15e: 阈值提到橙色起点, 基本只留橙红

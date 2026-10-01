@@ -1162,13 +1162,6 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             _H = _d['high'].values.astype(float); _L = _d['low'].values.astype(float)
             _V = _d['volume'].values.astype(float)
             _turn = _d['turnover'].values.astype(float).clip(0, 1)
-            # 2026-10-01 用户定: 换手率 ×3 加速筹码打散(通达信原版筹码滞留高位过久,
-            # 003040 实测 ×1 时 COST50 高出股价 30%, ×3 时贴近; chip_panel.TURN_BOOST 可调)
-            try:
-                from chip_panel import TURN_BOOST as _TB
-                _turn = np.clip(_turn * float(_TB), 0, 1)
-            except Exception:
-                _turn = np.clip(_turn * 3.0, 0, 1)
             _c10 = _cost_series(_H, _L, _V, _turn, 0.10)[offset:offset + n]
             _c90 = _cost_series(_H, _L, _V, _turn, 0.90)[offset:offset + n]
             # 集中区: 每天 COST10~COST90 淡蓝色带(统一颜色, alpha 0.35)
