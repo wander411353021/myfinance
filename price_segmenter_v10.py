@@ -649,7 +649,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
 
     # ── 阶梯分段目标价 Grid Target(2026-09-03 接入V10): max(reg120,250)阶梯, 偏离>13%置空 ──
     # (豆包 2026-09-02/03 只在 plot_v10_reg_smooth.py 绘制, streamlit 未接入——这里补上, 口径与独立工具一致)
-    if not hide_overlay_lines:
+    # 2026-10-02 用户: 两个阶梯恢复显示(不受 hide_overlay_lines 影响), REG基准/MA120/EMA 仍隐藏
+    if True:
         try:
             # plot 开头已对 reg_preds/reg_preds_long 做 double_smooth(5,5), 直接用
             _gt120 = reg_preds if reg_preds is not None else None
@@ -681,7 +682,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             print(f'[grid target] 绘制失败: {_e}')
 
     # ── 第二阶梯(2026-09-15 用户定版): 粉线档+2档(+6% 固定间距) + confirm=40 慢速, 深紫 ──
-    if not hide_overlay_lines:
+    # 2026-10-02 用户: 两个阶梯恢复显示(不受 hide_overlay_lines 影响)
+    if True:
         try:
             _s3_120 = reg_preds if reg_preds is not None else None
             _s3_250 = reg_preds_long if reg_preds_long is not None else _frg2
