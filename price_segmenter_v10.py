@@ -664,7 +664,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _gt_win = _gt[offset:offset + n]
                 if np.any(np.isfinite(_gt_win)):
                     # 直接plot含NaN数组, matplotlib在置空(NaN)处自动断线(勿先过滤NaN, 会连成横线)
-                    ax0.plot(x, _gt_win, color='#D81B60', lw=3.2, alpha=1.0, zorder=13,
+                    ax0.plot(x, _gt_win, color='#D81B60', lw=1.6, alpha=1.0, zorder=13,
                              label='Grid Target (阶梯, 偏离>13%置空)')
                     _cur = _gl[-1]
                     if _cur >= 0 and np.isfinite(_gt[-1]):
@@ -714,7 +714,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                     _gt2[_ti] = _v2
                 _gt2_win = _gt2[offset:offset + n]
                 if np.any(np.isfinite(_gt2_win)):
-                    ax0.plot(x, _gt2_win, color='#4A148C', lw=2.4, alpha=0.95, zorder=12,
+                    ax0.plot(x, _gt2_win, color='#4A148C', lw=1.4, alpha=0.95, zorder=12,
                              label='第二阶梯 (粉线档+2档, confirm40)')
         except Exception as _e:
             print(f'[step2] 绘制失败: {_e}')
