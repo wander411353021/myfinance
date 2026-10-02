@@ -1193,10 +1193,11 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _x = np.arange(n)
                 ax0.plot(_x, _sm_n, color='#1B5E20', lw=1.2, alpha=0.9, linestyle='--',
                          zorder=3, label='筹码峰下沿(COST35,Ehlers 60)')
-                # 2026-10-01 用户: 股价 < COST35(跌破 65% 筹码区)的区段填充标记
-                _below = closes < _sm_n
+                # 2026-10-01 用户: 最低价 < COST35(跌破 65% 筹码区)的区段填充标记
+                # 2026-10-02 用户: 由收盘价改为最低价判定/填充(更敏感反映日内击穿)
+                _below = lows < _sm_n
                 if np.any(_below):
-                    ax0.fill_between(_x, closes, _sm_n, where=_below,
+                    ax0.fill_between(_x, lows, _sm_n, where=_below,
                                      color='#2E7D32', alpha=0.30, zorder=1.5,
                                      label='跌破COST35(杀破筹码区)')
                 # 2026-10-02 用户: 去掉 COST75 平滑线 与 COST 均线(中线), 只保留 COST35+跌破填充
