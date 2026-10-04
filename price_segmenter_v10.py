@@ -1183,8 +1183,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                         _out[_k] = (_c1 * (_x[_k] + _x[_k - 1]) / 2
                                     + _c2 * _out[_k - 1] + _c3 * _out[_k - 2])
                     return _out
-                # COST35 Ehlers60→Ehlers30, 进一步降低滞后(2026-10-04 用户要求再降)
-                _sm = _ehlers_smooth(_c35, 30)
+                # COST35 Ehlers60, 全时段显示(还原: Ehlers30杂音太多)
+                _sm = _ehlers_smooth(_c35, 60)
                 _sm_n = _sm[offset:offset + n]
                 _x = np.arange(n)
                 ax0.plot(_x, _sm_n, color='#1B5E20', lw=1.2, alpha=0.9, linestyle='--',
