@@ -1171,6 +1171,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             try:
                 from chip_panel import cost_series as _cs2
                 _c35 = _cs2(_H, _L, _V, _turn, 0.35)          # 全量长度
+                _c75 = _cs2(_H, _L, _V, _turn, 0.75)          # 全量长度, 额外算COST75
                 def _ehlers_smooth(_x, _period):
                     _x = np.asarray(_x, dtype=float)
                     _n = len(_x)
@@ -1188,19 +1189,37 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                         _out[_k] = (_c1 * (_x[_k] + _x[_k - 1]) / 2
                                     + _c2 * _out[_k - 1] + _c3 * _out[_k - 2])
                     return _out
-                _sm = _ehlers_smooth(_c35, 60)               # period=60: 更平滑, 滞后~25日
-                _sm_n = _sm[offset:offset + n]                # 平滑完成后再截取显示段
+                # COST35 固定 Ehlers60, 全时段显示(原逻辑不动)
+                _sm = _ehlers_smooth(_c35, 60)
+                _sm_n = _sm[offset:offset + n]
                 _x = np.arange(n)
                 ax0.plot(_x, _sm_n, color='#1B5E20', lw=1.2, alpha=0.9, linestyle='--',
                          zorder=3, label='筹码峰下沿(COST35,Ehlers 60)')
-                # 2026-10-01 用户: 最低价 < COST35(跌破 65% 筹码区)的区段填充标记
-                # 2026-10-02 用户: 由收盘价改为最低价判定/填充(更敏感反映日内击穿)
+                # 跌破COST35填充(最低价判定, 原逻辑不动)
                 _below = lows < _sm_n
                 if np.any(_below):
                     ax0.fill_between(_x, lows, _sm_n, where=_below,
                                      color='#2E7D32', alpha=0.30, zorder=1.5,
                                      label='跌破COST35(杀破筹码区)')
-                # 2026-10-02 用户: 去掉 COST75 平滑线 与 COST 均线(中线), 只保留 COST35+跌破填充
+                # 2026-10-04 用户: 额外加 COST75 线, 只在剧烈放量(换手EMA10>3%)时才显示, 其他时间不画
+                _alpha_t = 2.0 / 11.0
+                _turn_ema = np.full(len(_turn), np.nan)
+                _turn_ema[0] = _turn[0]
+                for _ti in range(1, len(_turn)):
+                    _turn_ema[_ti] = _alpha_t * _turn[_ti] + (1 - _alpha_t) * _turn_ema[_ti - 1]
+                _sm75 = _ehlers_smooth(_c75, 20)
+                _vol_on = _turn_ema > 0.03
+                _sm75_show = np.where(_vol_on, _sm75, np.nan)
+                _sm75_n = _sm75_show[offset:offset + n]
+                if np.any(np.isfinite(_sm75_n)):
+                    ax0.plot(_x, _sm75_n, color='#E65100', lw=1.6, alpha=0.95, linestyle='--',
+                             zorder=4, label='筹码峰上沿(COST75,仅放量段)')
+                    # 2026-10-04 用户: lows < COST75 时, lows 与 COST75 之间填充紫色
+                    _below75 = (lows < _sm75_n) & np.isfinite(_sm75_n)
+                    if np.any(_below75):
+                        ax0.fill_between(_x, lows, _sm75_n, where=_below75,
+                                         color='#7B1FA2', alpha=0.28, zorder=2.5,
+                                         label='跌破COST75')
             except Exception as _e2:
                 print(f'[chip 峰带] 失败: {_e2}')
         except Exception as _e:
