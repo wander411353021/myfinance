@@ -1208,9 +1208,15 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _turn_ema[0] = _turn[0]
                 for _ti in range(1, len(_turn)):
                     _turn_ema[_ti] = _alpha_t * _turn[_ti] + (1 - _alpha_t) * _turn_ema[_ti - 1]
-                # 2026-10-04 简单阈值: EMA10换手>2.5% 即显示COST75(比原3%早1-2天贴主升起点)
+                # 2026-10-04 相对放量: EMA10(换手) / MA60(换手) > 1.5
+                #   解决绝对阈值问题: 高换手票(300437日换手4%+)全程触发, 低换手票(600519日0.27%)永不触发
+                #   改为相对自身历史: 当前EMA10换手是过去60天均值1.5倍以上才算"放量"
+                #   300300验证: 2.0只在11月爆冲触发, 1.5能捕捉6月温和放量/8月二次启动/10月主升
+                import pandas as _pd
+                _ma60 = _pd.Series(_turn).rolling(60, min_periods=20).mean().values
+                _ratio = _turn_ema / _ma60
                 _sm75 = _ehlers_smooth(_c75, 20)
-                _vol_on = _turn_ema > 0.025
+                _vol_on = _ratio > 1.5
                 _sm75_show = np.where(_vol_on, _sm75, np.nan)
                 _sm75_n = _sm75_show[offset:offset + n]
                 if np.any(np.isfinite(_sm75_n)):
