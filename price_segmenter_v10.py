@@ -1201,7 +1201,20 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                     ax0.fill_between(_x, lows, _sm_n, where=_below,
                                      color='#2E7D32', alpha=0.30, zorder=1.5,
                                      label='跌破COST35(杀破筹码区)')
-                # 2026-10-04 用户: COST75 线 + 紫色填充在横盘震荡段过杂, 已移除; 只保留 COST35
+                # 2026-10-04 用户: 恢复 COST75 橙色线(Ehlers20, 仅放量段EMA10>3%显示);
+                #   紫色填充暂不恢复(横盘震荡段 lows<COST75 太频繁, 视觉杂乱, 待优化)
+                _alpha_t = 2.0 / 11.0
+                _turn_ema = np.full(len(_turn), np.nan)
+                _turn_ema[0] = _turn[0]
+                for _ti in range(1, len(_turn)):
+                    _turn_ema[_ti] = _alpha_t * _turn[_ti] + (1 - _alpha_t) * _turn_ema[_ti - 1]
+                _sm75 = _ehlers_smooth(_c75, 20)
+                _vol_on = _turn_ema > 0.03
+                _sm75_show = np.where(_vol_on, _sm75, np.nan)
+                _sm75_n = _sm75_show[offset:offset + n]
+                if np.any(np.isfinite(_sm75_n)):
+                    ax0.plot(_x, _sm75_n, color='#E65100', lw=1.6, alpha=0.95, linestyle='--',
+                             zorder=4, label='筹码峰上沿(COST75,仅放量段)')
             except Exception as _e2:
                 print(f'[chip 峰带] 失败: {_e2}')
         except Exception as _e:
