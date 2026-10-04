@@ -647,75 +647,84 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         except Exception as _e:
             print(f'[reg base] 绘制失败: {_e}')
 
-    # ── 阶梯分段目标价 Grid Target(2026-09-03 接入V10): max(reg120,250)阶梯, 偏离>13%置空 ──
-    # (豆包 2026-09-02/03 只在 plot_v10_reg_smooth.py 绘制, streamlit 未接入——这里补上, 口径与独立工具一致)
-    # 2026-10-02 用户: 两个阶梯恢复显示(不受 hide_overlay_lines 影响), REG基准/MA120/EMA 仍隐藏
+    # ── 阶梯分段目标价 Grid Target(2026-10-04 用户: 基准从 reg 换成 COST35 平滑线) ──
     if True:
         try:
-            # plot 开头已对 reg_preds/reg_preds_long 做 double_smooth(5,5), 直接用
-            _gt120 = reg_preds if reg_preds is not None else None
-            _gt250 = reg_preds_long if reg_preds_long is not None else _frg2
-            if _gt120 is not None and _gt250 is not None:
-                import panic_reversal as _prgt
-                _glv_def = (-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12)
-                _fc_gt = df_ohlc['close'].values.astype(np.float64)
-                _gt, _gl = _prgt.compute_grid_target_price(_fc_gt, _gt120, _gt250,
-                                                           levels=_glv_def, max_dev=0.13, down_confirm=10)
-                _gt_win = _gt[offset:offset + n]
-                if np.any(np.isfinite(_gt_win)):
-                    # 直接plot含NaN数组, matplotlib在置空(NaN)处自动断线(勿先过滤NaN, 会连成横线)
-                    ax0.plot(x, _gt_win, color='#D81B60', lw=1.6, alpha=1.0, zorder=13,
-                             label='Grid Target (阶梯, 偏离>13%置空)')
-                    _cur = _gl[-1]
-                    if _cur >= 0 and np.isfinite(_gt[-1]):
-                        _tgt = _gt[-1]
-                        _pct = _glv_def[_cur] * 100
-                        ax0.annotate(f'目标{_tgt:.2f} ({_pct:+.0f}%)', (n - 1, _tgt),
-                                     textcoords='offset points', xytext=(-70, 22),
-                                     fontsize=9, color='#D81B60', fontweight='bold',
-                                     arrowprops=dict(arrowstyle='-', color='#D81B60', lw=0.8))
-                    else:
-                        ax0.annotate('目标置空(偏离reg>13%)', (n - 1, closes[-1]),
-                                     textcoords='offset points', xytext=(-110, -8),
-                                     fontsize=8, color='#888888', fontweight='bold')
+            # 先计算 COST35 Ehlers60 平滑线作为基准
+            from chip_panel import cost_series as _cs2gt, _ensure_turnover as _etgt
+            _dgt = _etgt(df_ohlc, code, end_date).sort_values('date').reset_index(drop=True)
+            _Hgt = _dgt['high'].values.astype(float); _Lgt = _dgt['low'].values.astype(float)
+            _Vgt = _dgt['volume'].values.astype(float)
+            _tgt_turn = _dgt['turnover'].values.astype(float).clip(0, 1)
+            _c35gt = _cs2gt(_Hgt, _Lgt, _Vgt, _tgt_turn, 0.35)
+            def _ehlers_gt(_x, _period):
+                _x = np.asarray(_x, dtype=float); _n = len(_x); _out = np.full(_n, np.nan)
+                if _n < 2: return _out
+                _a1 = np.exp(-1.414 * np.pi / _period)
+                _b1 = 2 * _a1 * np.cos(1.414 * np.pi / _period)
+                _c3 = -_a1 * _a1; _c2 = _b1; _c1 = 1.0 - _c2 - _c3
+                _out[0] = _x[0]
+                _out[1] = _c1 * (_x[1] + _x[0]) / 2 + (_c2 + _c3) * _x[0]
+                for _k in range(2, _n):
+                    _out[_k] = (_c1 * (_x[_k] + _x[_k - 1]) / 2 + _c2 * _out[_k - 1] + _c3 * _out[_k - 2])
+                return _out
+            _base35 = _ehlers_gt(_c35gt, 60)  # COST35 Ehlers60 作为基准
+            import panic_reversal as _prgt
+            _glv_def = (-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12)
+            _fc_gt = df_ohlc['close'].values.astype(np.float64)
+            _gt, _gl = _prgt.compute_grid_target_price(_fc_gt, _base35, _base35,
+                                                       levels=_glv_def, max_dev=0.13, down_confirm=10)
+            _gt_win = _gt[offset:offset + n]
+            if np.any(np.isfinite(_gt_win)):
+                # 直接plot含NaN数组, matplotlib在置空(NaN)处自动断线(勿先过滤NaN, 会连成横线)
+                ax0.plot(x, _gt_win, color='#D81B60', lw=1.6, alpha=1.0, zorder=13,
+                         label='Grid Target (COST35基准, 偏离>13%置空)')
+                _cur = _gl[-1]
+                if _cur >= 0 and np.isfinite(_gt[-1]):
+                    _tgt = _gt[-1]
+                    _pct = _glv_def[_cur] * 100
+                    ax0.annotate(f'目标{_tgt:.2f} ({_pct:+.0f}%)', (n - 1, _tgt),
+                                 textcoords='offset points', xytext=(-70, 22),
+                                 fontsize=9, color='#D81B60', fontweight='bold',
+                                 arrowprops=dict(arrowstyle='-', color='#D81B60', lw=0.8))
+                else:
+                    ax0.annotate('目标置空(偏离COST35>13%)', (n - 1, closes[-1]),
+                                 textcoords='offset points', xytext=(-110, -8),
+                                 fontsize=8, color='#888888', fontweight='bold')
         except Exception as _e:
             print(f'[grid target] 绘制失败: {_e}')
 
-    # ── 第二阶梯(2026-09-15 用户定版): 粉线档+2档(+6% 固定间距) + confirm=40 慢速, 深紫 ──
-    # 2026-10-02 用户: 两个阶梯恢复显示(不受 hide_overlay_lines 影响)
+    # ── 第二阶梯(2026-10-04 用户: 基准也改成 COST35) ──
     if True:
         try:
-            _s3_120 = reg_preds if reg_preds is not None else None
-            _s3_250 = reg_preds_long if reg_preds_long is not None else _frg2
-            if _s3_120 is not None and _s3_250 is not None:
-                _levs1 = (-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12)
-                _s3_base = np.maximum(np.asarray(_s3_120), np.asarray(_s3_250))
-                _gt_p, _gl_p = _prgt.compute_grid_target_price(
-                    df_ohlc['close'].values.astype(np.float64), _s3_120, _s3_250,
-                    levels=_levs1, max_dev=0.13, down_confirm=10)
-                _gt2 = np.full(len(_s3_base), np.nan)
-                _cur = None; _cnt = 0
-                for _ti in range(len(_s3_base)):
-                    if _gl_p[_ti] < 0 or not np.isfinite(_s3_base[_ti]):
-                        continue
-                    _tk = min(_gl_p[_ti] + 2, len(_levs1) - 1)  # 粉线档+2档(封顶)
-                    if _cur is None:
+            _s3_base = _base35
+            _levs1 = (-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12)
+            _gt_p, _gl_p = _prgt.compute_grid_target_price(
+                df_ohlc['close'].values.astype(np.float64), _base35, _base35,
+                levels=_levs1, max_dev=0.13, down_confirm=10)
+            _gt2 = np.full(len(_s3_base), np.nan)
+            _cur = None; _cnt = 0
+            for _ti in range(len(_s3_base)):
+                if _gl_p[_ti] < 0 or not np.isfinite(_s3_base[_ti]):
+                    continue
+                _tk = min(_gl_p[_ti] + 2, len(_levs1) - 1)  # 粉线档+2档(封顶)
+                if _cur is None:
+                    _cur = _tk; _cnt = 0
+                elif _tk != _cur:
+                    _cnt += 1
+                    if _cnt >= 40:
                         _cur = _tk; _cnt = 0
-                    elif _tk != _cur:
-                        _cnt += 1
-                        if _cnt >= 40:
-                            _cur = _tk; _cnt = 0
-                    else:
-                        _cnt = 0
-                    # 2026-09-15 用户: 第二阶梯不得低于第一阶梯(粉线)值(慢速跟随滞后时以粉线封底)
-                    _v2 = _s3_base[_ti] * (1 + _levs1[_cur])
-                    if np.isfinite(_gt_p[_ti]) and _v2 < _gt_p[_ti]:
-                        _v2 = _gt_p[_ti]
-                    _gt2[_ti] = _v2
-                _gt2_win = _gt2[offset:offset + n]
-                if np.any(np.isfinite(_gt2_win)):
-                    ax0.plot(x, _gt2_win, color='#4A148C', lw=1.4, alpha=0.95, zorder=12,
-                             label='第二阶梯 (粉线档+2档, confirm40)')
+                else:
+                    _cnt = 0
+                # 第二阶梯不得低于第一阶梯(粉线)值(慢速跟随滞后时以粉线封底)
+                _v2 = _s3_base[_ti] * (1 + _levs1[_cur])
+                if np.isfinite(_gt_p[_ti]) and _v2 < _gt_p[_ti]:
+                    _v2 = _gt_p[_ti]
+                _gt2[_ti] = _v2
+            _gt2_win = _gt2[offset:offset + n]
+            if np.any(np.isfinite(_gt2_win)):
+                ax0.plot(x, _gt2_win, color='#4A148C', lw=1.4, alpha=0.95, zorder=12,
+                         label='第二阶梯 (COST35基准, 粉线档+2档, confirm40)')
         except Exception as _e:
             print(f'[step2] 绘制失败: {_e}')
 
