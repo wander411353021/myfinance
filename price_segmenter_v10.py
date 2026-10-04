@@ -1208,8 +1208,9 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _turn_ema[0] = _turn[0]
                 for _ti in range(1, len(_turn)):
                     _turn_ema[_ti] = _alpha_t * _turn[_ti] + (1 - _alpha_t) * _turn_ema[_ti - 1]
+                # 2026-10-04 简单阈值: EMA10换手>2.5% 即显示COST75(比原3%早1-2天贴主升起点)
                 _sm75 = _ehlers_smooth(_c75, 20)
-                _vol_on = _turn_ema > 0.03
+                _vol_on = _turn_ema > 0.025
                 _sm75_show = np.where(_vol_on, _sm75, np.nan)
                 _sm75_n = _sm75_show[offset:offset + n]
                 if np.any(np.isfinite(_sm75_n)):
