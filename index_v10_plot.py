@@ -14,6 +14,7 @@ import pandas as pd
 from eltdx import Client
 from price_segmenter_v10 import run_segmentation
 from tdx_index_names import display_label
+from eltdx_compat import get_bars
 
 TURN_BASE = 0.05
 
@@ -21,9 +22,7 @@ TURN_BASE = 0.05
 def fetch_index(code, end, datalen=1600):
     cli = Client(timeout=8.0)
     try:
-        ks = cli.bars.get(code, period='day', count=datalen,
-                          anchor_date=end, all_pages=True)
-        bars = list(ks.bars)
+        bars = get_bars(cli, code, 'day', datalen, end)
         rows = []
         for b in bars:
             rows.append(dict(date=pd.Timestamp(b.time.date()), open=b.open, close=b.close,

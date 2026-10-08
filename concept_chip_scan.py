@@ -19,6 +19,7 @@ import pandas as pd
 from eltdx import Client
 
 from chip_panel import cost_series
+from eltdx_compat import get_bars
 
 _MAP = 'tdx_block_names.json'
 
@@ -32,9 +33,7 @@ def fetch_concept_indexes(cli, end, min_days=300, limit=None):
     out, bad = [], []
     for c in concepts:
         try:
-            ks = cli.bars.get('sh%s' % c, period='day', count=1600,
-                              anchor_date=end, all_pages=True)
-            bars = list(ks.bars)
+            bars = get_bars(cli, 'sh%s' % c, 'day', 1600, end)
             if len(bars) < min_days:
                 continue
             out.append(dict(code=c, name=m[c], days=len(bars),

@@ -22,6 +22,7 @@ from matplotlib.colors import LinearSegmentedColormap
 
 from chip_panel import cost_series, chip_density_grid, CHIP_CMAP, CHIP_VMIN
 from eltdx import Client
+from eltdx_compat import get_bars
 
 TURN_BASE = 0.05  # 量比基准(中位≈0.05=5%换手, 接近中换手个股)
 NGRID = 1200
@@ -32,9 +33,7 @@ def fetch_index(code, end, datalen=800):
     """拉指数日线(带anchor, 返回升序; 无未来: 信号日只用≤当日)"""
     cli = Client(timeout=8.0)
     try:
-        ks = cli.bars.get(code, period='day', count=datalen,
-                          anchor_date=end, all_pages=True)
-        bars = list(ks.bars)
+        bars = get_bars(cli, code, 'day', datalen, end)
         rows = []
         for b in bars:
             rows.append(dict(date=b.time.date(), open=b.open, close=b.close,
