@@ -19,10 +19,11 @@ from eltdx_compat import get_bars
 TURN_BASE = 0.05
 
 
-def fetch_index(code, end, datalen=1600):
+def fetch_index(code, end, datalen=800, anchor=False):
+    """拉指数日线。anchor=True 才锚定历史拉全量(慢); 默认无锚定只拉最近 datalen 根(快)。"""
     cli = Client(timeout=8.0)
     try:
-        bars = get_bars(cli, code, 'day', datalen, end)
+        bars = get_bars(cli, code, 'day', datalen, end if anchor else None)
         rows = []
         for b in bars:
             rows.append(dict(date=pd.Timestamp(b.time.date()), open=b.open, close=b.close,
@@ -42,7 +43,7 @@ def main():
     tail = int(sys.argv[2]) if len(sys.argv) > 2 else 150
     end = sys.argv[3] if len(sys.argv) > 3 else '20261008'
 
-    df = fetch_index(code, end)
+    df = fetch_index(code, end, datalen=1600, anchor=True)  # CLI 历史锚定全量
     if df is None or len(df) < 400:
         print('数据不足:', code, len(df) if df is not None else 0)
         return

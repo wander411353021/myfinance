@@ -39,8 +39,15 @@ def load_concepts():
 
 
 @st.cache_data(show_spinner=False)
-def fetch_concept_kline(code, end_str, datalen=1600):
-    return fetch_index_v10('sh' + code, end_str, datalen=datalen)
+def fetch_concept_kline(code, end_str, datalen=800):
+    # 默认无锚定: 只拉最近 datalen 根(快); 结束日期早于2年前才锚定全量(保证窗口覆盖)
+    anchor = False
+    try:
+        if (dt_date.today() - pd.Timestamp(end_str).date()).days > 730:
+            anchor = True
+    except Exception:
+        anchor = False
+    return fetch_index_v10('sh' + code, end_str, datalen=datalen, anchor=anchor)
 
 
 st.title("概念板块筹码")

@@ -33,7 +33,7 @@ def fetch_concept_indexes(cli, end, min_days=300, limit=None):
     out, bad = [], []
     for c in concepts:
         try:
-            bars = get_bars(cli, 'sh%s' % c, 'day', 1600, end)
+            bars = get_bars(cli, 'sh%s' % c, 'day', 800, end)
             if len(bars) < min_days:
                 continue
             out.append(dict(code=c, name=m[c], days=len(bars),

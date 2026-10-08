@@ -29,11 +29,11 @@ NGRID = 1200
 PS = [0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85]
 
 
-def fetch_index(code, end, datalen=800):
-    """拉指数日线(带anchor, 返回升序; 无未来: 信号日只用≤当日)"""
+def fetch_index(code, end, datalen=800, anchor=False):
+    """拉指数日线(返回升序; 无未来: 信号日只用≤当日)。anchor=True 锚定历史拉全量, 默认只拉最近 datalen 根。"""
     cli = Client(timeout=8.0)
     try:
-        bars = get_bars(cli, code, 'day', datalen, end)
+        bars = get_bars(cli, code, 'day', datalen, end if anchor else None)
         rows = []
         for b in bars:
             rows.append(dict(date=b.time.date(), open=b.open, close=b.close,
@@ -131,7 +131,7 @@ def main():
     code = sys.argv[1] if len(sys.argv) > 1 else 'sh881479'
     tail = int(sys.argv[2]) if len(sys.argv) > 2 else 150
     end = sys.argv[3] if len(sys.argv) > 3 else '20261008'
-    df = fetch_index(code, end, datalen=1600)
+    df = fetch_index(code, end, datalen=1600, anchor=True)
     if df is None or len(df) < 300:
         print('数据不足:', code, len(df) if df is not None else 0)
         return
