@@ -50,25 +50,22 @@ def fetch_index(code, end, datalen=800):
         cli.close()
 
 
-def main():
-    code = sys.argv[1] if len(sys.argv) > 1 else 'sh881479'
-    tail = int(sys.argv[2]) if len(sys.argv) > 2 else 150
-    end = sys.argv[3] if len(sys.argv) > 3 else '20261008'
-    df = fetch_index(code, end, datalen=1600)
+
+def plot_chip_band(df, tail=150, out=None, code='', vmax=3.0):
+    """筹码带画图(方案A 量比代理换手率): K线 + 70%集中区色带(COST15-85) + COST50中线。
+    返回输出路径; out=None 时不落盘(仅返回 fig 关闭前的摘要字符串)。
+    无未来: 全部只用当日及以前数据。"""
     if df is None or len(df) < 300:
-        print('数据不足:', code, len(df) if df is not None else 0)
-        return
+        return None
     H = df['high'].values.astype(float)
     L = df['low'].values.astype(float)
     C = df['close'].values.astype(float)
     V = df['volume'].values.astype(float)
 
-    # 方案A: 量比代理换手率
     ma20 = np.convolve(V, np.ones(20) / 20, mode='valid')
     ma20 = np.concatenate([np.full(19, np.nan), ma20])
     ratio = np.where(ma20 > 0, V / ma20, 1.0)
     turn = (TURN_BASE * ratio).clip(0.005, 0.30)
-    # 首20天用固定值
     turn[:20] = TURN_BASE
 
     costs = {p: cost_series(H, L, V, turn, p) for p in PS}
@@ -80,10 +77,8 @@ def main():
     closes = C[-N:]
 
     fig, ax = plt.subplots(figsize=(15, 6.5))
-    # 筹码色带(每天绝对归一×峰值强度)
     gmid = 0.5 * (grid[:-1] + grid[1:])
     dens = dens[:, -N:]
-    vmax = 3.0
     for k in range(N):
         lo_b, hi_b = costs[0.15][-N + k], costs[0.85][-N + k]
         sel = (gmid >= lo_b) & (gmid <= hi_b)
@@ -114,26 +109,36 @@ def main():
     ax.set_title('概念指数筹码带 [方案A: turn=0.05×量比(volume/MA20), 网格%d] %s 末%d日' % (NGRID, code, N),
                  fontsize=10, loc='left')
     ax.legend(loc='upper left', fontsize=8)
-    # x轴日期标注(每30天)
     tick_idx = list(range(0, N, 30))
     ax.set_xticks([x + 0.5 for x in tick_idx])
     ax.set_xticklabels([dates[i] for i in tick_idx], rotation=45, fontsize=7)
 
-    out = 'result/index_chip_%s_%d.png' % (code.replace('/', '_'), N)
-    plt.tight_layout()
-    plt.savefig(out, dpi=100)
-    plt.close()
-    print('已输出:', out)
-    # 摘要
-    print('日期范围: %s ~ %s' % (dates[0], dates[-1]))
-    print('换手代理 turn: 中位%.3f P90=%.3f (量比中位%.2f)' % (
-        np.nanmedian(turn[-N:]), np.nanpercentile(turn[-N:], 90),
-        np.nanmedian(ratio[-N:])))
-    # COST50 = 45/55插值
+    if out:
+        plt.tight_layout()
+        plt.savefig(out, dpi=100)
+        plt.close()
+    else:
+        fig.canvas.draw()
+        plt.close(fig)
     c50 = 0.5 * (costs[0.45][-1] + costs[0.55][-1])
-    print('当前 COST15/35/50/75/85: %.2f/%.2f/%.2f/%.2f/%.2f' % (
-        costs[0.15][-1], costs[0.35][-1], c50, costs[0.75][-1], costs[0.85][-1]))
+    summary = dict(
+        c15=float(costs[0.15][-1]), c35=float(costs[0.35][-1]),
+        c50=float(c50), c75=float(costs[0.75][-1]), c85=float(costs[0.85][-1]),
+        close=float(C[-1]), turn_med=float(np.nanmedian(turn[-N:])),
+        dates=(dates[0], dates[-1]))
+    return summary
 
-
-if __name__ == '__main__':
-    main()
+def main():
+    code = sys.argv[1] if len(sys.argv) > 1 else 'sh881479'
+    tail = int(sys.argv[2]) if len(sys.argv) > 2 else 150
+    end = sys.argv[3] if len(sys.argv) > 3 else '20261008'
+    df = fetch_index(code, end, datalen=1600)
+    if df is None or len(df) < 300:
+        print('数据不足:', code, len(df) if df is not None else 0)
+        return
+    s = plot_chip_band(df, tail=tail, out='result/index_chip_%s_%d.png' % (code.replace('/', '_'), tail), code=code)
+    if not s:
+        return
+    print('日期范围: %s ~ %s' % s['dates'])
+    print('换手代理 turn 中位: %.3f' % s['turn_med'])
+    print('当前 COST15/35/50/75/85: %.2f/%.2f/%.2f/%.2f/%.2f' % (s['c15'], s['c35'], s['c50'], s['c75'], s['c85']))
