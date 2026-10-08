@@ -11,7 +11,7 @@ pandas==2.3.3
 scipy==1.17.1
 matplotlib==3.10.8
 streamlit==1.59.2
-eltdx==1.0.2
+eltdx==3.1.7  # 2026-10-08: 固定到支持 all_pages 的版本(1.0.2 旧版 BarApi.get 无 all_pages 参数, 创空间拉指数报错); 本地验证 3.1.7 全流程可用
 fengwo==0.0.7
 pytdx==1.72
 requests==2.32.5
