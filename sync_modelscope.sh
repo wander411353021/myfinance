@@ -7,6 +7,7 @@
 # ============================================================
 set -e
 REPO="$(cd "$(dirname "$0")" && pwd)"
+_PY="$("D:/ProgramData/miniconda3/envs/chip_analyzer/python.exe" -c "import sys;print(sys.executable)" 2>/dev/null || echo python)"
 CLONE="/tmp/bigrabbit_ms"
 
 # token 来源: 优先主仓库 .git/config 的 modelscope remote(不入库), 其次环境变量
@@ -27,11 +28,7 @@ timeout 300 git clone "$MS_URL" "$CLONE"
 
 # 2. rsync 同步代码/skills(排除私钥/缓存/图集)
 echo "[2/4] rsync 本地代码 -> 克隆 ..."
-rsync -av --exclude='.git' --exclude='.ssh_backup' --exclude='__pycache__' \
-      --exclude='*.pyc' --exclude='result/' --exclude='*.png' \
-      --exclude='hsperfdata_root' --exclude='node-compile-cache' \
-      --exclude='playwright-artifacts-*' --exclude='persistent-sync' \
-      "$REPO/" "$CLONE/" | tail -5
+"$_PY" "$REPO/sync_rsync.py" "$REPO" "$CLONE" || { echo "同步失败(sync_rsync.py 非0退出)"; exit 1; }
 
 # 3. 清理残留缓存目录
 cd "$CLONE"
