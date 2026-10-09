@@ -72,13 +72,15 @@ def fetch_concept_indexes(cli, end, min_days=300, limit=None):
 
 
 def turnover_proxy(volume):
-    """方案A换手率代理: turn=0.05*量/MA20量, clip(0.005,0.30), 前20根固定0.05"""
+    """方案A换手率代理: turn=0.025*量/MA20量, clip(0.005,0.30), 前20根固定0.025
+    2026-10-09 k标定: 0.05→0.025(3板块成分股真实换手中位0.019~0.031, reasonix的0.05偏高2倍;
+    标定后深破档60日胜率更稳 存储芯片42.9%→56.3%, 样本更足)"""
     V = np.asarray(volume, float)
     ma20 = np.convolve(V, np.ones(20) / 20, mode='valid')
     ma20 = np.concatenate([np.full(19, np.nan), ma20])
     ratio = np.where(ma20 > 0, V / np.maximum(ma20, 1e-9), 1.0)
-    turn = (0.05 * ratio).clip(0.005, 0.30)
-    turn[:20] = 0.05
+    turn = (0.025 * ratio).clip(0.005, 0.30)
+    turn[:20] = 0.025
     return turn
 
 

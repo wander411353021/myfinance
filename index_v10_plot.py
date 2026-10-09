@@ -16,7 +16,7 @@ from price_segmenter_v10 import run_segmentation
 from tdx_index_names import display_label
 from eltdx_compat import get_bars
 
-TURN_BASE = 0.05
+TURN_BASE = 0.025  # 2026-10-09 k标定: 真实成分股换手中位0.019-0.031, 0.05偏高
 
 
 def fetch_index(code, end, datalen=800, anchor=False):
