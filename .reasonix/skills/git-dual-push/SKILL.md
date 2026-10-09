@@ -96,3 +96,26 @@ bash sync_github.sh     # 5. GitHub 再推(脚本见下), 输出含 "✅" 才算
    并重建 `~/.ssh/config` 的 github.com 段(IdentityFile ~/.ssh/github_ed25519, IdentitiesOnly yes)
 4. modelscope remote: 向用户索取新 token, `git remote add modelscope https://oauth2:<TOKEN>@www.modelscope.cn/studios/polo411/BigRabbit.git`
 5. 先 `git fetch origin` + `git status -sb` 确认一致再开工
+
+## GitHub 推送回退法 + 实测环境(2026-10-09 reasonix)
+**本机现状**: `~/.ssh/` 只有 id_rsa(无 github_ed25519), 且仓库 `.ssh_backup/` **不存在** → `sync_github.sh` 的 SSH 路径必然失败。
+**网络实测**: github.com:443 极不稳定 —— 连续 4 次 `Failed to connect ... after 21xxx ms: Timed out`, 或 `OpenSSL SSL_read: Connection was reset, errno 10054`; 偶发成功。
+本地代理探测(7890/7897/10809/1080/8889/33210)全部未开放, 无 http_proxy 环境变量。
+
+**可用回退(HTTPS remote + 强制覆盖 + 多次重试)**:
+```bash
+cd <仓库>
+# 主仓库 github remote 已是 HTTPS: https://github.com/wander411353021/myfinance.git
+for i in 1 2 3 4; do
+  GIT_TERMINAL_PROMPT=0 timeout 150 git -c http.version=HTTP/1.1 push --force github master && break
+  sleep 10
+done
+GIT_TERMINAL_PROMPT=0 timeout 150 git -c http.version=HTTP/1.1 push --force github master:main
+# 验证
+timeout 60 git -c http.version=HTTP/1.1 ls-remote github master main
+```
+**要点**:
+- GitHub 端是"镜像历史"(每次 sync 生成新 commit, 与 gitee **不同源**) → 必须 `--force`
+- 网络不稳时**必须循环重试**(单次成功率低); 一次成功即 break
+- 无法确认远端最新时: `git log -1 github/master`(本地追踪引用) + `.git/refs/remotes/github/` 的 mtime 可给出"最后已知状态"
+- GIT_TERMINAL_PROMPT=0 防止 HTTPS 要凭据时挂起; timeout 防止 443 长等待

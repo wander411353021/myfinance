@@ -227,3 +227,12 @@ price_segmenter_v10.run_segmentation ──► mean_reversion.signal_residual(co
    被裁切到轴外;仅离群极值(>4× / <0.12× 最近收盘)封顶,健康区间不收缩;ax3 复用同轴。
 6. **对数回归**(signal_residual.py 头注释):`log(price) = a·t + b` 消除复利偏差,
    大牛股不会被误判为"持续超买";robust_std 剔除当日点防自相关噪声。
+
+## 接口文档指针(2026-10-09 reasonix)
+- **V10 全部接口文档: `docs/V10_API.md`**(337 行) —— 主入口签名/参数全表、返回契约、数据契约
+  (df_ohlc 必需列)、外部依赖接口(panic_reversal/chip_panel/mean_reversion/aben_patterns 签名)、
+  面板结构(2/4/6 面板组合与 height_ratios)、未来函数红线、已知问题、3 个可运行示例。
+- **维护要求**: 改动 `run_segmentation` / `plot_price_segmentation_v10` 的签名、默认值或面板结构后,
+  必须同步更新该文档(并用 `inspect.signature` 复核)。
+- **已知问题(文档 §8)**: `panic_reversal.despeckle_strength` **实际不存在** → `despeckle=True` 会
+  AttributeError(默认 False 不触发); 该分支本身含未来函数(右侧柱段), 禁止用于实盘。
