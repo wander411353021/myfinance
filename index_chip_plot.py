@@ -24,7 +24,7 @@ from chip_panel import cost_series, chip_density_grid, CHIP_CMAP, CHIP_VMIN
 from eltdx import Client
 from eltdx_compat import get_bars
 
-TURN_BASE = 0.05  # 量比基准(中位≈0.05=5%换手, 接近中换手个股)
+TURN_BASE = 0.025  # 2026-10-09 k标定: 真实成分股换手中位0.019-0.031, 0.05偏高2倍
 NGRID = 1200
 PS = [0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85]
 
