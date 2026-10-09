@@ -36,6 +36,10 @@ def fetch_concept_indexes(cli, end, min_days=300, limit=None):
             bars = get_bars(cli, 'sh%s' % c, 'day', 800, end)
             if len(bars) < min_days:
                 continue
+            # 2026-10-09 修复(reasonix): get_bars 锚定路径(all_pages)返回**时间倒序**,
+            # 无锚定路径返回升序 —— 必须统一升序, 否则 cost_series 逐日递推方向反转、
+            # close[-1] 取到最早价(880501 曾输出 2006 年价 970.53), 分类结论全错。
+            bars = sorted(bars, key=lambda b: b.time)
             out.append(dict(code=c, name=m[c], days=len(bars),
                             high=np.array([b.high for b in bars], float),
                             low=np.array([b.low for b in bars], float),
