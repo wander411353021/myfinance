@@ -23,11 +23,32 @@ from eltdx_compat import get_bars
 
 _MAP = 'tdx_block_names.json'
 
+# 2026-10-09 reasonix: 8805xx-8809xx 段混入 52 个"动态成分"板块(昨日涨停/跌停/连板/首板/
+# 历史新高/重仓/次新/送转/解禁…), 成分股按日或短期重构 —— 指数是动态组合, "筹码成本"无实际
+# 持有者对应(实测"昨日跌停"显示 -38% 虚假超跌)。默认排除, 只保留 373 个真实题材/概念板块。
+DYNAMIC_KW = (
+    # ① 按日/短期重构(行情统计型)
+    '昨日', '昨曾', '昨ST', '昨收', '昨成交', '昨高', '连板', '首板', '断板', '涨停', '跌停',
+    '异动', '换手', '成交', '新高', '新低', '指标股', '重仓', '次新', '送转', '解禁',
+    '融资', '破净', '破发', '超跌', '活跃', '热股', '强势', '弱势', '突涨', '振荡', '上榜',
+    # ② 定期(季/月)重构: 财务/属性/事件筛选型
+    '预案', '转亏', '预增', '预盈', '预亏', '预减', '预告', '扭亏', '市净', '市盈', '百元',
+    '低价', '高价', '贝塔', '户数', '每股', '股东', '评级', '季报', '年报', '中报', '绩优',
+    '大基金', '北向', '陆股通', '社保', 'QFII', '信托', '保险', '券商', '基金', '微盘',
+    '小盘', '大盘', '高分红', '安全分', '整体上市', '承诺不减', '股权激励', '可转债',
+    'ST',
+)
+
+
+def is_dynamic_block(name):
+    return any(k in name for k in DYNAMIC_KW)
+
 
 def fetch_concept_indexes(cli, end, min_days=300, limit=None):
     """拉取全部概念板块日线(8805xx-8809xx), 返回 [{code,name,high,low,close,volume}]"""
     m = json.load(open(_MAP, encoding='utf-8'))
-    concepts = sorted([c for c in m if 880500 <= int(c) <= 880999])
+    concepts = sorted([c for c in m if 880500 <= int(c) <= 880999
+                       and not is_dynamic_block(m[c])])
     if limit:
         concepts = concepts[:limit]
     out, bad = [], []
@@ -78,19 +99,35 @@ def scan(end=None, min_days=300, out=None, limit=None, quiet=False):
             if not all(np.isfinite((v35, v50, v75))):
                 continue
             close = float(it['close'][-1])
+            _b35 = close / v35 - 1
+            _a75 = close / v75 - 1
+            # 2026-10-09 reasonix 验证: 概念板块"跌破 COST35 越深 → 后续反弹越强"
+            #   (深度-8~-15%: 60日+34%/胜率67%; <-15%: +89%/72%), 收>COST75 反而平庸;
+            #   故 zone 用中性/超跌语义, 排序按 below35 升序(超跌最深在前)。
+            if _b35 < -0.15:
+                _zone = '极深超跌'
+            elif _b35 < -0.08:
+                _zone = '深度跌破'
+            elif _b35 < 0:
+                _zone = '轻度跌破'
+            elif _a75 > 0.08:
+                _zone = '高位'
+            elif _a75 > 0:
+                _zone = '突破筹码峰'
+            else:
+                _zone = '中间'
             rows.append(dict(code=it['code'], name=it['name'], days=it['days'],
                              close=close, cost35=v35, cost50=v50, cost75=v75,
-                             above75=close / v75 - 1, below35=close / v35 - 1))
+                             above75=_a75, below35=_b35, zone=_zone))
     finally:
         cli.close()
-    df = pd.DataFrame(rows).reset_index(drop=True).sort_values('above75', ascending=False)
+    df = pd.DataFrame(rows).reset_index(drop=True).sort_values('below35', ascending=True)  # 超跌最深在前
     df.to_csv(out, index=False, encoding='utf-8-sig')
     if not quiet:
-        strong = df[df.above75 > 0]
-        pressed = df[df.below35 < 0]
-        mid = df[(df.above75 <= 0) & (df.below35 >= 0)]
         print('完成 %d 板块(跳过/失败 %d), 耗时 %.0fs' % (len(df), len(bad), time.time() - t0))
-        print('分类: 强势(收>COST75) %d | 中间 %d | 受压(收<COST35) %d' % (len(strong), len(mid), len(pressed)))
+        print('分档(2026-10-09 验证: 跌破 COST35 越深, 统计上后续反弹越强):')
+        for z in ('极深超跌', '深度跌破', '轻度跌破', '中间', '突破筹码峰', '高位'):
+            print('  %-8s %d' % (z, int((df.zone == z).sum())))
         print('输出:', out)
     return df
 

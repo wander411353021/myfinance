@@ -30,12 +30,21 @@ st.set_page_config(page_title="概念板块筹码", layout="wide")
 
 @st.cache_data(show_spinner=False)
 def load_concepts():
-    """8805xx-8809xx 概念板块 {code: name}, 升序"""
+    """8805xx-8809xx 概念板块 {code: name}, 升序。
+    2026-10-09 reasonix: 排除 52 个"动态成分"板块(昨日涨停/跌停/连板/历史新高/重仓/次新/
+    送转/解禁…), 其成分股按日或短期重构, 指数是动态组合, 筹码成本无持有者对应
+    (实测"昨日跌停"显示 -38% 虚假超跌) —— 只保留 373 个真实题材/概念板块。"""
     try:
         m = json.load(open(os.path.join(BASE_DIR, 'tdx_block_names.json'), encoding='utf-8'))
     except Exception:
         return {}
-    return {c: m[c] for c in sorted(m) if 880500 <= int(c) <= 880999}
+    try:
+        from concept_chip_scan import is_dynamic_block
+        _dyn = is_dynamic_block
+    except Exception:
+        _dyn = lambda n: False
+    return {c: m[c] for c in sorted(m)
+            if 880500 <= int(c) <= 880999 and not _dyn(m[c])}
 
 
 @st.cache_data(show_spinner=False)
@@ -51,7 +60,9 @@ def fetch_concept_kline(code, end_str, datalen=800):
 
 
 st.title("概念板块筹码")
-st.caption("通达信概念指数(88系列) · 方案A换手率代理(turn=0.05×量比) · 逐日递推无未来函数")
+st.caption("通达信概念指数(88系列, 已排除动态成分板块) · 方案A换手率代理(turn=0.05×量比) · 逐日递推无未来函数")
+st.caption("📈 2026-10-09 验证(363板块/32734样本): 深度跌破 COST35(<-8%) 后续 20/60 日胜率 76%; "
+           "极深(<-15%) 88%; 轻微跌破/收>COST75 均无优势 —— 需按深度分档使用")
 
 concepts = load_concepts()
 if not concepts:
@@ -121,12 +132,27 @@ if summary is None:
 
 above75 = close / summary['c75'] - 1
 below35 = close / summary['c35'] - 1
-if above75 > 0:
-    pos = "强势（全板块获利，收盘>COST75）"
+# 2026-10-09 reasonix 验证修正: 概念板块(413个/37451样本/2020-2026)统计显示
+#   "收<COST35 越深 → 后续 60 日反弹越强"(深度-8~-15%: +34%/胜率67%; <-15%: +89%/胜率72%),
+#   而"收>COST75"后续平庸(+1.5%~+8%) —— 方向与"强势=好"直觉相反, 标签改为中性/超跌语义。
+if below35 < -0.15:
+    pos = "极深超跌（收盘 << COST35）"
+    note = "统计: 60日 +89%/胜率72%(n=263, 均值受尾部驱动)"
+elif below35 < -0.08:
+    pos = "深度跌破（收盘 < COST35）"
+    note = "统计: 60日 +34%/胜率67%(n=955)"
 elif below35 < 0:
-    pos = "受压（深套牢，收盘<COST35）"
+    pos = "轻度跌破（收盘 < COST35）"
+    note = "统计: 60日 +5~11%(优势不明显)"
+elif above75 > 0.08:
+    pos = "高位（收盘 >> COST75）"
+    note = "统计: 60日均值 +38% 但胜率仅 52%(尾部驱动)"
+elif above75 > 0:
+    pos = "突破筹码峰（收盘 > COST75）"
+    note = "统计: 60日 +1.5%~+8%(偏平庸)"
 else:
     pos = "中间（部分套牢/获利）"
+    note = "统计: 无优势"
 
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("收盘", f"{close:.2f}")
@@ -134,6 +160,7 @@ col2.metric("COST35（筹码峰下沿）", f"{summary['c35']:.2f}")
 col3.metric("COST50（成本中线）", f"{summary['c50']:.2f}")
 col4.metric("COST75（筹码峰上沿）", f"{summary['c75']:.2f}")
 st.markdown(f"**板块筹码状态：{pos}**　偏离 COST35 `{below35*100:+.1f}%` · 偏离 COST75 `{above75*100:+.1f}%`")
+st.caption(f"📊 {note}　·　注: 概念指数无股本, 换手率用代理(0.05×量/MA20), 绝对成本价不可当压力位; 统计存在样本重叠")
 
 if style.startswith("V10"):
     with st.expander("说明：V10 图上的筹码线"):
