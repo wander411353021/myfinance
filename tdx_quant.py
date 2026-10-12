@@ -1,9 +1,25 @@
 import os
 import ast
+import time
 import numpy as np
 import pandas as pd
 
 _PAGE = 800  # eltdx 单次返回上限(协议限制,count>800 报 ProtocolError)
+
+
+def _retry_connect(fn, attempts=3, first_delay=0.8):
+    """通达信 7709 行情服务器瞬时抖动重试(握手超时/连接重置等)。
+    每次重试新建 TdxClient → 重新探活选服, 大概率换到更快的服务器。
+    只重试"抛异常"的失败; 正常返回空数据(真退市/无行情)不受影响。"""
+    last = None
+    for i in range(attempts):
+        try:
+            return fn()
+        except Exception as e:
+            last = e
+            if i < attempts - 1:
+                time.sleep(first_delay * (i + 1))
+    raise last
 
 def _historical_float_shares_records(code):
     """通达信历史流通股本记录: {日期: 流通股本(股)}。
@@ -12,27 +28,31 @@ def _historical_float_shares_records(code):
     记录为空(次新股/无变动记录)时返回 {}, 调用方 fallback 当前快照并告警。
     """
     from eltdx import TdxClient
-    recs = {}
-    with TdxClient() as client:
-        cc = client.corporate.capital_changes(code)
-        for r in cc.records:
-            # 流通股本只在这些类别中出现(c3字段=流通股本, 单位股):
-            #   2=送配股上市 / 3=非流通股上市(全流通) / 5=股本变化 / 9=转配股上市
-            #   category 1(除权除息)/14(送认沽权证) 的 c3 是比例系数(如6/1/16), 严禁混入
-            if r.category_raw in (2, 3, 5, 9) and r.c3_value and r.c3_value > 0:
-                d = pd.to_datetime(r.date).normalize()
-                recs[d] = float(r.c3_value)
-    return recs
+    def _fetch():
+        recs = {}
+        with TdxClient() as client:
+            cc = client.corporate.capital_changes(code)
+            for r in cc.records:
+                # 流通股本只在这些类别中出现(c3字段=流通股本, 单位股):
+                #   2=送配股上市 / 3=非流通股上市(全流通) / 5=股本变化 / 9=转配股上市
+                #   category 1(除权除息)/14(送认沽权证) 的 c3 是比例系数(如6/1/16), 严禁混入
+                if r.category_raw in (2, 3, 5, 9) and r.c3_value and r.c3_value > 0:
+                    d = pd.to_datetime(r.date).normalize()
+                    recs[d] = float(r.c3_value)
+        return recs
+    return _retry_connect(_fetch)
 
 
 def _current_float_shares(code):
     """当前流通股本快照(股) — 仅作历史记录缺失时的 fallback(会告警)。"""
     from eltdx import TdxClient
-    with TdxClient() as client:
-        rows = client.helpers.daily_share_capital([code]).rows
-    if not rows:
-        return None
-    return float(rows[0].circulating_shares)
+    def _fetch():
+        with TdxClient() as client:
+            rows = client.helpers.daily_share_capital([code]).rows
+        if not rows:
+            return None
+        return float(rows[0].circulating_shares)
+    return _retry_connect(_fetch)
 
 
 def add_turnover(df, code, end_date):
@@ -77,15 +97,20 @@ def get_daily_kline_from_tdx(code, end_date, datalen=800, with_turnover=True):
     """
     from eltdx import TdxClient
     n_pages = (datalen + _PAGE - 1) // _PAGE
-    all_bars = []
-    with TdxClient() as client:
-        for pi in range(n_pages):
-            adj = client.bars.get(code, period='day', adjust='qfq',
-                                  anchor_date=end_date, start=pi * _PAGE, count=_PAGE)
-            bars = [b for b in adj.bars if float(b.close) > 0]
-            if not bars:
-                break
-            all_bars.extend(bars)
+
+    def _fetch_bars():
+        all_bars = []
+        with TdxClient() as client:
+            for pi in range(n_pages):
+                adj = client.bars.get(code, period='day', adjust='qfq',
+                                      anchor_date=end_date, start=pi * _PAGE, count=_PAGE)
+                bars = [b for b in adj.bars if float(b.close) > 0]
+                if not bars:
+                    break
+                all_bars.extend(bars)
+        return all_bars
+
+    all_bars = _retry_connect(_fetch_bars)
     if not all_bars:
         return None
     all_bars.sort(key=lambda b: b.time)  # 分页返回顺序须显式排序(防错位)

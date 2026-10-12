@@ -256,9 +256,15 @@ if go or auto_go:
         try:
             df_full = fetch_tdx_kline(code, end_date)
         except Exception as e:
-            # 取数失败（如该票退市/停牌/无行情）不致命：保留上一只图表，仅提示
-            st.warning(f"⚠️ 通达信取数失败（代码 {code}）：{e}\n"
-                       f"该股票可能已退市 / 停牌 / 无行情数据，已保留上一只股票的图表。")
+            # 取数失败不致命：保留上一只图表，仅提示。区分网络抖动与真无数据
+            _s = str(e).lower()
+            _net = any(k in _s for k in ("timed out", "timeout", "handshake", "connection", "poolbusy", "transport"))
+            if _net:
+                st.warning(f"⚠️ 通达信行情服务器连接失败（代码 {code}）：{e}\n"
+                           f"网络/服务器瞬时抖动（已自动重试仍未成功），**不是退市/停牌**，请点击重新运行再试。已保留上一只股票的图表。")
+            else:
+                st.warning(f"⚠️ 通达信取数失败（代码 {code}）：{e}\n"
+                           f"该股票可能已退市 / 停牌 / 无行情数据，已保留上一只股票的图表。")
     if df_full is not None and len(df_full) >= 2:
         st.success(f"已拉取 {len(df_full)} 根，日期 {df_full['date'].iloc[0].date()} ~ {df_full['date'].iloc[-1].date()}（前复权）")
         _end_str = end_date.strftime("%Y%m%d") if hasattr(end_date, "strftime") else str(end_date).replace("-", "")
