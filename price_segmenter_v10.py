@@ -705,7 +705,13 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                         _gls[_ti] = float(_cand.max())
                 _cur = None; _pend = None; _cnt = 0
                 for _ti in range(len(_s3_base)):
-                    if _gls[_ti] < 0 or not np.isfinite(_s3_base[_ti]):
+                    if _glr[_ti] < 0 or not np.isfinite(_s3_base[_ti]):
+                        # 2026-10-14 用户: 粉线置空(偏离>13%)期间**第二阶梯一并消失**。
+                        #   ⚠️ 判定必须用**原始档位** _glr(平滑会把 -1 置空抹成众数 0 → 线不消失);
+                        #   平滑档 _gls 只用于"档位值"稳定, 置空状态跟随粉线本身。
+                        #   置空时重置状态机, 恢复后从当前档重新起步(不背滞后)。
+                        _gt2[_ti] = np.nan
+                        _cur = None; _pend = None; _cnt = 0
                         continue
                     _tk = min(int(_gls[_ti]) + 2, len(_levs1) - 1)
                     if _cur is None:
