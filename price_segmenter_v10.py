@@ -689,19 +689,36 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                     df_ohlc['close'].values.astype(np.float64), _s3_120, _s3_250,
                     levels=_levs1, max_dev=0.13, down_confirm=10)
                 _gt2 = np.full(len(_s3_base), np.nan)
-                _cur = None; _cnt = 0
+                # 2026-10-10 用户: 降低格栅切换次数(实测 60 股 369→107 次, -71%)
+                #   ① 粉线档位**众数平滑**(21 天滚动众数, 平票取较高档)—— 治输入抖动, 因果(只用过去)
+                #   ② 慢速跟随改为"**同一个新档连续** confirm 天"(原实现累计'档位不同'的天数,
+                #      抖动也会攒满 40 → 反复切换; 改后抖动不累积)
+                _glr = np.asarray(_gl_p, dtype=float)
+                _gls = np.full(len(_glr), -1.0)
+                _W = 21
+                for _ti in range(len(_glr)):
+                    _winv = _glr[max(0, _ti - _W + 1):_ti + 1]
+                    _winv = _winv[_winv >= 0]
+                    if len(_winv):
+                        _vals, _cnts = np.unique(_winv, return_counts=True)
+                        _cand = _vals[_cnts == _cnts.max()]
+                        _gls[_ti] = float(_cand.max())
+                _cur = None; _pend = None; _cnt = 0
                 for _ti in range(len(_s3_base)):
-                    if _gl_p[_ti] < 0 or not np.isfinite(_s3_base[_ti]):
+                    if _gls[_ti] < 0 or not np.isfinite(_s3_base[_ti]):
                         continue
-                    _tk = min(_gl_p[_ti] + 2, len(_levs1) - 1)
+                    _tk = min(int(_gls[_ti]) + 2, len(_levs1) - 1)
                     if _cur is None:
-                        _cur = _tk; _cnt = 0
-                    elif _tk != _cur:
-                        _cnt += 1
-                        if _cnt >= 40:
-                            _cur = _tk; _cnt = 0
+                        _cur = _tk
+                    elif _tk == _cur:
+                        _pend = None; _cnt = 0
                     else:
-                        _cnt = 0
+                        if _tk == _pend:
+                            _cnt += 1
+                        else:
+                            _pend = _tk; _cnt = 1
+                        if _cnt >= 40:
+                            _cur = _tk; _pend = None; _cnt = 0
                     _v2 = _s3_base[_ti] * (1 + _levs1[_cur])
                     if np.isfinite(_gt_p[_ti]) and _v2 < _gt_p[_ti]:
                         _v2 = _gt_p[_ti]
@@ -709,7 +726,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _gt2_win = _gt2[offset:offset + n]
                 if np.any(np.isfinite(_gt2_win)):
                     ax0.plot(x, _gt2_win, color='#4A148C', lw=1.4, alpha=0.95, zorder=12,
-                             label='第二阶梯 (粉线档+2档, confirm40)')
+                             label='第二阶梯 (粉线档众数平滑+2档, 同档连续40天)')
         except Exception as _e:
             print(f'[step2] 绘制失败: {_e}')
 
