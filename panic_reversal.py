@@ -1652,9 +1652,13 @@ def compute_grid_target_price(closes, reg120, reg250,
                               max_dev=0.13,
                               down_confirm=10,
                               up_confirm=5,
-                              press_gap=0.03,
+                              press_gap=0.0,
                               press_smooth=20,
-                              jump_up=False):
+                              jump_up=False,
+                              follow_price=False,
+                              hyst_up=2,
+                              hyst_dn=2,
+                              min_level=4):
     """阶梯式分段目标价(2026-09-02 polo4111, 严格无未来函数, 因果)。
 
     以 max(reg120, reg250) 为基准, 档位 levels 形成阶梯目标价。
@@ -1674,9 +1678,18 @@ def compute_grid_target_price(closes, reg120, reg250,
             (2026-09-03 polo4111: 目标价作为上方压力位, 高于当前价格约6%, 落在3%间隔格栅线上)。
             max_dev=0.13 = 顶档(+12%)+1%缓冲, 超顶档即置空(2026-09-03 用户: 消除+12%~+20%无意义横线段)
 
-    press_gap : float, default 0.03
-        压制下限(2026-10-14): 线值 = max(base*(1+档位), EMA(press_smooth)[t-1]*(1+press_gap));
-        设 0 关闭(=旧行为, 线可低于价格)。**必须用平滑价格**: 昨收版会让线跟着价格跳(忽上忽下)。
+    min_level : int, default 4
+        档位下限(**2026-10-14 用户定版**): 降档不得低于该档位索引(4 = +0% 档)。
+        治"横盘/缓跌段线塌到价格上被反复上穿"; 0 = 旧行为(可降到 -9% 档)。
+    follow_price : bool, default False
+        档位跟随价格(实验): 线 = 价格上方最近格栅档, 滞回 hyst_up/hyst_dn 档。
+        ⚠️ 实测在平缓段反而更差(价在线上 45% vs 原版 22%), 默认 False, 仅保留供实验。
+    hyst_up / hyst_dn : int, default 2 / 2
+        档位跟随的滞回档距(升档需站上 k+hyst_up 档, 降档需跌破 k-hyst_dn 档)。
+
+    press_gap : float, default 0.0
+        压制下限(实验, 默认关闭): 线值 = max(base*(1+档位), EMA(press_smooth)[t-1]*(1+press_gap))。
+        ⚠️ 用户否掉: 会破坏"线必须在格栅档位上"的要求(线变成 EMA 值)。默认 0 = 不启用。
     press_smooth : int, default 20
         压制下限所用平滑价格的 EMA 窗口。
 
@@ -1689,12 +1702,53 @@ def compute_grid_target_price(closes, reg120, reg250,
     n = len(closes)
     # 压制下限所用的平滑价格(EMA, 因果递推) —— 见下方 press_gap 说明
     _ema_p = pd.Series(closes).ewm(span=max(int(press_smooth), 1), adjust=False).mean().values         if press_gap > 0 else np.full(n, np.nan)
-    cur = 0        # 档位状态(昨天收盘后确定)
+    target = np.full(n, np.nan)
+    lvl = np.full(n, -1, dtype=int)
+
+    if follow_price:
+        # ── 档位跟随价格(2026-10-14 用户定版): 线 = **价格上方最近格栅档** ──
+        # 动机: 原状态机在横盘/缓跌段会一路降档到 0 档, 使线贴住价格甚至被压在运行区间内
+        #   反复上穿(600199 2020-02~05 平缓段: 上穿 7 次、变档 2 次、线仅高于价格 3.3%);
+        # 规则: 价格站上 k+hyst_up 档 → 升档; 跌破 k-hyst_dn 档 → 降档(滞回防抖);
+        #   价格偏离 base 超 max_dev → 置空(消失, 用户认可的机制)。
+        # 实测(600199 平缓段 60 天): 上穿 7→1 次, 变档 2→0 次, 线高于价格 +5.5%;
+        #   且线**始终落在 base 的格栅档位上**(非 EMA 等任意值)。
+        # 因果: 档位由**昨收**决定(当天线值不含当天价格; 当天收盘只影响明天)。
+        _k = None
+        for t in range(n):
+            if not np.isfinite(base[t]):
+                continue
+            _p = closes[t - 1] if t > 0 else np.nan
+            if not np.isfinite(_p):
+                continue
+            if _p / base[t] - 1 > max_dev:
+                _k = None
+                continue
+            if _k is None:
+                _k = len(levels) - 1
+                for _li, _lv in enumerate(levels):
+                    if base[t] * (1 + _lv) >= _p:
+                        _k = _li
+                        break
+            else:
+                while _k + hyst_up <= len(levels) - 1 and _p >= base[t] * (1 + levels[_k + hyst_up]):
+                    _k += 1
+                while _k - hyst_dn >= 0 and _p < base[t] * (1 + levels[_k - hyst_dn]):
+                    _k -= 1
+            target[t] = base[t] * (1 + levels[_k])
+            lvl[t] = _k
+        return target, lvl
+
+    # 2026-10-14 用户: 档位下限 min_level —— 原状态机在横盘/缓跌段会一路降档到 0 档,
+    #   使线贴住价格、被压在运行区间内反复上穿(600199 2020-02~05 平缓段: 上穿 7 次、
+    #   线仅高于价格 3.3%、47/60 天股价在线上)。加档位下限后线不再"塌"到价格上:
+    #   实测(同段 60 天) min_level=4(+0%档): 上穿 7→**0** 次, 变档 2→**0** 次, 线高于价格 8.8%;
+    #                     min_level=5(+3%档): 上穿 0 次, 线高于价格 12.0%。
+    #   仍保留原有升/降档确认节奏(不是"跟随价格")。
+    cur = min(max(int(min_level), 0), len(levels) - 1)   # 档位状态(昨天收盘后确定)
     void = False   # 置空状态(昨天收盘后确定)
     down_cnt = 0   # 连续降档确认计数
     up_cnt = 0     # 连续升档确认计数
-    target = np.full(n, np.nan)
-    lvl = np.full(n, -1, dtype=int)
     for t in range(n):
         if not np.isfinite(base[t]):
             continue
@@ -1723,7 +1777,7 @@ def compute_grid_target_price(closes, reg120, reg250,
         dev = closes[t] / base[t] - 1
         if dev > max_dev:
             void = True
-            cur = 0
+            cur = int(min_level)
             down_cnt = 0
             up_cnt = 0
             continue
@@ -1735,10 +1789,10 @@ def compute_grid_target_price(closes, reg120, reg250,
             void = False
             dev_now = closes[t] / base[t] - 1
             req = (1.0 + dev_now) * 1.06 - 1.0  # 目标档位需使 目标价>=价格*1.06
-            cur = 0
+            cur = int(min_level)
             for li, lv in enumerate(levels):
                 if lv >= req:
-                    cur = li
+                    cur = max(li, int(min_level))
                     break
             else:
                 cur = len(levels) - 1  # 目标已超最高档, 取最高档
@@ -1769,7 +1823,7 @@ def compute_grid_target_price(closes, reg120, reg250,
         else:
             up_cnt = 0
         # 降档: 连续 down_confirm 天跌破上一档线才降(延迟, 防急降)
-        if cur > 0 and closes[t] < base[t] * (1 + levels[cur - 1]):
+        if cur > int(min_level) and closes[t] < base[t] * (1 + levels[cur - 1]):
             down_cnt += 1
             if down_cnt >= down_confirm:
                 cur -= 1
