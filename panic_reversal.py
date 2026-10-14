@@ -1652,7 +1652,9 @@ def compute_grid_target_price(closes, reg120, reg250,
                               max_dev=0.13,
                               down_confirm=10,
                               up_confirm=5,
-                              press_gap=0.03):
+                              press_gap=0.03,
+                              press_smooth=20,
+                              jump_up=False):
     """阶梯式分段目标价(2026-09-02 polo4111, 严格无未来函数, 因果)。
 
     以 max(reg120, reg250) 为基准, 档位 levels 形成阶梯目标价。
@@ -1673,8 +1675,10 @@ def compute_grid_target_price(closes, reg120, reg250,
             max_dev=0.13 = 顶档(+12%)+1%缓冲, 超顶档即置空(2026-09-03 用户: 消除+12%~+20%无意义横线段)
 
     press_gap : float, default 0.03
-        压制下限(2026-10-14): 线值 = max(base*(1+档位), 前一日收盘*(1+press_gap));
-        设 0 关闭(=旧行为, 线可低于价格)。
+        压制下限(2026-10-14): 线值 = max(base*(1+档位), EMA(press_smooth)[t-1]*(1+press_gap));
+        设 0 关闭(=旧行为, 线可低于价格)。**必须用平滑价格**: 昨收版会让线跟着价格跳(忽上忽下)。
+    press_smooth : int, default 20
+        压制下限所用平滑价格的 EMA 窗口。
 
     返回 (target, level_idx):
       target[n]: 每日目标价(置空日为NaN)
@@ -1683,6 +1687,8 @@ def compute_grid_target_price(closes, reg120, reg250,
     closes = np.asarray(closes, dtype=float)
     base = np.maximum(np.asarray(reg120, dtype=float), np.asarray(reg250, dtype=float))
     n = len(closes)
+    # 压制下限所用的平滑价格(EMA, 因果递推) —— 见下方 press_gap 说明
+    _ema_p = pd.Series(closes).ewm(span=max(int(press_smooth), 1), adjust=False).mean().values         if press_gap > 0 else np.full(n, np.nan)
     cur = 0        # 档位状态(昨天收盘后确定)
     void = False   # 置空状态(昨天收盘后确定)
     down_cnt = 0   # 连续降档确认计数
@@ -1700,12 +1706,15 @@ def compute_grid_target_price(closes, reg120, reg250,
             target[t] = base[t] * (1 + levels[cur])
             lvl[t] = cur
             # 2026-10-14 用户: 压制语义下限 —— 阶梯线是"上方压力位", 不得低于
-            #   **前一日收盘 × (1+press_gap)**。根因: base=max(reg120,250) 在急涨初期严重滞后
-            #   (600199: 股价 5.0→8.0 而 base 6.35→5.1), 此时 base*(1+最高档+12%) 仍低于股价
-            #   → 线被压在运行区间内反复上穿, 完全失去压制作用。
-            #   用前一日收盘 = 因果(当天线值不含当天价格, 当天价格只影响明天的状态)。
-            if press_gap > 0 and t > 0 and np.isfinite(closes[t - 1]):
-                _floor = closes[t - 1] * (1.0 + press_gap)
+            #   **EMA(press_smooth 日收盘)[t-1] × (1+press_gap)**。
+            # 根因: base=max(reg120,250) 在急涨初期严重滞后(600199 股价 5.0→8.0 而 base 6.35→5.1),
+            #   base*(1+最高档12%) 仍低于股价 → 线被压在运行区间内反复上穿, 无压制作用。
+            # ⚠️ 下限必须用**平滑价格(EMA)**, 不能用昨收: 昨收使线跟着价格跳,
+            #   实测"日变化>1.5% 的天数"从 11 天暴增到 43 天(用户: "忽上忽下, 失去节奏");
+            #   EMA20 下限: 上穿 14→5 次, 而波动天数仅 7 天(比原版还平稳)。
+            #   取 ema[t-1] = 因果(当天线值不含当天价格; 当天价格只影响明天的状态)。
+            if press_gap > 0 and t > 0 and np.isfinite(_ema_p[t - 1]):
+                _floor = _ema_p[t - 1] * (1.0 + press_gap)
                 if target[t] < _floor:
                     target[t] = _floor
         # 2) 收盘后: 用今天收盘更新状态(影响明天)
@@ -1740,7 +1749,20 @@ def compute_grid_target_price(closes, reg120, reg250,
             if closes[t] >= base[t] * (1 + levels[cur]):
                 up_cnt += 1
                 if up_cnt >= up_confirm:
-                    cur += 1
+                    if jump_up:
+                        # 2026-10-14 用户: "跳档" —— 急涨时价格可能已站上多个档位,
+                        #   逐级 +1 太慢 → 线被压在运行区间内反复上穿(600199 2020-05/06);
+                        #   改为直接跳到"价格已站上的最高档", 线仍是 base 格栅线(=保留阶梯节奏),
+                        #   只是不再逐级爬。仍然因果(当天收盘只影响明天状态)。
+                        _tgt = cur
+                        for _li in range(cur + 1, len(levels)):
+                            if closes[t] >= base[t] * (1 + levels[_li]):
+                                _tgt = _li
+                            else:
+                                break
+                        cur = _tgt
+                    else:
+                        cur += 1
                     up_cnt = 0
             else:
                 up_cnt = 0
