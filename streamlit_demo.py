@@ -116,7 +116,8 @@ def compute_and_store(df, tail_days, name, code=None, end_date=None):
     os.close(fd)
     out = run_segmentation(df, tail_days=tail_days, name=name, save_path=tmp_png,
                            show_chip=True, code=code, end_date=end_date,
-                           hide_overlay_lines=True)
+                           hide_overlay_lines=False,   # 显示 Grid Target 粉阶梯 + 第二阶梯
+                           show_reg_line=False)          # REG 基准线不显示(用户 2026-10-14)
     st.session_state["last_png"] = tmp_png
     st.session_state["last_out"] = out
     st.session_state["last_name"] = name

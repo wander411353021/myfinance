@@ -559,7 +559,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 hide_mid_panels=True,
                                 show_chip=False,
                                 code=None, end_date=None,
-                                hide_overlay_lines=False):
+                                hide_overlay_lines=False,
+                                show_reg_line=False):
     """5面板: K线 + 成交量 + 买卖信号(柱高=突破分量) + 阻力/支撑位生命周期 + 极速杀跌反转signal。
     panic_info: panic_reversal.signal() 返回的 dict(含 signal 状态与门控明细),None 则面板显示提示。
     show_chip=True(2026-09-29): 精简为 3 面板(K线+量+筹码fengwo色带), 隐藏恐慌反转/黄金坑方波面板,
@@ -634,8 +635,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         sm = result['smooth'].values[offset:offset + n]
         ax0.plot(x, sm, color='#1565C0', linewidth=1.0, alpha=0.6, label='EMA')
     # 长周期回归线(250日): 2026-09-02 用户要求 reg250 线不显示(格栅/目标价计算仍用它)
-    # ── REG 基准线 + 格栅预期突破价线(2026-09-14 用户: 只显示这两类; 2026-10-01 隐藏开关 hide_overlay_lines) ──
-    if not hide_overlay_lines:
+    # ── REG 基准线(2026-10-14 用户: **默认不显示**; 需要时传 show_reg_line=True) ──
+    if show_reg_line and not hide_overlay_lines:
         try:
             _s2_120 = reg_preds if reg_preds is not None else None
             _s2_250 = reg_preds_long if reg_preds_long is not None else _frg2
@@ -1267,7 +1268,7 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                      hide_ma=True,
                      code=None, end_date=None, panic_index=None,
                      enable_panic=False, show_chip=False,
-                     hide_overlay_lines=False):
+                     hide_overlay_lines=False, show_reg_line=False):
     # hide_overlay_lines=True(2026-10-01 用户): 隐藏 MA120/EMA/REG基准/Grid Target 主目标价/第二阶梯 5条线,
     # 仅保留 K线+UP/DOWN zone+Gap+Key candle+Resistance+COST 系列; 恢复=改回 False。
     """fast_mode: True=跳过画图，返回 bool（最后一天有买入信号）。
@@ -1327,5 +1328,6 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                                 reg_win=reg_window, reg_win_long=reg_window_long,
                                 panic_info=panic_info,
                                 show_chip=show_chip, code=code, end_date=end_date,
-                                hide_overlay_lines=hide_overlay_lines)
+                                hide_overlay_lines=hide_overlay_lines,
+                                show_reg_line=show_reg_line)
     return c_result, bs_signal, bs_reason, bs_strength, all_levels
