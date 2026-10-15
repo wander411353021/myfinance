@@ -23,6 +23,9 @@ def main():
     symbol = sys.argv[1] if len(sys.argv) > 1 else 'sh600234'
     tail_days = int(sys.argv[2]) if len(sys.argv) > 2 else 260
     end_date = sys.argv[3] if len(sys.argv) > 3 else '20260928'
+    mark_date = None
+    if '--mark' in sys.argv:
+        mark_date = sys.argv[sys.argv.index('--mark') + 1]
     df = fetch_tdx(symbol, end_date=end_date)
     if df is None or len(df) < 300:
         print(f'{symbol} 数据不足'); return
@@ -31,7 +34,7 @@ def main():
     os.makedirs(os.path.dirname(out), exist_ok=True)
     run_segmentation(df, tail_days=tail_days, name=symbol,
                      save_path=out, code=symbol, end_date=end_date,
-                     show_chip=True, hide_overlay_lines=True)
+                     show_chip=True, hide_overlay_lines=True, mark_date=mark_date)
     print('已生成:', out)
 
 

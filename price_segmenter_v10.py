@@ -560,7 +560,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 show_chip=False,
                                 code=None, end_date=None,
                                 hide_overlay_lines=False,
-                                show_reg_line=False):
+                                show_reg_line=False,
+                                mark_date=None):
     """5面板: K线 + 成交量 + 买卖信号(柱高=突破分量) + 阻力/支撑位生命周期 + 极速杀跌反转signal。
     panic_info: panic_reversal.signal() 返回的 dict(含 signal 状态与门控明细),None 则面板显示提示。
     show_chip=True(2026-09-29): 精简为 3 面板(K线+量+筹码fengwo色带), 隐藏恐慌反转/黄金坑方波面板,
@@ -1245,9 +1246,31 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         except Exception as _e:
             print(f'[chip 集中区] 失败: {_e}')
 
+    # ── 日期修正(2026-10-15 豆包): numpy datetime64 存 UTC16:00(=北京次日00:00), str切片会早1天 ──
+    def _bd(_d):
+        _t = pd.Timestamp(_d)
+        if _t.tzinfo is None and '16:00' in str(_d):
+            _t = _t + pd.Timedelta(hours=8)
+        return str(_t)[:10].replace('-', '')
+
+    # ── 入池信号日标注(2026-10-15 豆包加: early模式信号日红竖线) ──
+    if mark_date:
+        _md = str(mark_date).replace('-', '')
+        _darr = [_bd(d) for d in ohlc['date'].values]
+        _mi = np.where(np.array(_darr) == _md)[0]
+        if len(_mi):
+            _x0 = int(_mi[0])
+            ax0.axvline(_x0, color='#E53935', lw=1.8, alpha=0.85, zorder=20, linestyle='--')
+            _ymin, _ymax = ax0.get_ylim()
+            ax0.annotate('入池信号', (_x0, closes[_x0]),
+                         xytext=(min(_x0 + 3, n - 8), _ymax * 0.97),
+                         fontsize=12, color='#E53935', fontweight='bold',
+                         bbox=dict(boxstyle='round,pad=0.3', fc='white', ec='#E53935', alpha=0.95),
+                         arrowprops=dict(arrowstyle='->', color='#E53935', lw=1.4))
+
     # ── 统一 x 轴日期刻度（落在最底层面板）──
     ts2 = max(1, n // 12); dates = ohlc['date'].values
-    tp = list(range(0, n, ts2)); tl = [str(dates[i])[:10] for i in tp]
+    tp = list(range(0, n, ts2)); tl = [_bd(dates[i]) for i in tp]
     axes[-1].set_xticks(tp); axes[-1].set_xticklabels(tl, rotation=45, fontsize=7)
     # tight_layout 在渲染前基于最终内容计算间距，比 constrained_layout 更稳定可靠
     fig.tight_layout(pad=1.5)
@@ -1268,7 +1291,7 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                      hide_ma=True,
                      code=None, end_date=None, panic_index=None,
                      enable_panic=False, show_chip=False,
-                     hide_overlay_lines=False, show_reg_line=False):
+                     hide_overlay_lines=False, show_reg_line=False, mark_date=None):
     # hide_overlay_lines=True(2026-10-01 用户): 隐藏 MA120/EMA/REG基准/Grid Target 主目标价/第二阶梯 5条线,
     # 仅保留 K线+UP/DOWN zone+Gap+Key candle+Resistance+COST 系列; 恢复=改回 False。
     """fast_mode: True=跳过画图，返回 bool（最后一天有买入信号）。
@@ -1329,5 +1352,6 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                                 panic_info=panic_info,
                                 show_chip=show_chip, code=code, end_date=end_date,
                                 hide_overlay_lines=hide_overlay_lines,
-                                show_reg_line=show_reg_line)
+                                show_reg_line=show_reg_line,
+                                mark_date=mark_date)
     return c_result, bs_signal, bs_reason, bs_strength, all_levels
