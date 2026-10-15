@@ -26,12 +26,21 @@ RESULT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'result')
 DONE_RET = 50  # 置空以来涨幅>=50% 视为"已走完"自动出池(不再跟踪) — 2026-10-14 polo4111 定
 
 
-def full_scan(end_date):
-    """Step1: 全市场扫描, 返回今日命中 DataFrame(已分级)。"""
+def full_scan(end_date, parts=1, part=0, limit=None, quiet=False):
+    """Step1: 全市场扫描, 返回今日命中 DataFrame(已分级)。
+
+    2026-10-15 reasonix 补: 支持 --parts/--part 分片(每片独立跑, 结果写
+    result/scan_hits_{end}_part{k}.csv; 全量单进程 ~35 分钟 → 8 片并行 ~5 分钟)。
+    ⚠️ 失败计数不再静默吞掉(旧实现 except: pass 无法区分"网络失败"与"无信号")。
+    """
     all_df = tq.load_stock_list()
     codes = all_df['code'].astype(str).str.zfill(6).tolist()
     names = dict(zip(codes, all_df['name']))
-    hits, n_ok = [], 0
+    if parts > 1:
+        codes = codes[part::parts]        # 分片: 交错切分, 各片负载均衡
+    if limit:
+        codes = codes[:limit]
+    hits, n_ok, n_fail = [], 0, 0
     t0 = time.time()
     for i, code in enumerate(codes):
         try:
@@ -40,14 +49,41 @@ def full_scan(end_date):
                 r['name'] = names.get(code, '')
                 hits.append(r)
             n_ok += 1
-        except Exception:
-            pass
-        if (i + 1) % 1000 == 0:
-            print(f'  扫描进度 {i+1}/{len(codes)} 命中{len(hits)} 耗时{time.time()-t0:.0f}s', flush=True)
+        except Exception as e:
+            n_fail += 1
+            if n_fail <= 3:
+                print(f'  ⚠ {code} 失败: {type(e).__name__} {str(e)[:60]}', flush=True)
+        if not quiet and (i + 1) % 500 == 0:
+            print(f'  [{part+1}/{parts}] 进度 {i+1}/{len(codes)} 命中{len(hits)} '
+                  f'失败{n_fail} 耗时{time.time()-t0:.0f}s', flush=True)
     df = pd.DataFrame(hits)
     if len(df):
         df['grade'] = df.switch.map({0: 'A', 1: 'B'}).fillna('C')
         df['void_days'] = (pd.Timestamp(end_date) - pd.to_datetime(df.void_date)).dt.days
+    print(f'  [分片{part+1}/{parts}] 完成: 扫描{len(codes)}只 成功{n_ok} 失败{n_fail} '
+          f'命中{len(df)} 耗时{time.time()-t0:.0f}s', flush=True)
+    if parts > 1:
+        os.makedirs(RESULT_DIR, exist_ok=True)
+        fp = os.path.join(RESULT_DIR, f'scan_hits_{end_date}_part{part}.csv')
+        df.to_csv(fp, index=False, encoding='utf-8-sig')
+        print(f'  分片结果 -> {fp}', flush=True)
+    return df
+
+
+def load_scan_hits(end_date):
+    """合并当日分片结果(scan_hits_{end}_part*.csv); 无分片文件则返回 None。"""
+    import glob as _glob
+    files = sorted(_glob.glob(os.path.join(RESULT_DIR, f'scan_hits_{end_date}_part*.csv')))
+    if not files:
+        return None
+    dfs = [pd.read_csv(f, encoding='utf-8-sig') for f in files if os.path.getsize(f) > 0]
+    dfs = [d for d in dfs if len(d)]
+    if not dfs:
+        return pd.DataFrame()
+    df = pd.concat(dfs, ignore_index=True)
+    df['code'] = df['code'].astype(str).str.zfill(6)
+    df = df.drop_duplicates(subset=['code', 'void_date']).reset_index(drop=True)
+    print(f'合并 {len(files)} 个分片 -> {len(df)} 只命中', flush=True)
     return df
 
 
@@ -56,6 +92,8 @@ def merge_watchlist(new_df, end_date):
     os.makedirs(RESULT_DIR, exist_ok=True)
     wl = pd.read_csv(WATCHLIST, encoding='utf-8-sig') if os.path.exists(WATCHLIST) else pd.DataFrame(
         columns=['code', 'name', 'entry_date', 'grade', 'press_abr', 'press_gap', 'switch', 'void_date', 'void_days'])
+    if len(wl) and 'base_close' not in wl.columns:
+        wl['base_close'] = np.nan   # 旧池兼容: 缺列时补空(跟踪将回退按 void_date 定位)
     added = 0
     if len(new_df):
         new_df['code'] = new_df['code'].astype(str).str.zfill(6)
@@ -71,7 +109,8 @@ def merge_watchlist(new_df, end_date):
             wl = pd.concat([wl, pd.DataFrame([dict(
                 code=r['code'], name=r['name'], entry_date=end_date, grade=r['grade'],
                 press_abr=r['press_abr'], press_gap=r['press_gap'], switch=r['switch'],
-                void_date=r['void_date'], void_days=r['void_days'])])], ignore_index=True)
+                void_date=r['void_date'], void_days=r['void_days'],
+                base_close=r.get('void_close', np.nan))])], ignore_index=True)   # base_close=入池基准价(防基准漂移)
             exist_keys.add(key)
             added += 1
     # 统一排序: grade A->B->C, 再按 entry_date
@@ -94,12 +133,23 @@ def track_watchlist(wl, end_date):
             dates = df['date'].values
             ma20 = pd.Series(c).rolling(20).mean().values[-1]
             cur = c[-1]
-            # 置空日以来的路径(找到 void_date 对应索引)
+            # 置空日以来的路径
+            # 2026-10-15 reasonix: 基准优先用**入池时记录的 base_close**(固定值), 避免"基准漂移"
+            #   —— 数据更新后 base 变化可能使原 void_date 不再是置空日(688789: 入池时 09-22,
+            #   次日数据更新后置空首日变 09-23), 用 void_date 重新定位会取到错误基准价
+            #   (实测 post_ret +10.6% 虚高, 真值 -0.2%)。缺失 base_close 时回退按日期定位。
             vd = str(r['void_date'])[:10]
-            vmask = np.array([str(d)[:10] for d in dates]) == vd
-            vi = np.where(vmask)[0]
-            if len(vi) and vi[0] < len(c) - 1:
-                base_idx = vi[0]
+            _bc = r.get('base_close', np.nan) if hasattr(r, 'get') else np.nan
+            base_idx = None
+            if pd.notna(_bc) and float(_bc) > 0:
+                _b = float(_bc)
+                _mi = np.where(np.abs(c - _b) < 1e-6)[0]
+                base_idx = _mi[0] if len(_mi) else None
+            else:
+                vmask = np.array([str(d)[:10] for d in dates]) == vd
+                vi = np.where(vmask)[0]
+                base_idx = vi[0] if len(vi) else None
+            if base_idx is not None and base_idx < len(c) - 1:
                 post_ret = (cur / c[base_idx] - 1) * 100
                 high_ret = (np.nanmax(c[base_idx:]) / c[base_idx] - 1) * 100
                 dd = (cur / np.nanmax(c[base_idx:]) - 1) * 100 if np.isfinite(np.nanmax(c[base_idx:])) else 0
@@ -182,9 +232,25 @@ def build_report(new_df, wl, tr, end_date, added):
 
 
 def main():
-    END = sys.argv[1] if len(sys.argv) > 1 else time.strftime('%Y%m%d')
-    print(f'== 每日管线 {END} ==', flush=True)
-    new_df = full_scan(END)
+    args = [a for a in sys.argv[1:] if not a.startswith('-')]
+    END = args[0] if args else time.strftime('%Y%m%d')
+    parts = int(sys.argv[sys.argv.index('--parts') + 1]) if '--parts' in sys.argv else 1
+    part = int(sys.argv[sys.argv.index('--part') + 1]) if '--part' in sys.argv else 0
+    limit = int(sys.argv[sys.argv.index('--limit') + 1]) if '--limit' in sys.argv else None
+    merge_only = '--merge' in sys.argv          # 只合并分片结果(所有分片跑完后执行一次)
+    print(f'== 每日管线 {END} == 分片{part+1}/{parts}' + (f' limit={limit}' if limit else ''), flush=True)
+    if merge_only:
+        merged = load_scan_hits(END)
+        if merged is None:
+            print(f'未找到 {END} 的分片结果(scan_hits_{END}_part*.csv)'); return
+        new_df = merged
+    else:
+        new_df = full_scan(END, parts=parts, part=part, limit=limit)
+        if parts > 1:
+            # 分片模式: 每片只写命中文件, 由最后统一 --merge 合并后再入库(避免并发写 watchlist)
+            print(f'分片{part+1}/{parts} 完成; 全部跑完后执行: '
+                  f'python daily_pipeline.py {END} --merge', flush=True)
+            return
     wl, added = merge_watchlist(new_df, END)
     print(f'股票池: {len(wl)} 只 (新增 {added})', flush=True)
     tr = track_watchlist(wl, END)

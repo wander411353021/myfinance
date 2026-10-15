@@ -98,6 +98,7 @@ def detect(code, end_date, fresh=False):
     post_ret = (closes[-1] / closes[void_idx[0]] - 1) * 100
     return dict(code=code, press_abr=round(abr, 1), press_gap=round(gap, 1),
                 switch=sw, void_date=vd, void_dev=round(dev[void_idx[0]] * 100, 1),
+                void_close=round(float(closes[void_idx[0]]), 3),   # 入池基准价(2026-10-15 reasonix: 防基准漂移)
                 cur=round(closes[-1], 2), ma20=round(ma20[-1], 2), post_ret=round(post_ret, 1))
 
 
