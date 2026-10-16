@@ -1266,3 +1266,17 @@ gap>25% 反而差(后60日 +4.5%/胜47.6%) → 压制线过远的也不选。
 - **与 v3 对比**: v3=干净压制首次突破(148信号, >10% 72%); v3b=突破后深回踩二次启动(158信号, >10% 59.7%)。v3b 胜率低但补 v3 盲区, 两者有重叠(300204 20250418 双命中)
 - **用法**: `python3 challenge_scan.py hist_v3b <code> [end] [datalen]` 单只历史; V10 画图已新增 ax 信号面板(show_chip 3面板: K线+量+v3b信号, 红竖线标注信号日+日期, golden_pit_plot_v10.py 默认 show_v3b=True)
 - **⚠️ V10 v3b 面板日期匹配坑(2026-10-16 实测)**: tdx date 为 UTC 存储(交易日 D 存成 D-1 16:00), 画信号面板的日期映射必须复用 challenge_scan._bd(+8h), 用 str(d)[:10]/strftime 直接取会早一天 → 信号匹配不上、面板空白(300204 0418 曾空); 修复: `from challenge_scan import _bd; _dmap={_bd(d):k for k,d in ...}`
+
+## v3b 信号画像(2026-10-16 polo4111, 已入库) — 只整理信息, 不给分数
+- **用户明确**: "我不需要你给分数, 我只要把这些信息都能整理出来, 用一个比较好的方式展现出来" — 评分体系(权重打分/等级强中弱)被否决, 改为**纯信号画像**: 每个信号日整理多维指标(全部 ≤i 数据, 无未来函数)
+- **实现**: `challenge_scan.py` `signal_profile(cl,hi,lo,vol,turn,gt_p,gt2,c35s,i)` 返回指标 dict(无 score/grade):
+  - `close` 信号日收盘 / `vol_ratio` 量比(当日/前20日均量)
+  - `rec_depth` 回踩最深%(相对COST35, [T-70,T-5]) / `rec_days` 跌破天数
+  - `cool_days` 距上次摸紫线天数([T-250,T-20]) / `hist_touch` 近250日摸线次数
+  - `dist_high` 距近250日最高价%(ratio≥1时=低于前高%, <1时=超前高%)
+  - `dev35` 现价相对COST35偏离% / `band` 集中带宽(COST90-COST10)/价 / `profit` 获利盘近似 clip((close-C10)/(C90-C10))
+  - `gap` 相对粉线%
+- **CLI**: `python3 challenge_scan.py assess <code> <end> [date]` — 带 date 打印单日画像(逐行中文明细); 不带 date 一行一只信号全历史画像
+- **V10 画图集成**(price_segmenter_v10.py): `run_segmentation` 在 v3b 循环内同步调 signal_profile 构建 `v3b_profiles={date:feats}` 传给 plot; `plot_price_segmentation_v10` 新增 `v3b_profiles=None` 形参, **图底部画画像信息块**(fig.text, monospace): 每个信号日两行(①收/量比/回踩/冷却 ②距前高/dev35/带宽/获利/gap), **只显示窗口内(图中可见)信号**(用 `_win_dates={_bd(d) for d in ohlc['date'].values}` 过滤窗口外信号)
+  - 布局: 有画像时 show_chip figsize 22×13→22×14.4, `fig.tight_layout(pad=1.5, rect=(0, 0.05+0.05*len(信号), 1, 1))` 底部留白
+- **验证案例画像**(参考口径): 600550 20200227(量比2.94/回踩-28.3% 65天/冷却24天/距前高37.7%/dev35=-8.1%/带宽73.5%/获利14%/gap5.8); 300204 20250418(量比4.76/回踩-15.9% 39天/冷却105天/距前高3.4%/dev35=22.4%/带宽19.8%/获利100%/gap12.0); 301080 20260701(量比1.75/回踩-22.3% 45天/冷却196天/距前高30.7%/dev35=14.5%/带宽21.3%/获利100%/gap7.6)

@@ -562,7 +562,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 hide_overlay_lines=False,
                                 show_reg_line=False,
                                 mark_date=None,
-                                v3b_sig_dates=None):
+                                v3b_sig_dates=None,
+                                v3b_profiles=None):
     """5面板: K线 + 成交量 + 买卖信号(柱高=突破分量) + 阻力/支撑位生命周期 + 极速杀跌反转signal。
     panic_info: panic_reversal.signal() 返回的 dict(含 signal 状态与门控明细),None 则面板显示提示。
     show_chip=True(2026-09-29): 精简为 3 面板(K线+量+筹码fengwo色带), 隐藏恐慌反转/黄金坑方波面板,
@@ -580,8 +581,9 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     except Exception as _e:
         print(f'[reg smooth] 失败: {_e}')
 
+    _has_prof = bool(v3b_profiles)
     if show_chip:
-        fig, axes = plt.subplots(3, 1, figsize=(22, 13),
+        fig, axes = plt.subplots(3, 1, figsize=(22, 14.4 if _has_prof else 13),
                                  sharex=True,
                                  gridspec_kw={'height_ratios': [4, 1.3, 0.55]})
     elif hide_mid_panels:
@@ -1300,8 +1302,26 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     ts2 = max(1, n // 12); dates = ohlc['date'].values
     tp = list(range(0, n, ts2)); tl = [_bd(dates[i]) for i in tp]
     axes[-1].set_xticks(tp); axes[-1].set_xticklabels(tl, rotation=45, fontsize=7)
+    # ── v3b 信号画像信息块(2026-10-16): 每个信号日的多维指标, 画在图底部 ──
+    if _has_prof and v3b_sig_dates:
+        _win_dates = {_bd(d) for d in ohlc['date'].values}  # 只显示窗口内(图中可见)的信号
+        _blk = []
+        for _ds in v3b_sig_dates:
+            if _ds not in _win_dates:
+                continue
+            _pf = v3b_profiles.get(_ds)
+            if not _pf:
+                continue
+            _blk.append(f"■ {_ds}  收{_pf['close']}  |  量比{_pf['vol_ratio']}x  |  回踩{_pf['rec_depth']}%({_pf['rec_days']}天)  |  冷却{_pf['cool_days']}天({_pf['hist_touch']}次摸线)")
+            _blk.append(f"    距前高{_pf['dist_high']}%  |  dev35={_pf['dev35']}%  |  带宽{_pf['band']}%  |  获利≈{_pf['profit']:.0%}  |  gap{_pf['gap']}%")
+        if _blk:
+            fig.text(0.012, 0.006, '\n'.join(_blk), fontsize=8.5, va='bottom',
+                     family='monospace', color='#c8cedd', linespacing=1.5)
     # tight_layout 在渲染前基于最终内容计算间距，比 constrained_layout 更稳定可靠
-    fig.tight_layout(pad=1.5)
+    if _has_prof and v3b_sig_dates:
+        fig.tight_layout(pad=1.5, rect=(0, 0.05 + 0.05 * len(v3b_sig_dates), 1, 1))
+    else:
+        fig.tight_layout(pad=1.5)
     if save_path:
         plt.savefig(save_path, dpi=120); plt.close()
     else:
@@ -1373,14 +1393,19 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                           'reason': 'signal calc failed: %s' % _e}
 
     # v3b 二次买点信号(2026-10-16): 全量数据算线, 窗口内取信号日, 画在新增 ax 上
-    v3b_sig_dates = None
+    #   + 信号画像(2026-10-16): 每个信号日整理量能/回踩/冷却/前高/筹码/gap 指标
+    v3b_sig_dates = None; v3b_profiles = None
     if show_v3b:
         try:
             from challenge_scan import compute as _cs_compute, v3b_signal_at as _cs_v3b
+            from challenge_scan import signal_profile as _cs_prof
             _cl, _darr, _gtp, _gt2, _c35, _ = _cs_compute(df_ohlc)
             _vol = df_ohlc['volume'].values.astype(float)
+            _hi = df_ohlc['high'].values.astype(float)
+            _lo = df_ohlc['low'].values.astype(float)
+            _turn = df_ohlc['turnover'].values.astype(float)
             _n = len(_cl); _last = -10 ** 9
-            v3b_sig_dates = []
+            v3b_sig_dates = []; v3b_profiles = {}
             for _i in range(400, _n):
                 if _i - _last < 20:
                     continue
@@ -1391,6 +1416,11 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                 if _ds >= str(end_date).replace('-', '')[:8]:
                     continue
                 v3b_sig_dates.append(_ds)
+                try:
+                    v3b_profiles[_ds] = _cs_prof(_cl, _hi, _lo, _vol, _turn,
+                                                 _gtp, _gt2, _c35, _i)
+                except Exception:
+                    pass
                 _last = _i
         except Exception as _e:
             print(f'[v3b] 计算失败: {_e}')
@@ -1406,5 +1436,6 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                                 hide_overlay_lines=hide_overlay_lines,
                                 show_reg_line=show_reg_line,
                                 mark_date=mark_date,
-                                v3b_sig_dates=v3b_sig_dates)
+                                v3b_sig_dates=v3b_sig_dates,
+                                v3b_profiles=v3b_profiles)
     return c_result, bs_signal, bs_reason, bs_strength, all_levels
