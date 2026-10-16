@@ -171,8 +171,11 @@ def v3b_early_at(cl, gt_p, gt2, c35s, vol, i):
     p2i = gt2[i]; c35i = c35s[i]
     if not (np.isfinite(p2i) and p2i > 0): return False, None
     if not (np.isfinite(c35i) and c35i > 0): return False, None
-    # 1) 提前位: 站上 COST35 3% 之上, 但尚未摸到紫线(保证比 v3b 早)
+    # 1) 提前位: 连续两天站上 COST35 3% 之上(滤单日脉冲假前兆), 尚未摸紫线
     if cl[i] < c35i * 1.03: return False, None
+    c35p = c35s[i - 1] if i - 1 >= 0 else c35i
+    if not (np.isfinite(c35p) and c35p > 0 and cl[i - 1] >= c35p * 1.03):
+        return False, None
     if cl[i] >= p2i * V3B_TOUCH: return False, None
     # 2) 历史: [T-250, T-20] 内曾摸过紫线(曾经 v3 式突破动作)
     lo, hi = max(MIN_I, i - V3B_HIST_LO), i - V3B_HIST_HI
