@@ -162,6 +162,47 @@ def v3b_signal_at(cl, gt_p, gt2, c35s, vol, i):
     return True, feats
 
 
+def v3b_early_at(cl, gt_p, gt2, c35s, vol, i):
+    """v3b 提前观察信号(2026-10-16 polo4111): 与 v3b 同源, 但成立条件从
+    '摸紫线'放宽为'站上 COST35×1.03 且未到紫线'——用于 COST35 与红压线
+    之间长期有余量、主信号偏晚的场景, 提前标记潜在启动前兆。
+    只用<=i数据, 无未来函数。返回 (ok, 特征dict)"""
+    if i < MIN_I: return False, None
+    p2i = gt2[i]; c35i = c35s[i]
+    if not (np.isfinite(p2i) and p2i > 0): return False, None
+    if not (np.isfinite(c35i) and c35i > 0): return False, None
+    # 1) 提前位: 站上 COST35 3% 之上, 但尚未摸到紫线(保证比 v3b 早)
+    if cl[i] < c35i * 1.03: return False, None
+    if cl[i] >= p2i * V3B_TOUCH: return False, None
+    # 2) 历史: [T-250, T-20] 内曾摸过紫线(曾经 v3 式突破动作)
+    lo, hi = max(MIN_I, i - V3B_HIST_LO), i - V3B_HIST_HI
+    if lo >= hi: return False, None
+    p2w = gt2[lo:hi]
+    if not np.any(np.isfinite(p2w) & (p2w > 0) & (cl[lo:hi] >= p2w * V3B_TOUCH)):
+        return False, None
+    # 3) 回踩: [T-70, T-5] 内曾跌破 COST35(深度洗盘)
+    rlo, rhi = max(0, i - V3B_REC_LO), i - V3B_REC_HI
+    if rlo >= rhi: return False, None
+    cw = c35s[rlo:rhi]
+    if not np.any(np.isfinite(cw) & (cw > 0) & (cl[rlo:rhi] < cw * V3B_REC_DIP)):
+        return False, None
+    # 4) gap 上限过滤: 相对粉线 < 20%(防高位滞涨), **不设下限**——early 定位是
+    #    站上成本线的提前观察, 价格往往还在粉线下方(gap为负), 设下限会卡掉提前点
+    pi = gt_p[i]
+    if np.isfinite(pi) and pi > 0:
+        gap = (cl[i] / pi - 1) * 100
+        if gap >= V3B_GAP_MAX: return False, None
+    else:
+        gap = float('nan')
+    # 5) 量能确认: 站上成本线日放量 >= 1.2×前20日均量
+    if vol is not None:
+        ma20 = vol[max(0, i - 20):i].mean()
+        if ma20 > 0 and vol[i] < ma20 * V3B_VOL_MULT: return False, None
+    feats = dict(gap=round(gap, 1) if np.isfinite(gap) else None,
+                 dist_purple=round((p2i / cl[i] - 1) * 100, 1))
+    return True, feats
+
+
 # ─────────────────────────────────────────────────────────────
 # v3b 信号画像(2026-10-16 polo4111): 每次信号出来后, 用信号日及以前
 #   数据(无未来函数)整理多维信息: 量能 / 回踩结构 / 冷却期 / 前高位置 /
