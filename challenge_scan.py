@@ -166,16 +166,14 @@ def v3b_early_at(cl, gt_p, gt2, c35s, vol, i):
     """v3b 提前观察信号(2026-10-16 polo4111): 与 v3b 同源, 但成立条件从
     '摸紫线'放宽为'站上 COST35×1.03 且未到紫线'——用于 COST35 与红压线
     之间长期有余量、主信号偏晚的场景, 提前标记潜在启动前兆。
+    (2026-10-16 曾试连续两天站上收紧, 覆盖率60.6%→49%且提前量缩短, 用户还原)
     只用<=i数据, 无未来函数。返回 (ok, 特征dict)"""
     if i < MIN_I: return False, None
     p2i = gt2[i]; c35i = c35s[i]
     if not (np.isfinite(p2i) and p2i > 0): return False, None
     if not (np.isfinite(c35i) and c35i > 0): return False, None
-    # 1) 提前位: 连续两天站上 COST35 3% 之上(滤单日脉冲假前兆), 尚未摸紫线
+    # 1) 提前位: 站上 COST35 3% 之上, 但尚未摸到紫线(保证比 v3b 早)
     if cl[i] < c35i * 1.03: return False, None
-    c35p = c35s[i - 1] if i - 1 >= 0 else c35i
-    if not (np.isfinite(c35p) and c35p > 0 and cl[i - 1] >= c35p * 1.03):
-        return False, None
     if cl[i] >= p2i * V3B_TOUCH: return False, None
     # 2) 历史: [T-250, T-20] 内曾摸过紫线(曾经 v3 式突破动作)
     lo, hi = max(MIN_I, i - V3B_HIST_LO), i - V3B_HIST_HI
