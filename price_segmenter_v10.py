@@ -564,7 +564,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 mark_date=None,
                                 v3b_sig_dates=None,
                                 v3b_profiles=None,
-                                v3b_early_dates=None):
+                                v3b_early_dates=None,
+                                bigline_dates=None):
     """5面板: K线 + 成交量 + 买卖信号(柱高=突破分量) + 阻力/支撑位生命周期 + 极速杀跌反转signal。
     panic_info: panic_reversal.signal() 返回的 dict(含 signal 状态与门控明细),None 则面板显示提示。
     show_chip=True(2026-09-29): 精简为 3 面板(K线+量+筹码fengwo色带), 隐藏恐慌反转/黄金坑方波面板,
@@ -884,6 +885,23 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         Line2D([0], [0], color='#FF1744', linewidth=0.9, linestyle='-.', label='Resistance'),
         Line2D([0], [0], color='#d62728', linewidth=2.0, linestyle='--', label='Regression'),
     ], loc='upper left', fontsize=7, ncol=4)
+
+    # bigline 大阳线起点标记(2026-10-16): 绿▲ 画在K线低点下方 + 日期标注
+    if bigline_dates:
+        from challenge_scan import _bd as _bd_local
+        _dmap = {_bd_local(d): k for k, d in enumerate(df_ohlc['date'].values[offset:offset + n])}
+        for _ds in bigline_dates:
+            _xi = _dmap.get(_ds)
+            if _xi is None:
+                continue
+            _lo = lows[_xi] if _xi < len(lows) else 0.0
+            ax0.scatter([_xi], [_lo * 0.965], marker='^', s=60, color='#00C853', zorder=6, edgecolors='black', linewidths=0.4)
+            ax0.annotate(_ds[-4:] if len(_ds) >= 4 else _ds, (_xi, _lo * 0.955),
+                         textcoords='offset points', xytext=(0, -4), ha='center', va='top',
+                         fontsize=6, color='#00C853', fontweight='bold')
+        ax0.legend(handles=[
+            Line2D([0], [0], marker='^', color='#00C853', linestyle='None', markersize=7, label='BIGLINE 大阳起点')
+        ], loc='lower left', fontsize=7)
 
     ax1 = axes[1]; vol = ohlc['volume'].values; va = result['vol_annotation'].values[offset:offset + n]
     vc = {"VOL_EXPANDING": "#ef5350", "VOL_SHRINKING": "#26a69a", "NEUTRAL": "#9E9E9E"}
@@ -1406,12 +1424,13 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
     # v3b 二次买点信号(2026-10-16): 全量数据算线, 窗口内取信号日, 画在新增 ax 上
     #   + 信号画像(2026-10-16): 每个信号日整理量能/回踩/冷却/前高/筹码/gap 指标
     #   + 提前观察(2026-10-16): v3b_early 站上COST35未到紫线, 橙色虚线标记
-    v3b_sig_dates = None; v3b_profiles = None; v3b_early_dates = None
+    v3b_sig_dates = None; v3b_profiles = None; v3b_early_dates = None; bigline_dates = None
     if show_v3b:
         try:
             from challenge_scan import compute as _cs_compute, v3b_signal_at as _cs_v3b
             from challenge_scan import signal_profile as _cs_prof
             from challenge_scan import v3b_early_at as _cs_early
+            from challenge_scan import bigline_hits as _cs_bigline
             _cl, _darr, _gtp, _gt2, _c35, _ = _cs_compute(df_ohlc)
             _vol = df_ohlc['volume'].values.astype(float)
             _hi = df_ohlc['high'].values.astype(float)
@@ -1419,6 +1438,7 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
             _turn = df_ohlc['turnover'].values.astype(float)
             _n = len(_cl); _last = -10 ** 9; _last_early = -10 ** 9
             v3b_sig_dates = []; v3b_profiles = {}; v3b_early_dates = []
+            _early_idx = []
             for _i in range(400, _n):
                 _ok, _ = _cs_v3b(_cl, _gtp, _gt2, _c35, _vol, _i)
                 if _ok and _i - _last >= 20:
@@ -1438,7 +1458,19 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                     _eds = str(_darr[_i])[:8]
                     if _eds < str(end_date).replace('-', '')[:8]:
                         v3b_early_dates.append(_eds)
+                        _early_idx.append(_i)
                         _last_early = _i
+            # bigline 大阳线起点(2026-10-16): early 后 20 天内第一根 >=5% 大阳线
+            try:
+                _bl_hits = _cs_bigline(_cl, _darr, _gtp, _gt2, _c35, _vol)
+                _bl_dates = []
+                for _bi, _ei, _w, _bp, _vr in _bl_hits:
+                    _bds = str(_darr[_bi])[:8]
+                    if _bds < str(end_date).replace('-', '')[:8]:
+                        _bl_dates.append(_bds)
+                bigline_dates = _bl_dates
+            except Exception:
+                bigline_dates = None
         except Exception as _e:
             print(f'[v3b] 计算失败: {_e}')
 
@@ -1455,5 +1487,6 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                                 mark_date=mark_date,
                                 v3b_sig_dates=v3b_sig_dates,
                                 v3b_profiles=v3b_profiles,
-                                v3b_early_dates=v3b_early_dates)
+                                v3b_early_dates=v3b_early_dates,
+                                bigline_dates=bigline_dates)
     return c_result, bs_signal, bs_reason, bs_strength, all_levels

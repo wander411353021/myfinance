@@ -324,6 +324,66 @@ def scan_hist(code, end, datalen=1600, win_start=None, win_end=None):
         last_sig = i
     return hits
 
+# ─────────────────────────────────────────────────────────────
+# bigline 大阳线起点确认(2026-10-16 polo4111)
+#   探索结论(22池305个early): early后20天内出大阳(>=5%) 57.4%, 平均等7.7天;
+#   大阳线日起点后60日中位+21.0%(81%>10%) vs early直接买+11.1%(53%>10%);
+#   20天无大阳批后60日中位仅+4.4% → "等第一根大阳线=起点, 等不到=假信号"成立
+# ─────────────────────────────────────────────────────────────
+BIG_PCT = 0.05       # 大阳线阈值(单日涨幅>=5%)
+BIG_PCT_MAX = 0.21   # 上限防异常(除权/错价, A股单日<=20%)
+BIG_LOOK = 20        # early 后等待窗口(交易日)
+BIG_VOL_MULT = 1.5   # 大阳线放量定义(>=1.5×前20日均量)
+
+
+def bigline_hits(cl, darr, gt_p, gt2, c35s, vol):
+    """对每个 early 信号(冷却20), 找其后 BIG_LOOK 天内第一根大阳线。
+    返回 [(big_i, early_i, wait, big_pct, vol_ratio)], 只用<=big_i数据, 无未来函数"""
+    n = len(cl)
+    pct = np.full(n, 0.0); pct[1:] = cl[1:] / cl[:-1] - 1.0
+    early_idx = []; last = -10 ** 9
+    for i in range(MIN_I, n - 5):
+        if i - last < V3B_COOL: continue
+        ok, _ = v3b_early_at(cl, gt_p, gt2, c35s, vol, i)
+        if ok:
+            early_idx.append(i); last = i
+    hits = []
+    for e in early_idx:
+        for k in range(e + 1, min(e + BIG_LOOK + 1, n - 1)):
+            if BIG_PCT_MAX >= pct[k] >= BIG_PCT:
+                ma20 = vol[max(0, k - 20):k].mean()
+                vr = vol[k] / ma20 if ma20 > 0 else 0.0
+                hits.append((k, e, k - e, round(pct[k] * 100, 1), round(vr, 2)))
+                break
+    return hits
+
+
+def scan_bigline(code, end, datalen=1600, fresh=10):
+    """单只: 全部 bigline 起点信号, 保留大阳线日在最近 fresh 个交易日内的新鲜信号。
+    画像字段(只用<=大阳线日数据, 无未来函数):
+      code/big_date/early_date/wait/big_pct/vol_ratio/close/dev35/gap/band/profit/dist_high/rec_depth/cool_days"""
+    try:
+        df = load(code, end, datalen)
+    except Exception:
+        return []
+    if df is None or len(df) < MIN_I + BIG_LOOK + 5: return []
+    cl, darr, gt_p, gt2, c35s, _ = compute(df)
+    vol = df['volume'].values.astype(float)
+    hi = df['high'].values.astype(float); lo = df['low'].values.astype(float)
+    turn = df['turnover'].values.astype(float)
+    n = len(cl)
+    hits = bigline_hits(cl, darr, gt_p, gt2, c35s, vol)
+    # fresh: 大阳线日在最近 fresh 根K线内
+    rows = []
+    for big_i, early_i, wait, bpct, vr in hits:
+        if big_i < n - fresh: continue
+        pf = signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, big_i)
+        rows.append((code, darr[big_i], darr[early_i], wait, bpct, vr,
+                     pf['close'], pf['dev35'], pf['gap'], pf['band'],
+                     pf['profit'], pf['dist_high'], pf['rec_depth'], pf['cool_days']))
+    return rows
+
+
 if __name__ == '__main__':
     mode = sys.argv[1] if len(sys.argv) > 1 else 'scan'
     if mode == 'scan':
@@ -344,6 +404,26 @@ if __name__ == '__main__':
                 print(f'[part{part}] {k + 1}/{len(codes)} 候选{len(rows)} 耗时{time.time() - t0:.0f}s', flush=True)
         out = os.path.join('result', f'challenge_cand_part{part}.csv')
         pd.DataFrame(rows, columns=['code', 'sig_date', 'sig_close', 'gap', 'abr', 'dev35', 'dist_purple']).to_csv(out, index=False)
+        print(f'[part{part}] done {len(rows)} -> {out}', flush=True)
+    elif mode == 'scan_big':
+        part = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+        nparts = int(sys.argv[3]) if len(sys.argv) > 3 else 1
+        END = sys.argv[4] if len(sys.argv) > 4 else '20261015'
+        all_df = tq.load_stock_list()
+        codes = all_df['code'].astype(str).str.zfill(6).tolist()
+        codes = codes[part::nparts]
+        t0 = time.time(); rows = []
+        for k, code in enumerate(codes):
+            try:
+                rows.extend(scan_bigline(code, END))
+            except Exception:
+                pass
+            if (k + 1) % 200 == 0:
+                print(f'[part{part}] {k + 1}/{len(codes)} 信号{len(rows)} 耗时{time.time() - t0:.0f}s', flush=True)
+        out = os.path.join('result', f'challenge_bigline_part{part}.csv')
+        pd.DataFrame(rows, columns=['code', 'big_date', 'early_date', 'wait_days', 'big_pct',
+                                    'vol_ratio', 'close', 'dev35', 'gap', 'band',
+                                    'profit', 'dist_high', 'rec_depth', 'cool_days']).to_csv(out, index=False)
         print(f'[part{part}] done {len(rows)} -> {out}', flush=True)
     elif mode == 'hist_v3b':
         code = sys.argv[2]
