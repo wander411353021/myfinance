@@ -162,6 +162,68 @@ def v3b_signal_at(cl, gt_p, gt2, c35s, vol, i):
     return True, feats
 
 
+# ─────────────────────────────────────────────────────────────
+# v3b 信号画像(2026-10-16 polo4111): 每次信号出来后, 用信号日及以前
+#   数据(无未来函数)整理多维信息: 量能 / 回踩结构 / 冷却期 / 前高位置 /
+#   筹码偏离 / 集中带宽 / 获利盘近似 / gap。画图时对图中每个信号日
+#   做同样画像并展示在图上。用户明确: 不给分数, 只整理信息。
+# ─────────────────────────────────────────────────────────────
+
+def signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, i):
+    """信号日多维画像(纯<=i数据, 无未来函数)。返回指标dict"""
+    n = len(cl)
+    # ① 量能: 量比 = 当日/前20日均量
+    ma20 = vol[max(0, i - 20):i].mean()
+    vr = vol[i] / ma20 if ma20 > 0 else 0.0
+    # ② 回踩结构: [T-70,T-5] 内相对 COST35 最低偏离 + 持续天数
+    rlo, rhi = max(0, i - V3B_REC_LO), i - V3B_REC_HI
+    if rlo < rhi:
+        dip = cl[rlo:rhi] / c35s[rlo:rhi] - 1.0
+        dmin = float(np.nanmin(dip)) if len(dip) else 0.0
+        under = np.isfinite(dip) & (dip < V3B_REC_DIP - 1.0)
+        rec_days = int(under.sum())
+    else:
+        dmin, rec_days = 0.0, 0
+    # ③ 冷却期: 最近一次摸紫线距今天数([T-250,T-20])
+    hlo, hhi = max(MIN_I, i - V3B_HIST_LO), i - V3B_HIST_HI
+    if hlo < hhi:
+        p2w = gt2[hlo:hhi]
+        tj = np.where(np.isfinite(p2w) & (p2w > 0) & (cl[hlo:hhi] >= p2w * V3B_TOUCH))[0]
+        cool = i - (hlo + tj[-1]) if len(tj) else (i - hlo)
+        hist_touch = int(len(tj))
+    else:
+        cool, hist_touch = 250, 0
+    # ④ 前高位置: 现价相对近250日最高价
+    h250 = float(np.nanmax(hi[max(0, i - 250):i + 1]))
+    ratio = h250 / cl[i] if cl[i] > 0 else 9.0
+    # ⑤ 筹码: dev35(相对COST35) + 集中带宽(COST90-COST10)/价 + 获利盘近似
+    c35i = c35s[i]
+    dev35 = (cl[i] / c35i - 1) * 100 if (np.isfinite(c35i) and c35i > 0) else 0.0
+    c10 = cost_series(hi, lo, vol, turn, 0.10)
+    c90 = cost_series(hi, lo, vol, turn, 0.90)
+    c10i, c90i = c10[i], c90[i]
+    if np.isfinite(c10i) and np.isfinite(c90i) and c90i > c10i and cl[i] > 0:
+        bw = (c90i - c10i) / cl[i]
+        profit = float(np.clip((cl[i] - c10i) / (c90i - c10i), 0.0, 1.0))
+    else:
+        bw, profit = 0.5, 0.5
+    # ⑥ gap: 相对粉线
+    pi = gt_p[i]
+    gap = (cl[i] / pi - 1) * 100 if (np.isfinite(pi) and pi > 0) else 15.0
+    return dict(
+        close=round(float(cl[i]), 2),
+        vol_ratio=round(vr, 2),
+        rec_depth=round(dmin * 100, 1),
+        rec_days=int(rec_days),
+        cool_days=int(cool),
+        hist_touch=int(hist_touch),
+        dist_high=round((1 - 1 / ratio) * 100, 1) if ratio >= 1 else round((ratio - 1) * 100, 1),
+        dev35=round(dev35, 1),
+        band=round(bw * 100, 1),
+        profit=round(profit, 2),
+        gap=round(gap, 1))
+
+
 def scan_hist_v3b(code, end, datalen=1600, win_start=None, win_end=None):
     """v3b 历史全信号(冷却去重, 无未来函数)"""
     try:
@@ -248,6 +310,47 @@ if __name__ == '__main__':
         hits = scan_hist_v3b(code, end, dl)
         print(f'{code} 二次买点信号(v3b): {len(hits)} 个')
         for h in hits: print('  ', h)
+    elif mode == 'assess':
+        code = sys.argv[2]
+        end = sys.argv[3] if len(sys.argv) > 3 else '20261015'
+        date = sys.argv[4] if len(sys.argv) > 4 else None
+        dl = int(sys.argv[5]) if len(sys.argv) > 5 else 1600
+        try:
+            df = load(code, end, dl)
+        except Exception as e:
+            print(f'取数失败: {e}'); sys.exit(1)
+        if df is None or len(df) < MIN_I + 5:
+            print('数据不足'); sys.exit(1)
+        cl, darr, gt_p, gt2, c35s, _ = compute(df)
+        hi = df['high'].values.astype(float); lo = df['low'].values.astype(float)
+        vol = df['volume'].values.astype(float); turn = df['turnover'].values.astype(float)
+        if date:
+            idx = next((k for k, d in enumerate(darr) if d == date), None)
+            if idx is None:
+                print(f'{code} 在 {end} 前无 {date} 数据'); sys.exit(1)
+            ok, vf = v3b_signal_at(cl, gt_p, gt2, c35s, vol, idx)
+            print(f'== {code} {date} 信号判定: {ok} ==')
+            if ok:
+                pf = signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, idx)
+                print(f'  信号日收盘: {pf["close"]}')
+                print(f'  量能       : 量比 {pf["vol_ratio"]}x (当日/前20日均量)')
+                print(f'  回踩结构   : 最深 {pf["rec_depth"]}% (相对COST35), 跌破 {pf["rec_days"]} 天')
+                print(f'  冷却期     : 距上次摸紫线 {pf["cool_days"]} 天 (近250日摸线 {pf["hist_touch"]} 次)')
+                print(f'  前高位置   : 现价距近250日最高 {pf["dist_high"]}%')
+                print(f'  筹码       : dev35={pf["dev35"]}% 集中带宽={pf["band"]}% 获利盘≈{pf["profit"]:.0%}')
+                print(f'  gap        : 相对粉线 {pf["gap"]}%')
+        else:
+            print(f'== {code} 全部 v3b 信号画像(至 {end}) ==')
+            last_sig = -10 ** 9
+            for i in range(MIN_I, len(cl) - 5):
+                if i - last_sig < V3B_COOL: continue
+                ok, vf = v3b_signal_at(cl, gt_p, gt2, c35s, vol, i)
+                if not ok: continue
+                pf = signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, i)
+                print(f'  {darr[i]} 收{pf["close"]} | 量比{pf["vol_ratio"]}x | 回踩{pf["rec_depth"]}%({pf["rec_days"]}天) | '
+                      f'冷却{pf["cool_days"]}天 | 距前高{pf["dist_high"]}% | dev35={pf["dev35"]}% | '
+                      f'带宽{pf["band"]}% | 获利{pf["profit"]:.0%} | gap{pf["gap"]}%')
+                last_sig = i
     else:
         code = sys.argv[2]
         end = sys.argv[3] if len(sys.argv) > 3 else '20261015'
