@@ -108,6 +108,83 @@ def signal_at(cl, gt_p, gt2, c35s, darr, i):
                  dist_purple=round((gt2[i] / cl[i] - 1) * 100, 1))
     return True, feats
 
+# ─────────────────────────────────────────────────────────────
+# v3b 二次买点信号(2026-10-16 polo4111 定版, 600550 模板)
+#   模板: 600550 2020 特高压 — 2020-01-08 摸紫线(v3式突破) → 01-17~02-26 深回踩
+#         (跌破紫线/粉线/COST35, 最深-20%) → 02-27 重新放量摸紫线 → 连板+130%
+#   与 v3 区别: v3 只认"从未突破的干净压制"(abr<=10), 会漏掉"突破后深回踩再启动"的票;
+#              v3b 补上该类二次买点(22池158信号, fut60>10% 59.7%, fut120>50% 22.5%)
+# ─────────────────────────────────────────────────────────────
+V3B_TOUCH = 0.98        # 摸紫线阈值(close >= 紫线*0.98)
+V3B_HIST_LO = 250       # 历史摸线窗口 [T-250, T-20]
+V3B_HIST_HI = 20
+V3B_REC_LO = 70         # 回踩窗口 [T-70, T-5]
+V3B_REC_HI = 5
+V3B_REC_DIP = 0.98      # 回踩跌破 COST35*0.98
+V3B_COOL = 20           # 与上次摸线冷却
+V3B_GAP_MIN = 5.0; V3B_GAP_MAX = 20.0   # 二次突破 gap
+V3B_VOL_MULT = 1.2      # 二次突破日量能 >= 1.2×前20日均量
+
+
+def v3b_signal_at(cl, gt_p, gt2, c35s, vol, i):
+    """判定第 i 天是否成立 v3b 二次买点(只用<=i数据, 无未来函数)。
+    返回 (ok, 特征dict)"""
+    if i < MIN_I: return False, None
+    p2i = gt2[i]
+    if not (np.isfinite(p2i) and p2i > 0): return False, None
+    # 1) 二次突破: 当日摸到紫线
+    if cl[i] < p2i * V3B_TOUCH: return False, None
+    # 2) 历史: [T-250, T-20] 内曾摸过紫线(曾经 v3 式突破动作)
+    lo, hi = max(MIN_I, i - V3B_HIST_LO), i - V3B_HIST_HI
+    if lo >= hi: return False, None
+    p2w = gt2[lo:hi]
+    if not np.any(np.isfinite(p2w) & (p2w > 0) & (cl[lo:hi] >= p2w * V3B_TOUCH)):
+        return False, None
+    # 3) 回踩: [T-70, T-5] 内曾跌破 COST35(深度洗盘)
+    rlo, rhi = max(0, i - V3B_REC_LO), i - V3B_REC_HI
+    if rlo >= rhi: return False, None
+    cw = c35s[rlo:rhi]
+    if not np.any(np.isfinite(cw) & (cw > 0) & (cl[rlo:rhi] < cw * V3B_REC_DIP)):
+        return False, None
+    # 4) gap 过滤: 相对粉线 5%~20%
+    pi = gt_p[i]
+    if np.isfinite(pi) and pi > 0:
+        gap = (cl[i] / pi - 1) * 100
+        if not (V3B_GAP_MIN <= gap < V3B_GAP_MAX): return False, None
+    else:
+        gap = float('nan')
+    # 5) 量能确认: 二次突破日放量 >= 1.2×前20日均量
+    if vol is not None:
+        ma20 = vol[max(0, i - 20):i].mean()
+        if ma20 > 0 and vol[i] < ma20 * V3B_VOL_MULT: return False, None
+    feats = dict(gap=round(gap, 1) if np.isfinite(gap) else None,
+                 dist_purple=round((p2i / cl[i] - 1) * 100, 1))
+    return True, feats
+
+
+def scan_hist_v3b(code, end, datalen=1600, win_start=None, win_end=None):
+    """v3b 历史全信号(冷却去重, 无未来函数)"""
+    try:
+        df = load(code, end, datalen)
+    except Exception:
+        return []
+    if df is None or len(df) < MIN_I + 130: return []
+    cl, darr, gt_p, gt2, c35s, _ = compute(df)
+    vol = df['volume'].values.astype(float)
+    n = len(cl); hits = []; last_sig = -10 ** 9
+    for i in range(MIN_I, n - 125):
+        if i - last_sig < V3B_COOL: continue
+        if win_start and darr[i] < win_start: continue
+        if win_end and darr[i] > win_end: break
+        ok, feats = v3b_signal_at(cl, gt_p, gt2, c35s, vol, i)
+        if not ok: continue
+        fut = lambda k: round((cl[i + 1:i + k + 1].max() / cl[i] - 1) * 100, 1) if i + k < n else None
+        hits.append((code, darr[i], round(float(cl[i]), 2), feats['gap'], feats['dist_purple'],
+                     fut(20), fut(60), fut(120)))
+        last_sig = i
+    return hits
+
+
 def scan_daily(code, end, datalen=1000):
     """每日候选池: 只检测最新交易日"""
     try:
@@ -164,6 +241,13 @@ if __name__ == '__main__':
         out = os.path.join('result', f'challenge_cand_part{part}.csv')
         pd.DataFrame(rows, columns=['code', 'sig_date', 'sig_close', 'gap', 'abr', 'dev35', 'dist_purple']).to_csv(out, index=False)
         print(f'[part{part}] done {len(rows)} -> {out}', flush=True)
+    elif mode == 'hist_v3b':
+        code = sys.argv[2]
+        end = sys.argv[3] if len(sys.argv) > 3 else '20261015'
+        dl = int(sys.argv[4]) if len(sys.argv) > 4 else 1600
+        hits = scan_hist_v3b(code, end, dl)
+        print(f'{code} 二次买点信号(v3b): {len(hits)} 个')
+        for h in hits: print('  ', h)
     else:
         code = sys.argv[2]
         end = sys.argv[3] if len(sys.argv) > 3 else '20261015'

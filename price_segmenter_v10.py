@@ -561,7 +561,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 code=None, end_date=None,
                                 hide_overlay_lines=False,
                                 show_reg_line=False,
-                                mark_date=None):
+                                mark_date=None,
+                                v3b_sig_dates=None):
     """5面板: K线 + 成交量 + 买卖信号(柱高=突破分量) + 阻力/支撑位生命周期 + 极速杀跌反转signal。
     panic_info: panic_reversal.signal() 返回的 dict(含 signal 状态与门控明细),None 则面板显示提示。
     show_chip=True(2026-09-29): 精简为 3 面板(K线+量+筹码fengwo色带), 隐藏恐慌反转/黄金坑方波面板,
@@ -580,9 +581,9 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         print(f'[reg smooth] 失败: {_e}')
 
     if show_chip:
-        fig, axes = plt.subplots(2, 1, figsize=(22, 11),
+        fig, axes = plt.subplots(3, 1, figsize=(22, 13),
                                  sharex=True,
-                                 gridspec_kw={'height_ratios': [4, 1.3]})
+                                 gridspec_kw={'height_ratios': [4, 1.3, 0.55]})
     elif hide_mid_panels:
         fig, axes = plt.subplots(4, 1, figsize=(22, 14),
                                  sharex=True,
@@ -927,7 +928,34 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     ax1.set_ylabel('Volume', fontsize=9); ax1.grid(True, alpha=0.2)
     ax1.set_title('Volume (red=expanding, green=shrinking; bg=cluster)', fontsize=9, loc='left', pad=2)
 
-    ax2 = axes[2] if (not hide_mid_panels and not show_chip) else None
+    # show_chip 模式: ax2 = v3b 二次买点信号面板(2026-10-16 新增, 与 K线/量 共 x 轴)
+    if show_chip:
+        ax2 = axes[2]
+        ax2.set_ylim(0, 1)
+        if v3b_sig_dates:
+            # 注意: tdx date 为 UTC 存储(交易日 D 存成 D-1 16:00), 必须复用 challenge_scan._bd
+            # 的 +8h 转换(2026-10-16 修复: str/strftime 直接取会早一天, 300204 信号面板空白)
+            from challenge_scan import _bd as _bd_local
+            _dmap = {_bd_local(d): k for k, d in
+                     enumerate(df_ohlc['date'].values[offset:offset + n])}
+            for _ds in v3b_sig_dates:
+                _xi = _dmap.get(_ds)
+                if _xi is None:
+                    continue
+                ax2.axvline(_xi, color='#D32F2F', lw=1.6, alpha=0.9, zorder=5)
+                ax2.scatter([_xi], [1.0], s=18, color='#D32F2F', zorder=6)
+                ax2.annotate(_ds[-4:] if len(_ds) >= 4 else _ds,
+                             (_xi, 1.0), textcoords='offset points',
+                             xytext=(0, 3), ha='center', va='bottom',
+                             fontsize=6, color='#D32F2F', fontweight='bold')
+        ax2.set_ylabel('v3b', fontsize=9)
+        ax2.set_title('v3b 二次买点信号 (曾摸紫线→深回踩破COST35→放量再摸紫线)',
+                      fontsize=9, loc='left', pad=2)
+        ax2.grid(True, alpha=0.2)
+        ax2.set_yticks([])
+        ax2 = None  # 信号柱逻辑跳过, 本面板只画 v3b
+    else:
+        ax2 = axes[2] if (not hide_mid_panels and not show_chip) else None
     if ax2 is not None:
         # ── 信号面板（ax2）：柱高编码突破分量；顶端圆点大小随分量增大 ──
         bsl = bs_signal[offset:offset + n]; brl = bs_reason[offset:offset + n]
@@ -1291,7 +1319,8 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                      hide_ma=True,
                      code=None, end_date=None, panic_index=None,
                      enable_panic=False, show_chip=False,
-                     hide_overlay_lines=False, show_reg_line=False, mark_date=None):
+                     hide_overlay_lines=False, show_reg_line=False, mark_date=None,
+                     show_v3b=False):
     # hide_overlay_lines=True(2026-10-01 用户): 隐藏 MA120/EMA/REG基准/Grid Target 主目标价/第二阶梯 5条线,
     # 仅保留 K线+UP/DOWN zone+Gap+Key candle+Resistance+COST 系列; 恢复=改回 False。
     """fast_mode: True=跳过画图，返回 bool（最后一天有买入信号）。
@@ -1343,6 +1372,29 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
             panic_info = {'code': code, 'signal': 'ERR', 'date': str(end_date or ''),
                           'reason': 'signal calc failed: %s' % _e}
 
+    # v3b 二次买点信号(2026-10-16): 全量数据算线, 窗口内取信号日, 画在新增 ax 上
+    v3b_sig_dates = None
+    if show_v3b:
+        try:
+            from challenge_scan import compute as _cs_compute, v3b_signal_at as _cs_v3b
+            _cl, _darr, _gtp, _gt2, _c35, _ = _cs_compute(df_ohlc)
+            _vol = df_ohlc['volume'].values.astype(float)
+            _n = len(_cl); _last = -10 ** 9
+            v3b_sig_dates = []
+            for _i in range(400, _n):
+                if _i - _last < 20:
+                    continue
+                _ok, _ = _cs_v3b(_cl, _gtp, _gt2, _c35, _vol, _i)
+                if not _ok:
+                    continue
+                _ds = str(_darr[_i])[:8]
+                if _ds >= str(end_date).replace('-', '')[:8]:
+                    continue
+                v3b_sig_dates.append(_ds)
+                _last = _i
+        except Exception as _e:
+            print(f'[v3b] 计算失败: {_e}')
+
     plot_price_segmentation_v10(df_ohlc, c_result, bs_signal, bs_reason,
                                 tail_days=tail_days, name=name, save_path=save_path,
                                 bs_strength=bs_strength, all_levels=all_levels,
@@ -1353,5 +1405,6 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                                 show_chip=show_chip, code=code, end_date=end_date,
                                 hide_overlay_lines=hide_overlay_lines,
                                 show_reg_line=show_reg_line,
-                                mark_date=mark_date)
+                                mark_date=mark_date,
+                                v3b_sig_dates=v3b_sig_dates)
     return c_result, bs_signal, bs_reason, bs_strength, all_levels
