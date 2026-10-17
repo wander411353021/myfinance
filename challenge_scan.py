@@ -359,9 +359,11 @@ def bigline_hits(cl, darr, gt_p, gt2, c35s, vol):
 
 
 def scan_bigline(code, end, datalen=1600, fresh=10):
-    """单只: 全部 bigline 起点信号, 保留大阳线日在最近 fresh 个交易日内的新鲜信号。
+    """单只: 全部 bigline 起点信号, 保留 early 日(入池点)在最近 fresh 个交易日内的新鲜信号。
     画像字段(只用<=大阳线日数据, 无未来函数):
-      code/big_date/early_date/wait/big_pct/vol_ratio/close/dev35/gap/band/profit/dist_high/rec_depth/cool_days"""
+      code/big_date/early_date/wait/big_pct/vol_ratio/close/dev35/gap/band/profit/dist_high/rec_depth/cool_days
+    ⚠️ 2026-10-18 reasonix double confirm 推翻"等大阳线"结论后: 入池口径从 big_date 改为 early_date
+      (大阳线只能做事后质量甄别, 不能延迟入场; 每天新增池直接吃 early 信号)"""
     try:
         df = load(code, end, datalen)
     except Exception:
@@ -373,10 +375,10 @@ def scan_bigline(code, end, datalen=1600, fresh=10):
     turn = df['turnover'].values.astype(float)
     n = len(cl)
     hits = bigline_hits(cl, darr, gt_p, gt2, c35s, vol)
-    # fresh: 大阳线日在最近 fresh 根K线内
+    # fresh: early 日(入池点)在最近 fresh 根K线内 (2026-10-18 从 big_i 改为 early_i)
     rows = []
     for big_i, early_i, wait, bpct, vr in hits:
-        if big_i < n - fresh: continue
+        if early_i < n - fresh: continue
         pf = signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, big_i)
         rows.append((code, darr[big_i], darr[early_i], wait, bpct, vr,
                      pf['close'], pf['dev35'], pf['gap'], pf['band'],

@@ -1303,7 +1303,7 @@ gap>25% 反而差(后60日 +4.5%/胜47.6%) → 压制线过远的也不选。
   - 放量大阳(≥1.5×均量)后60日>50% 26% vs 缩量 11%
 - **信号定义**(challenge_scan.py `bigline_hits`): 对每个 early 信号(冷却20), 在其后 **BIG_LOOK=20 天**内找**第一根**单日涨幅∈[5%,21%] 的大阳线 → (big_i, early_i, wait, big_pct, vol_ratio)
 - **画像**(`scan_bigline`): code/big_date/early_date/wait_days/big_pct/vol_ratio/close/dev35/gap/band/profit/dist_high/rec_depth/cool_days — 只用≤大阳线日数据, 无未来函数
-- **全市场扫描**: `python3 challenge_scan.py scan_big <part> <nparts> <end>` → result/challenge_bigline_part*.csv; **fresh=10**: 只保留大阳线日在最近10个交易日内的新鲜信号(已大涨的过滤)
+- **全市场扫描**: `python3 challenge_scan.py scan_big <part> <nparts> <end>` → result/challenge_bigline_part*.csv; **fresh=10 改口径(2026-10-18)**: 只保留 **early 日**在最近10个交易日内的新鲜信号(原为大阳线日; reasonix 推翻"等大阳线"后入池点=early 日, 600865 验证: end=20261016 过滤 0 条 / end=20260908 保留 0828 early+0901 big 1 条)
 - **V10 画图**: K线轴上**绿色 ▲ 大阳起点**标记+日期(ax0, low*0.965, 图例 BIGLINE 大阳起点); 与橙色提前(v3b_early)、红色主信号(v3b) 同图, 三者关系: early(观察) → bigline(大阳起点确认) → v3b(摸紫线二次买点)
 - **600865 案例**: 0828 early → **0901 bigline(+6.5% 量比3.59x, wait2天)** → 0904 v3b, 大阳线正是主升起点
 - **无未来函数红线**: bigline 只用≤大阳线日数据(大阳判定=当日/前收, 当日收盘后确认); 画图日期映射复用 challenge_scan._bd(+8h)
