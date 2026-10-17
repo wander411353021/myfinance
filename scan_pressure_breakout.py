@@ -56,7 +56,11 @@ def cached_kline(code, end_date, fresh=False):
     if not fresh and os.path.exists(fp):
         df = pd.read_csv(fp)
         # 校验: 数据末端 >= 需要的数据末端才算命中缓存 (date列ISO格式, 去'-'后比较)
-        if str(df['date'].iloc[-1])[:10].replace('-', '') >= end_date and len(df) >= 260:
+        # 2026-10-18 reasonix: 通达信数据可能滞后于请求日期(请求 20261014 实际只到 20261012),
+        #   仅按"末端日期 >= end_date"永远不命中 → 每次网络重拉。改为"日期够新 或 缓存 12 小时内拉过"。
+        _date_ok = str(df['date'].iloc[-1])[:10].replace('-', '') >= end_date
+        _recent = (time.time() - os.path.getmtime(fp)) < 12 * 3600
+        if (_date_ok or _recent) and len(df) >= 260:
             return df
     df = tq.get_daily_kline_from_tdx(code, end_date, DATALEN, with_turnover=False)
     if df is not None and len(df):
