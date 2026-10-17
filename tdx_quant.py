@@ -123,7 +123,11 @@ def get_daily_kline_from_tdx(code, end_date, datalen=800, with_turnover=True):
         'volume': [float(b.volume_lots) for b in all_bars],
     })
     df = df[df['close'] > 0].reset_index(drop=True)
-    df['date'] = pd.to_datetime(df['date']).dt.normalize()  # 去 15:00:00 收盘时间戳,统一为纯日期(00:00:00)
+    # ── 2026-10-18 reasonix: tdx 的 date 是 **UTC 存储**(交易日 D 存成 D-1 16:00),
+    #   直接 normalize/str[:10] 会**早一天**(实测 2026-10-07T16:00 = 交易日 10-08),
+    #   导致: 信号日期早一天、缓存新鲜度校验错位、周末过滤把"周一"当周日误删。
+    #   统一 +8h 转北京时间再 normalize, 下游全部一致(纯日期 00:00 的数据 +8h 后仍同一天)。
+    df['date'] = (pd.to_datetime(df['date']) + pd.Timedelta(hours=8)).dt.normalize()
     df = df.drop_duplicates(subset='date').reset_index(drop=True)
     # 2026-09-03 防御(豆包报告偶发混入非交易日bar): 日线只应含周一~周五交易日
     df = df[df['date'].dt.weekday < 5].reset_index(drop=True)
@@ -149,7 +153,7 @@ def get_weekly_kline_from_tdx(code, end_date):
         'volume': [float(b.volume_lots) for b in adj.bars],
     })
     df = df[df['close'] > 0].reset_index(drop=True)
-    df['date'] = pd.to_datetime(df['date']).dt.normalize()
+    df['date'] = (pd.to_datetime(df['date']) + pd.Timedelta(hours=8)).dt.normalize()
     return df
 
 
