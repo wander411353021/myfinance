@@ -2,8 +2,8 @@
 """挑战信号(压制突破) v3 定版扫描器 — 2026-10-15 polo4111 定版
 信号定义(到达紫线才成立, 区别于 early 启动前低位):
   1. 压制期: 前60天(不含当日) 粉线有效>=70%, 价格>粉线占比<=10%(90%低于), gap∈[3%,20%)
-  2. 已突破: close > 粉线(Grid Target第一阶梯) 且 close > 主成本线 COST_PCT
-     （默认由 algo_config 控制：COST_PCT=0.90 / Ehlers=10）
+  2. 已突破: close > 粉线(Grid Target第一阶梯) 且 close > 主力成本线 B
+     （默认由 algo_config 控制：COST2_PCT=0.30 / COST2_EHLERS=90）
   3. 成立:   close >= 紫线(第二阶梯)*0.98 —— 价格真正到达紫色压制线(滤掉摸不到紫线的假突破)
 用法:
   python3 challenge_scan.py scan   <part> <nparts> [end]   # 全市场每日候选池(分片并行)
@@ -17,7 +17,7 @@ import tdx_quant as tq
 import panic_reversal as pr
 from chip_panel import cost_series
 from algo_config import (COST_PCT, COST_LABEL, CHIP_BAND_LO, CHIP_BAND_HI,
-                         COST_EHLERS)
+                         COST_EHLERS, SIGNAL_COST_PCT, SIGNAL_COST_EHLERS)
 
 LOOKBACK = 60; PRESS_VALID_MIN = 0.70; PRESS_ABOVE_MAX = 10
 PRESS_GAP_MIN = 3.0; PRESS_GAP_MAX = 20.0
@@ -75,8 +75,9 @@ def load(code, end, datalen):
 def compute(df, cost_pct=None, ehlers_period=None):
     """全量计算 V10 原始线: 返回 (closes, dates_str, gt_p, gt2, c35s, base)。
 
-    cost_pct / ehlers_period 可覆盖全局 algo_config（streamlit 滑轨用）；
-    None = 使用全局默认。gt_p/gt2 的置空日保持 NaN（原始口径）。
+    cost_pct / ehlers_period 可覆盖全局默认；None = 主力成本线 B
+    （algo_config.SIGNAL_COST_PCT / SIGNAL_COST_EHLERS）。
+    gt_p/gt2 的置空日保持 NaN（原始口径）。
     """
     df = df.reset_index(drop=True)
     cl = df['close'].values.astype(float); hi = df['high'].values.astype(float)
@@ -92,8 +93,8 @@ def compute(df, cost_pct=None, ehlers_period=None):
         max_dev=0.13, down_confirm=10)
     gt2 = second_stair(base, gt_p, gl_p)
     try:
-        _cost_pct = COST_PCT if cost_pct is None else float(cost_pct)
-        _ehlers = COST_EHLERS if ehlers_period is None else int(ehlers_period)
+        _cost_pct = SIGNAL_COST_PCT if cost_pct is None else float(cost_pct)
+        _ehlers = SIGNAL_COST_EHLERS if ehlers_period is None else int(ehlers_period)
         c35 = cost_series(hi, lo, vo, turn, _cost_pct)
         c35s = ehlers_smooth(c35, max(2, _ehlers))
     except Exception:

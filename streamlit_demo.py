@@ -150,11 +150,10 @@ def display_last():
     _cp2 = st.session_state.get("last_cost2_pct")
     _eh2 = st.session_state.get("last_cost2_ehlers") or DEFAULT_COST2_EHLERS
     if _cp is not None:
-        _msg = (f"**主成本线 A：COST{int(round(_cp * 100))} Ehlers{int(_eh)}**"
-                f"（COST_PCT={_cp:.2f}）")
-        if _cp2 is not None:
-            _msg += (f" · **参考线 B：COST{int(round(_cp2 * 100))} Ehlers{int(_eh2)}**"
-                     f"（COST_PCT={_cp2:.2f}，仅参考）")
+        _msg = (f"**主力成本线 B：COST{int(round(_cp2 * 100)) if _cp2 is not None else '?'} "
+                f"Ehlers{int(_eh2)}**（参与信号）")
+        _msg += (f" · **参考线 A：COST{int(round(_cp * 100))} Ehlers{int(_eh)}**"
+                 f"（COST_PCT={_cp:.2f}，仅参考）")
         st.markdown(_msg)
     st.image(st.session_state["last_png"], width='stretch')
 
@@ -273,25 +272,25 @@ with st.sidebar:
         min_value=60, max_value=2000, value=150, step=10,
     )
     cost_pct = st.slider(
-        f"主成本线 A · 分位（默认 {DEFAULT_COST_PCT:.2f}）",
+        f"参考线 A · 分位（默认 {DEFAULT_COST_PCT:.2f}）",
         min_value=0.10, max_value=0.90,
         value=float(DEFAULT_COST_PCT), step=0.01, format="%.2f",
         key="cost_pct_a",
     )
     ehlers_period = st.slider(
-        f"主成本线 A · Ehlers 周期（默认 {int(DEFAULT_COST_EHLERS)}）",
+        f"参考线 A · Ehlers 周期（默认 {int(DEFAULT_COST_EHLERS)}）",
         min_value=5, max_value=120,
         value=int(DEFAULT_COST_EHLERS), step=1,
         key="ehlers_a",
     )
     cost2_pct = st.slider(
-        f"参考成本线 B · 分位（默认 {DEFAULT_COST2_PCT:.2f}）",
+        f"主力成本线 B · 分位（参与信号，默认 {DEFAULT_COST2_PCT:.2f}）",
         min_value=0.10, max_value=0.90,
         value=float(DEFAULT_COST2_PCT), step=0.01, format="%.2f",
         key="cost_pct_b",
     )
     cost2_ehlers = st.slider(
-        f"参考成本线 B · Ehlers 周期（默认 {int(DEFAULT_COST2_EHLERS)}）",
+        f"主力成本线 B · Ehlers 周期（参与信号，默认 {int(DEFAULT_COST2_EHLERS)}）",
         min_value=5, max_value=120,
         value=int(DEFAULT_COST2_EHLERS), step=1,
         key="ehlers_b",
