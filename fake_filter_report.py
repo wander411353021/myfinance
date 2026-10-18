@@ -97,7 +97,7 @@ axes[1].set_xlabel('剔除阈值 当日量/前250日最大量 < t')
 axes[1].legend()
 # F4
 f4s = sens[sens.label == 'F4'].copy()
-f4s['x'] = f4s.thr.str.split('∈[0,', regex=False).str[1].str.rstrip(']').astype(int)
+f4s['x'] = f4s.thr.str.extract(r'∈\[0,(\d+)\]')[0].astype(int)
 axes[2].plot(f4s.x, f4s.fake_rm_rate, 'o-', label='剔假率%', color='tab:red')
 axes[2].plot(f4s.x, f4s.true_keep_rate, 's--', label='真保留率%', color='tab:green')
 axes[2].axhline(90, color='gray', ls=':', lw=1)
@@ -128,28 +128,42 @@ for rule, flag in RULES.items():
 res = pd.DataFrame(rows)
 
 with open(os.path.join(R, 'v3b_5y_fake_filter_report.md'), 'w', encoding='utf-8') as f:
+    spec_rules = ['F1:close>MA20且MA20>MA60', 'F2:距紫线>20%', 'F3:量比250<0.30',
+                  'F3:量比250<0.35', 'F3:量比250<0.40', 'F4:前堆压∈[0,5]', 'F4:前堆压∈[0,10]']
+    d_f4 = res[res.rule == 'F4:前堆压∈[0,5]'].iloc[0]
+    d_or = res[res.rule == '推荐严格档 F2>30%∪F3<0.12'].iloc[0]
+    d_sb = res[res.rule == '推荐严格档 scoreB底部10%'].iloc[0]
+    spec_conc = res[res.rule.isin(spec_rules)].fake_conc
+    conc_min, conc_max = float(spec_conc.min()), float(spec_conc.max())
+    base_conc = FAKE_N / BASE_N * 100
+    mz_f4 = int((MZ_MASK & f4flag).sum())
+    mz_f2 = int((MZ_MASK & (df.f2_dist_purple > 20.0)).sum())
+    mz_f4_frac = (mz_f4 / MZ_N * 100) if MZ_N else 0.0
+    mz_f2_frac = (mz_f2 / MZ_N * 100) if MZ_N else 0.0
     f.write('# v3b early 假信号 · 4 个趋势结构因子验证报告\n\n')
-    f.write('> 数据源：`result/backtest_v3b_5y_overcome.csv` + `result/scan_cache_v3b/`（5,141 只日线缓存，未联网重拉）\n')
-    f.write('> 因子计算：`fake_filter_v3b_5y.py`（build 全底座 67,276 行，耗时 505s；eval 单因子+组合）→ `result/fake_filter_factors.csv`\n')
+    f.write('> 数据源：`result/backtest_v3b_5y_overcome.csv`（由 backtest_v3b_5y → merge_backtest → '
+            'add_qfq_flag → overcome_analysis 生成）+ `result/scan_cache_v3b/` 日线缓存\n')
+    f.write('> 因子计算：`fake_filter_v3b_5y.py`（build 底座 %s 行 → `result/fake_filter_factors.csv`；eval 单因子+组合）\n' % f'{BASE_N:,}')
     f.write('> 敏感性网格：`fake_filter_sensitivity.py` → `result/fake_filter_sensitivity.csv`；全部数字 pandas 实算，与 CSV 严格一致，零估计。\n')
-    f.write('> 生成时间：2026-10-18（信号窗口 2021-10 ~ 2026-10，tdx 前复权 qfq，锚=2026-10-16）\n\n')
+    f.write('> 生成时间：%s（信号窗口 2021-10 ~ 2026-10，tdx 前复权 qfq，锚=2026-10-16）\n\n' % __import__('time').strftime('%Y-%m-%d'))
+    f.write('> 复现链路见 `docs/v3b_pipeline.md`；qfq_flag 口径见 `add_qfq_flag.py` 文件头（事后质量标记，禁止进信号判定）。\n\n')
     f.write('---\n\n')
     f.write('## 0. 底座与口径\n\n')
-    f.write(f'- 底座 = **early ∩ qfq_flag=0 ∩ fut60_days≥60**：n=**{BASE_N:,}**（与规格 n≈67,276 一致）\n')
+    f.write(f'- 底座 = **early ∩ qfq_flag=0 ∩ fut60_days≥60**：n=**{BASE_N:,}**\n')
     f.write(f'- 分层（后 60 日最大涨幅）：假 <5%（n={FAKE_N:,}，**{FAKE_N/BASE_N*100:.1f}%**）、一般 5~10%（n={int(df.fut60_max.ge(5).sum()-TRUE_N):,}）、真 ≥10%（n={TRUE_N:,}，{TRUE_N/BASE_N*100:.1f}%）\n')
     f.write(f'- 主升 = fut120_days≥120 且 fut120_max≥50%：n={MZ_N:,}（占底座 {MZ_N/BASE_N*100:.1f}%）\n')
-    f.write(f'- 基线质量：s60={S60_BASE}%、S120(w120 口径)={S120_BASE}%、fut60_max 中位 +{FMED_BASE}%、假信号占比 {FAKE_N/BASE_N*100:.1f}%\n')
-    f.write(f'- 因子全部只用 ≤信号日 数据（紫线=gt2 第二阶梯，复用 `challenge_scan.compute()` 权威实现；F4 复用 overcome CSV 的 dist_vol_high），严格无未来函数；抽查 3 个信号手工复算 3/3 一致。\n\n')
+    f.write(f'- 基线质量：s60={S60_BASE}%、S120(w120 口径)={S120_BASE}%、fut60_max 中位 +{FMED_BASE}%、假信号占比 {base_conc:.1f}%\n')
+    f.write('- 因子全部只用 ≤信号日 数据（紫线=gt2 第二阶梯，复用 `challenge_scan.compute()` 权威实现；F4 复用 overcome CSV 的 dist_vol_high），严格无未来函数。\n\n')
     f.write('---\n\n')
     f.write('## 1. 核心结论（先给结论）\n\n')
-    f.write('1. **规格阈值下（F2>20%、F3<0.30/0.35/0.40、F4∈[0,5]/[0,10]、F1 二元），没有任何单因子、也没有任何两两/三三组合满足硬约束「真保留率≥90%」**——最低的真保留率要求也要把剔除口径大幅放宽到 F2>25% 或 F3<0.12 级别，此时剔假能力仅 1~7%。\n')
-    f.write('2. **4 个因子对"一眼假"基本无甄别力**：规格阈值下剔除集内假信号占比 24.7%~30.6%，最高也只比底座（29.3%）高 1.3pp；F1/F2/F3 剔除集甚至比底座更不"假"。用户看图能识假、而单日截面因子不能，差距在**多日形态序列**而非单日截面值——本轮 4 因子从数据上证实了这一点。\n')
-    f.write(f'3. **唯一有正价值的因子是 F4（前堆高压）**：F4∈[0,5] 剔除 16,365 个"在前放量堆高点下方贴磨"的信号后，S120 **{S120_BASE}%→19.48%**（+0.56pp）、s60 54.05%→54.64%、fut60_max 中位 +11.4%→+11.64%，剔假率 25.4%；代价是真保留率降到 **76.5%**、误伤主升 **2,652** 个（主升的 22.0%）。若用户愿意为质量让渡保留率，这是唯一值得用的规则。\n')
-    f.write('4. **「主升一个都不能误伤」任何硬规则都做不到**：主升信号与假信号在 4 因子上的分布几乎重合（例：22.0% 的主升信号信号日就贴在前堆高点 0~5% 下方、16.7% 距紫线 >20%），任何非零剔除都会切到主升。\n')
+    f.write(f'1. **规格阈值下（F2>20%、F3<0.30/0.35/0.40、F4∈[0,5]/[0,10]、F1 二元），没有任何单因子、也没有任何两两/三三组合满足硬约束「真保留率≥90%」**——满足 90% 的操作点只能把剔假口径放宽到 F2>25% 或 F3<0.12 级别，此时剔假能力仅 1~7%。\n')
+    f.write(f'2. **4 个因子对"一眼假"基本无甄别力**：规格阈值下剔除集内假信号占比 {conc_min:.1f}%~{conc_max:.1f}%，底座为 {base_conc:.1f}%（最高仅高 {conc_max-base_conc:+.1f}pp）；F1/F2/F3 剔除集甚至比底座更不"假"。用户看图能识假、而单日截面因子不能，差距在**多日形态序列**而非单日截面值。\n')
+    f.write(f'3. **唯一有正价值（且幅度很小）的因子是 F4（前堆高压）**：F4∈[0,5] 剔除 {int(d_f4.n_rem):,} 个"在前放量堆高点下方贴磨"的信号后，S120 **{S120_BASE}%→{d_f4.s120}%**（{d_f4.s120-S120_BASE:+.2f}pp）、s60 {S60_BASE}%→{d_f4.s60}%、fut60_max 中位 +{FMED_BASE}%→+{d_f4.fmed}%，剔假率 {d_f4.fake_rm}%；代价是真保留率降到 **{d_f4.keep}%**、误伤主升 **{int(d_f4.rmz):,}** 个（主升的 {d_f4.mz_frac}%）。\n')
+    f.write(f'4. **「主升一个都不能误伤」任何硬规则都做不到**：主升与假信号在 4 因子上的分布几乎重合（{mz_f4_frac:.1f}% 的主升信号贴在前堆高点 0~5% 下方、{mz_f2_frac:.1f}% 距紫线 >20%），任何非零剔除都会切到主升。\n')
     f.write('5. **90% 硬约束内的可执行最优（严格档）**：\n')
-    f.write('   - OR 规则 `F2>30% ∪ F3<0.12`：剔假 8.61%、真保留 90.00%、S120 18.89%（基本持平基线）、误伤主升 1,175；\n')
-    f.write('   - 组合评分 `scoreB`（z(距紫线)−z(量比250)+F4贴磨+F1未摆脱）切底部 10%：剔假 11.2%、真保留 **90.5%**、S120 19.13%（+0.21pp）、误伤主升 1,079；\n')
-    f.write('   - 两者相对"随机删 10%"（剔假≈10%、保留≈90%）的提升只有 +1.2pp，**信息量近乎为零**。\n\n')
+    f.write(f'   - OR 规则 `F2>30% ∪ F3<0.12`：剔假 {d_or.fake_rm}%、真保留 {d_or.keep}%、S120 {d_or.s120}%（{d_or.s120-S120_BASE:+.2f}pp）、误伤主升 {int(d_or.rmz):,}；\n')
+    f.write(f'   - 组合评分 `scoreB`（z(距紫线)−z(量比250)+F4贴磨+F1未摆脱）切底部 10%：剔假 {d_sb.fake_rm}%、真保留 **{d_sb.keep}%**、S120 {d_sb.s120}%（{d_sb.s120-S120_BASE:+.2f}pp）、误伤主升 {int(d_sb.rmz):,}；\n')
+    f.write(f'   - 两者相对"随机删 10%"（剔假≈10%、保留≈90%）的提升只有 {max(d_or.fake_rm,d_sb.fake_rm)-10:+.1f}pp，**信息量近乎为零**。\n\n')
     f.write('---\n\n')
     f.write('## 2. 单因子评估（规格阈值）\n\n')
     f.write('| 因子（剔除规则） | 剔除数 | 剔假数 | 剔假率 | 误伤真数 | 真保留率 | 剔除集内假占比 | 误伤主升 | 保留 n | 保留 S60 | 保留 S120 | 保留 fut60 中位 |\n')
@@ -160,10 +174,14 @@ with open(os.path.join(R, 'v3b_5y_fake_filter_report.md'), 'w', encoding='utf-8'
         f.write(f'| {rule} | {d.n_rem:,} | {d.rf:,} | {d.fake_rm}% | {d.rt:,} | {d.keep}% | {d.fake_conc}% | **{d.rmz:,}** | {d.n_keep:,} | {d.s60}% | {d.s120}% | +{d.fmed:.2f}% |\n')
     f.write(f'\n> 基线对照：剔除 0 → 剔假率 0%、真保留 100%、误伤主升 0、保留 n={BASE_N:,}、S60={S60_BASE}%、S120={S120_BASE}%、fut60 中位 +{FMED_BASE}%。\n\n')
     f.write('**单因子判读**：\n')
-    f.write('- **F1 均线结构（摆脱下跌通道）**：剔除 38,549 个，真保留仅 41.2%，且保留组 S120=17.78% 反而**低于基线**——early 信号里"已走出 close>MA20>MA60 结构"的票后续成浪率更低，"摆脱下跌通道才真"假设**被数据否定**。\n')
-    f.write('- **F2 距紫线 >20%**：剔除 9,634 个（含 5,771 真 / 2,008 主升），保留组 S120=18.32% 低于基线；剔除集内假占比仅 24.7%（比底座还低）。"离紫线 20% 以上=遥不可及=假"**不成立**——大量后期主升票信号日确实还在紫线 20% 之外。\n')
-    f.write('- **F3 绝对量能（缩量反抽）**：0.30/0.35/0.40 三档剔除集内假占比 28.0~28.4%，均低于底座；保留组 S120 18.41~18.83% 全部低于基线。**缩量反抽与假信号无正相关**。\n')
-    f.write('- **F4 前堆高压（唯一正价值）**：[0,5] 档剔除集内假占比 30.6%（最高）、保留组 S120 19.48%、s60 54.64%、fut60 中位 +11.64% 四项全部优于基线；[0,10] 档 S120 19.54% 更高但真保留更低（70.1%）。\n\n')
+    d_f1 = res[res.rule == 'F1:close>MA20且MA20>MA60'].iloc[0]
+    d_f2 = res[res.rule == 'F2:距紫线>20%'].iloc[0]
+    d_f3 = res[res.rule.str.startswith('F3:')]
+    d_f4b = res[res.rule == 'F4:前堆压∈[0,10]'].iloc[0]
+    f.write(f'- **F1 均线结构（摆脱下跌通道）**：剔除 {int(d_f1.n_rem):,} 个，真保留仅 {d_f1.keep}%，且保留组 S120={d_f1.s120}% 反而**低于基线 {S120_BASE}%**——early 信号里"已走出 close>MA20>MA60 结构"的票后续成浪率更低，"摆脱下跌通道才真"假设**被数据否定**。\n')
+    f.write(f'- **F2 距紫线 >20%**：剔除 {int(d_f2.n_rem):,} 个（含 {int(d_f2.rt):,} 真 / {int(d_f2.rmz):,} 主升），保留组 S120={d_f2.s120}% 低于基线；剔除集内假占比仅 {d_f2.fake_conc}%（底座 {base_conc:.1f}%）。"离紫线 20% 以上=遥不可及=假"**不成立**——大量后期主升票信号日确实还在紫线 20% 之外。\n')
+    f.write(f'- **F3 绝对量能（缩量反抽）**：0.30/0.35/0.40 三档剔除集内假占比 {d_f3.fake_conc.min():.1f}~{d_f3.fake_conc.max():.1f}%，均低于底座；保留组 S120 {d_f3.s120.min():.2f}~{d_f3.s120.max():.2f}% 全部低于基线。**缩量反抽与假信号无正相关**。\n')
+    f.write(f'- **F4 前堆高压（唯一正价值）**：[0,5] 档剔除集内假占比 {d_f4.fake_conc}%（规格内最高）、保留组 S120 {d_f4.s120}%、s60 {d_f4.s60}%、fut60 中位 +{d_f4.fmed}% 四项全部优于基线；[0,10] 档 S120 {d_f4b.s120}% 更高但真保留更低（{d_f4b.keep}%）。\n\n')
     f.write('## 3. 阈值敏感性（曲线见 `result/fake_filter_curves.png`，全量见 `result/fake_filter_sensitivity.csv`）\n\n')
     f.write('| 因子 | 阈值 | 剔除数 | 剔假率 | 真保留率 | 误伤主升 | 保留 S120 |\n')
     f.write('|---|---|---:|---:|---:|---:|---:|\n')
@@ -174,8 +192,24 @@ with open(os.path.join(R, 'v3b_5y_fake_filter_report.md'), 'w', encoding='utf-8'
             continue
         f.write(f'| {r["label"]} | {r["thr"]} | {int(r["n_rem"]):,} | {r["fake_rm_rate"]}% | {r["true_keep_rate"]}% | {int(r["rem_mz"]):,} | {r["keep_s120"]}% |\n')
     f.write('\n**敏感性判读**：\n')
-    f.write('- 满足真保留率≥90% 的操作点仅有：F2>25%~45%（剔假 0.9~6.6%）、F3<0.08~0.12（剔假 1.1~4.9%）。F1（二元）任何档位不可行；F4 最温和档 [0,2] 仍只有 87.4%。\n')
-    f.write('- 保留组 S120 超过基线的可行点只有 F3<0.08/0.10/0.12（18.97/19.02/19.08%）与 F2>45%（18.89%），增量 ≤0.16pp，且均误伤主升 104~551 个。\n\n')
+    feas = sens[sens.true_keep_rate >= 90.0]
+    feas_parts = []
+    for lab in ('F2', 'F3', 'F4'):
+        g = feas[feas.label == lab]
+        if len(g):
+            feas_parts.append('%s %d 个操作点（剔假 %.1f~%.1f%%）'
+                              % (lab, len(g), g.fake_rm_rate.min(), g.fake_rm_rate.max()))
+    f.write('- 满足真保留率≥90%% 的操作点：%s；F1（二元）任何档位不可行。\n'
+            % ('；'.join(feas_parts) if feas_parts else '无'))
+    better = feas[feas.keep_s120 > S120_BASE]
+    if len(better):
+        f.write('- 保留组 S120 超过基线 %s%% 的可行点：%s；增量 ≤%.2fpp，且均存在主升误伤。\n\n'
+                % (S120_BASE,
+                   '、'.join('%s %s (S120=%s%%)' % (r['label'], r['thr'], r['keep_s120'])
+                            for _, r in better.iterrows()),
+                   float(better.keep_s120.max()) - S120_BASE))
+    else:
+        f.write('- 没有可行点的保留组 S120 超过基线 %s%%。\n\n' % S120_BASE)
     f.write('## 4. 两两/三三组合（规格阈值）\n\n')
     f.write('| 组合（OR 剔除） | 剔除数 | 剔假率 | 真保留率 | 误伤主升 | 保留 n | 保留 S60 | 保留 S120 |\n')
     f.write('|---|---|---:|---:|---:|---:|---:|---:|\n')
@@ -189,7 +223,15 @@ with open(os.path.join(R, 'v3b_5y_fake_filter_report.md'), 'w', encoding='utf-8'
         f.write(f'| {r["label"]} | {int(r["n_rem"]):,} | {r["fake_rm_rate"]}% | {r["true_keep_rate"]}% | **{int(r["rem_mz"]):,}** | {int(r["keep_n"]):,} | {r["keep_s60"]}% | {r["keep_s120"]}% |\n')
         shown += 1
     f.write('\n> 组合表阈值注：F2=距紫线>20%、F3@0.30=当日量/前250日最大量<0.30、F4@[0,5]=dist_vol_high∈[0,5]，其余类推；两两/三三按 OR 语义并集剔除。完整 50 组见 `result/fake_filter_combo.csv`。\n\n')
-    f.write('**组合判读**：两两/三三 OR 组合只是把剔除面越并越大，没有任何组合能在真保留≥90% 的前提下把假占比显著压下来（最高剔假率 8.61% 的组合保留率恰好 90.00% 但 S120 反降至 18.89%）。\n\n')
+    f.write('**组合判读**：两两/三三 OR 组合只是把剔除面越并越大。')
+    ok90 = combo[combo.true_keep_rate >= 90.0]
+    if len(ok90):
+        best = ok90.sort_values('fake_rm_rate', ascending=False).iloc[0]
+        f.write('真保留≥90%% 的组合中剔假率最高为 `%s`：剔假 %s%%、真保留 %s%%、S120 %s%%、误伤主升 %s 个。\n\n'
+                % (best['label'], best['fake_rm_rate'], best['true_keep_rate'],
+                   best['keep_s120'], int(best['rem_mz'])))
+    else:
+        f.write('没有任何组合满足真保留≥90%。\n\n')
     f.write('## 5. 推荐组合\n\n')
     f.write('### 5.1 严格档（遵守硬约束 真保留≥90%）——只推荐"提示"不推荐"硬删"\n\n')
     f.write('| 推荐 | 剔假率 | 真保留率 | S120 | S120 提升 | 误伤主升 | 误伤主升占比 |\n')
@@ -197,19 +239,24 @@ with open(os.path.join(R, 'v3b_5y_fake_filter_report.md'), 'w', encoding='utf-8'
     for rule in ['推荐严格档 F2>30%∪F3<0.12', '推荐严格档 scoreB底部10%']:
         d = res[res.rule == rule].iloc[0]
         f.write(f'| {rule} | {d.fake_rm}% | {d.keep}% | {d.s120}% | {d.s120 - S120_BASE:+.2f}pp | {d.rmz:,} | {d.mz_frac}% |\n')
-    f.write('\n- 两者均满足真保留率≥90%，但对假信号的甄别能力只比"随机删 10%"高约 1pp，S120 提升 ≤0.2pp，**工程意义有限**；误伤主升仍达 1,079~1,175 个。若采用，建议仅作"灰名单降权"而非硬剔除。\n')
-    f.write('- 已存子集 CSV：`result/fake_filter_early_keep_scoreB10.csv`（n=60,548）。\n\n')
-    f.write('### 5.2 放宽档（接受 ~76% 真保留）——唯一正价值规则\n\n')
+    f.write('\n- 两者均满足真保留率≥90%%，但对假信号的甄别能力只比"随机删 10%%"高约 %.1fpp，S120 提升 ≤%.2fpp，**工程意义有限**；误伤主升仍达 %s~%s 个。若采用，建议仅作"灰名单降权"而非硬剔除。\n'
+            % (max(d_or.fake_rm, d_sb.fake_rm) - 10.0,
+               max(d_or.s120, d_sb.s120) - S120_BASE,
+               f'{min(d_or.rmz, d_sb.rmz):,}', f'{max(d_or.rmz, d_sb.rmz):,}'))
+    f.write('- 已存子集 CSV：`result/fake_filter_early_keep_scoreB10.csv`（n=%s）。\n\n'
+            % f'{BASE_N - int(d_sb.n_rem):,}')
+    f.write('### 5.2 放宽档（接受较低真保留）——唯一有正价值的规则\n\n')
     f.write('| 推荐 | 剔假率 | 真保留率 | S120 | S120 提升 | s60 | fut60 中位 | 误伤主升 |\n')
     f.write('|---|---:|---:|---:|---:|---:|---:|---:|\n')
     d = res[res.rule == 'F4:前堆压∈[0,5]'].iloc[0]
     f.write(f'| F4 前堆高压∈[0,5]（剔除贴磨） | {d.fake_rm}% | {d.keep}% | {d.s120}% | {d.s120 - S120_BASE:+.2f}pp | {d.s60}% | +{d.fmed}% | **{d.rmz:,}（{d.mz_frac}%）** |\n')
     f.write('\n- 语义直观：**信号日价格紧贴在前放量堆高点 0~5% 下方（贴磨）**→ 正压在前、突破未决，剔掉这类"卡位"信号后成浪质量四项全升。\n')
-    f.write('- 主升误伤明细见 `result/fake_filter_mz_detail.csv`（rule=`F4:前堆压∈[0,5]` 共 2,652 行）；保留子集已存 `result/fake_filter_early_keep_F4_0_5.csv`（n=50,911）。\n\n')
+    f.write('- 主升误伤明细见 `result/fake_filter_mz_detail.csv`（rule=`F4:前堆压∈[0,5]` 共 %s 行）；保留子集已存 `result/fake_filter_early_keep_F4_0_5.csv`（n=%s）。\n\n'
+            % (f'{int(d_f4.rmz):,}', f'{BASE_N - int(d_f4.n_rem):,}'))
     f.write('## 6. 被误伤主升明细（重点报告项）\n\n')
     f.write('所有规则的完整主升误伤明细（rule/code/sym/sig_date/sig_close/fut60_max/fut120_max/四因子值）已导出：**`result/fake_filter_mz_detail.csv`**（共 %d 行）。\n\n' % len(mzd))
     f.write('各规则误伤主升数量汇总：\n\n')
-    f.write('| 规则 | 误伤主升数 | 占全部主升(12,043)比例 |\n')
+    f.write('| 规则 | 误伤主升数 | 占全部主升(%s)比例 |\n' % f'{MZ_N:,}')
     f.write('|---|---:|---:|\n')
     for rule in list(RULES)[:8]:
         d = res[res.rule == rule].iloc[0]

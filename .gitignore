@@ -23,6 +23,8 @@ result/*
 # keep daily reports tracked
 !result/daily/
 !result/daily/*.md
+# 回溯/研究报告(结论性文本)入库; CSV/图片/缓存等大数据仍不入库
+!result/*_report.md
 
 # kilo local tool
 .kilo/

@@ -386,6 +386,103 @@ def scan_bigline(code, end, datalen=1600, fresh=10):
     return rows
 
 
+# ─────────────────────────────────────────────────────────────
+# 每日池扫描: 最近窗口内的 v3b / early（2026-10-18 reasonix）
+#   背景: daily_pipeline 原先把 scan_bigline 当作入池来源, 但 bigline_hits 只返回
+#   "已经出现大阳线"的 early —— 等大阳线已被证伪(同批子集 early 当天买 +8.9% vs
+#   等大阳 +2.5%)。每日入池必须直接吃 **early 当日信号**, 大阳只做事后质量标签。
+#   本函数同时返回 v3b(二次买点)与 early(提前观察), 两者各自独立冷却。
+# ─────────────────────────────────────────────────────────────
+RECENT_FIELDS = (
+    'code', 'signal_type', 'sig_date', 'sig_close',
+    'vol_ratio', 'rec_depth', 'rec_days', 'cool_days', 'hist_touch',
+    'dist_high', 'dev35', 'band', 'profit', 'gap',
+    'big_date', 'big_wait', 'big_pct', 'big_vol_ratio',
+)
+
+
+def _first_bigline(cl, i, look=BIG_LOOK):
+    """i 之后 look 个交易日内第一根大阳线 -> (big_i, wait, big_pct) 或 None。
+    只用 <=big_i 数据（大阳判定=当日/前收），仅作事后质量标签，不用于入场。"""
+    n = len(cl)
+    for k in range(i + 1, min(i + look + 1, n)):
+        if cl[k - 1] <= 0:
+            continue
+        pct = cl[k] / cl[k - 1] - 1.0
+        if BIG_PCT <= pct <= BIG_PCT_MAX:
+            return k, k - i, pct
+    return None
+
+
+def scan_recent(code, end, fresh=10, datalen=1000, df=None):
+    """单只: 最近 fresh 个交易日内的 v3b / early 信号（含画像与事后 big 标签）。
+
+    · 判定/画像全部只用 <=信号日 数据（无未来函数）；
+    · big_* 是信号日之后的信息，仅用于入池后的质量分层/复盘，禁止参与入场判定；
+    · v3b 与 early 各自独立冷却 V3B_COOL(20) 天，冷却链从全历史推进（窗口外也推进），
+      避免"最近10天"窗口内重复计数；
+    · df 可由调用方传入（daily_pipeline 的本地缓存），为 None 时才联网 load。
+    返回 list[dict]，字段见 RECENT_FIELDS。
+    """
+    if df is None:
+        try:
+            df = load(code, end, datalen)
+        except Exception:
+            return []
+    if df is None or len(df) < MIN_I + 50:
+        return []
+    cl, darr, gt_p, gt2, c35s, _ = compute(df)
+    vol = df['volume'].values.astype(float)
+    hi = df['high'].values.astype(float)
+    lo = df['low'].values.astype(float)
+    turn = df['turnover'].values.astype(float)
+    n = len(cl)
+    start_i = max(MIN_I, n - fresh)
+
+    hits = []
+    last_v3b = -10 ** 9
+    last_early = -10 ** 9
+    # 冷却链必须从 MIN_I 全历史推进；画像只对窗口内信号计算（省时间）
+    for i in range(MIN_I, n):
+        if i - last_v3b >= V3B_COOL:
+            ok, _ = v3b_signal_at(cl, gt_p, gt2, c35s, vol, i)
+            if ok:
+                last_v3b = i
+                if i >= start_i:
+                    hits.append(('v3b', i))
+        if i - last_early >= V3B_COOL:
+            ok, _ = v3b_early_at(cl, gt_p, gt2, c35s, vol, i)
+            if ok:
+                last_early = i
+                if i >= start_i:
+                    hits.append(('early', i))
+
+    rows = []
+    for stype, i in hits:
+        pf = signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, i)
+        big_date = None
+        big_wait = None
+        big_pct = None
+        big_vr = None
+        if stype == 'early':
+            bg = _first_bigline(cl, i)
+            if bg is not None:
+                k, wait, pct = bg
+                ma20 = vol[max(0, k - 20):k].mean()
+                big_date = darr[k]
+                big_wait = wait
+                big_pct = round(pct * 100, 1)
+                big_vr = round(vol[k] / ma20, 2) if ma20 > 0 else None
+        rows.append(dict(
+            code=code, signal_type=stype, sig_date=darr[i], sig_close=pf['close'],
+            vol_ratio=pf['vol_ratio'], rec_depth=pf['rec_depth'], rec_days=pf['rec_days'],
+            cool_days=pf['cool_days'], hist_touch=pf['hist_touch'],
+            dist_high=pf['dist_high'], dev35=pf['dev35'], band=pf['band'],
+            profit=pf['profit'], gap=pf['gap'],
+            big_date=big_date, big_wait=big_wait, big_pct=big_pct, big_vol_ratio=big_vr))
+    return rows
+
+
 if __name__ == '__main__':
     mode = sys.argv[1] if len(sys.argv) > 1 else 'scan'
     if mode == 'scan':
@@ -426,6 +523,26 @@ if __name__ == '__main__':
         pd.DataFrame(rows, columns=['code', 'big_date', 'early_date', 'wait_days', 'big_pct',
                                     'vol_ratio', 'close', 'dev35', 'gap', 'band',
                                     'profit', 'dist_high', 'rec_depth', 'cool_days']).to_csv(out, index=False)
+        print(f'[part{part}] done {len(rows)} -> {out}', flush=True)
+    elif mode == 'recent':
+        # 每日池扫描: 最近 fresh 个交易日的 v3b / early（入池口径 = early 当日）
+        part = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+        nparts = int(sys.argv[3]) if len(sys.argv) > 3 else 1
+        END = sys.argv[4] if len(sys.argv) > 4 else '20261015'
+        FRESH = int(sys.argv[5]) if len(sys.argv) > 5 else 10
+        all_df = tq.load_stock_list()
+        codes = all_df['code'].astype(str).str.zfill(6).tolist()
+        codes = codes[part::nparts]
+        t0 = time.time(); rows = []
+        for k, code in enumerate(codes):
+            try:
+                rows.extend(scan_recent(code, END, fresh=FRESH))
+            except Exception:
+                pass
+            if (k + 1) % 200 == 0:
+                print(f'[part{part}] {k + 1}/{len(codes)} 信号{len(rows)} 耗时{time.time() - t0:.0f}s', flush=True)
+        out = os.path.join('result', f'challenge_recent_part{part}.csv')
+        pd.DataFrame(rows, columns=list(RECENT_FIELDS)).to_csv(out, index=False)
         print(f'[part{part}] done {len(rows)} -> {out}', flush=True)
     elif mode == 'hist_v3b':
         code = sys.argv[2]

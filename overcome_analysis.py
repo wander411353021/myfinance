@@ -17,7 +17,10 @@ import pandas as pd
 from multiprocessing import Pool
 
 CACHE = 'result/scan_cache_v3b'
-SIG_CSV = 'result/backtest_v3b_5y.csv'
+# 2026-10-18: 优先用 add_qfq_flag.py 产出的 qfq 版（含 qfq_flag 列），
+#   缺失时回退基础回溯结果并在日志里提示（fake_filter 会自动再校验该列）。
+_SIG_QFQ = 'result/backtest_v3b_5y_qfq.csv'
+SIG_CSV = _SIG_QFQ if os.path.exists(_SIG_QFQ) else 'result/backtest_v3b_5y.csv'
 OUT_CSV = 'result/backtest_v3b_5y_overcome.csv'
 OUT_STATS = 'result/overcome_stats.json'
 
@@ -117,8 +120,13 @@ TH = 1.5  # 放量阈值, 全局; 敏感性 2.0 主流程后单独跑
 
 
 def main():
+    print('输入: %s' % SIG_CSV)
+    if not os.path.exists(SIG_CSV):
+        raise SystemExit('输入不存在: %s (先跑 backtest_v3b_5y.py / merge_backtest.py)' % SIG_CSV)
     df = pd.read_csv(SIG_CSV, dtype={'code': str})
     df['code'] = df.code.str.zfill(6)
+    if 'qfq_flag' not in df.columns:
+        print('⚠ 输入无 qfq_flag 列：可先运行 add_qfq_flag.py（否则 fake_filter 底座会报错）')
     df['_ridx'] = np.arange(len(df))
     # 按 code 分组
     groups = [(c, g[['_ridx', 'sig_date', 'fut60_days', 'fut120_days']].to_dict('records'))

@@ -74,10 +74,16 @@ def build():
     t0 = time.time()
     df = pd.read_csv(SIG_CSV, dtype={'code': str})
     df['code'] = df.code.str.zfill(6)
+    if 'qfq_flag' not in df.columns:
+        raise SystemExit(
+            '输入 %s 缺 qfq_flag 列。请先运行:\n'
+            '  python add_qfq_flag.py\n'
+            '（它会从 result/backtest_v3b_5y.csv 生成 *_qfq.csv；若尚未回溯，'
+            '先跑 backtest_v3b_5y.py + merge_backtest.py）' % SIG_CSV)
     base = df[(df.sig_type == 'early') & (df.qfq_flag == 0) & (df.fut60_days >= 60)].copy()
     base['_ridx'] = np.arange(len(base))
     groups = [(c, g[['_ridx', 'sig_date']].to_dict('records')) for c, g in base.groupby('code')]
-    log(f'build: codes={len(groups)} signals={len(base)} nproc={NPROC}')
+    log('build: codes=%d signals=%d nproc=%d' % (len(groups), len(base), NPROC))
     rows, misses = [], []
     with Pool(NPROC) as pool:
         for res, code in pool.imap_unordered(code_factors, groups, chunksize=4):
@@ -93,6 +99,8 @@ def build():
 
 
 # ────────────────────────── 评估 ──────────────────────────
+# 2026-10-16 参考口径（n=67,276）。⚠ 这些只是历史基线，重跑数据后以实际 df 为准：
+#   main_eval() 会按当前 CSV 重算并覆盖 FAKE_N/TRUE_N/MZ_N，避免硬编码断言阻断复现。
 BASE_N = 67276
 FAKE_N = 19730
 TRUE_N = 36408
@@ -117,7 +125,7 @@ def evaluate_flag(flag, df, label, thr_desc):
     n_rem = int(len(rem))
     rem_fake = int(rem.fut60_max.lt(5).sum())
     rem_true = int(rem.fut60_max.ge(10).sum())
-    rem_mz = int(rem[(rem.fut120_days >= 120) & (rem.fut120_max >= 50)].sum() is not None) if False else int(((rem.fut120_days >= 120) & (rem.fut120_max >= 50)).sum())
+    rem_mz = int(((rem.fut120_days >= 120) & (rem.fut120_max >= 50)).sum())
     keep_fake = int(keep.fut60_max.lt(5).sum())
     keep_true = int(keep.fut60_max.ge(10).sum())
     ks = stats_of(keep)
@@ -128,17 +136,27 @@ def evaluate_flag(flag, df, label, thr_desc):
         fake_rm_rate=round(rem_fake / FAKE_N * 100, 2),      # 剔假率: 剔除的假信号/总假
         fake_in_rem=round(rem_fake / n_rem * 100, 1) if n_rem else np.nan,  # 剔除集中假占比
         true_keep_rate=round(keep_true / TRUE_N * 100, 2),   # 真保留率
-        keep_fake_n=keep_fake, keep_fake_rate=round(keep_fake / keep_fake * 100, 2) if False else round(keep_fake / len(keep) * 100, 1),
+        keep_fake_n=keep_fake,
+        keep_fake_rate=round(keep_fake / len(keep) * 100, 1) if len(keep) else np.nan,
         keep_n=ks['n'], keep_s60=ks['s60'], keep_s120=ks['s120'], keep_w120n=ks['w120n'], keep_fmed=ks['fmed'],
     )
     return d
 
 
 def main_eval():
+    global BASE_N, FAKE_N, TRUE_N, W120_N, MZ_N
     df = pd.read_csv(FACTOR_CSV, dtype={'code': str})
     df['code'] = df.code.str.zfill(6)
     n = len(df)
-    assert n == BASE_N, f'底座行数异常 {n} != {BASE_N}'
+    # 按当前因子表重算口径常量（历史 67,276 仅作参考，不阻断复现）
+    BASE_N = n
+    FAKE_N = int(df.fut60_max.lt(5).sum())
+    TRUE_N = int(df.fut60_max.ge(10).sum())
+    W120_N = int((df.fut120_days >= 120).sum())
+    MZ_N = int(((df.fut120_days >= 120) & (df.fut120_max >= 50)).sum())
+    print('底座 n=%d fake=%d true=%d w120=%d mz=%d' % (BASE_N, FAKE_N, TRUE_N, W120_N, MZ_N))
+    if n != 67276:
+        print('ℹ 底座行数 %d != 历史参考 67276（数据重跑后属正常，所有比例按当前 n 计算）' % n)
     # F1
     f1_rem = df.f1_ok != 1.0
     # F2

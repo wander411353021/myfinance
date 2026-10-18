@@ -1144,37 +1144,82 @@ python scan_pressure_breakout.py [YYYYMMDD] [--fresh]
 - 判定只允许 <=i 数据; 置空判定 dev = close/base-1, base 只用 reg(平滑) 无未来。
 - 换手率/股本规则同黄金坑(逐日历史流通股本), 本信号不依赖换手率。
 
-## 每日股票池跟踪管线(2026-10-14 polo4111 需求, 豆包已初步实现, 待 reasonix 审查定版)
+## 每日股票池跟踪管线（2026-10-18 reasonix 重写定版）— v3b / early
 
-### 用户需求(原话)
+### 用户需求（原话）
 1. "我想要每天遍历全部股票并把值得关注的加入股票池并每天跟踪走势和分析"
 2. "已经大涨的就不需要观察了吧"
 
-### 已实现(daily_pipeline.py, 仓库根)
-流程: 全市场扫描(压制→主升突破) → 新命中合并进 result/watchlist.csv(去重, 记 entry_date) → 池内逐只更新行情/状态 → 每日简报 result/daily_report_{date}.md
-产物:
-- watchlist.csv: code/name/entry_date/grade/press_abr/press_gap/switch/void_date/void_days/status(active/done)
-- watch_snapshot_{date}.csv: 池内每只 cur/ma20/pct_1d/post_ret/high_ret/dd(距置空来高点回撤)/above_ma20
-- daily_report_{date}.md: 今日新命中Top + 已走完出池清单 + 池内活跃今日动态(上涨/下跌/跌破MA20/贴近新高)
-已实现规则: DONE_RET=50 (置空以来涨幅≥50% → status=done 自动出池, 不再跟踪)
-信号复用 scan_pressure_breakout.detect (上穿≤15% / gap≥10% / 近20天置空 / 收盘>MA20), A/B/C分级(switch 0/1/2+)
+### 实现（`daily_pipeline.py` + `pool_rules.py`）
+- 入池信号 = `challenge_scan.scan_recent` 最近 FRESH_DAYS(10) 个交易日的 **v3b + early**
+  （两者各自独立冷却 20 天；冷却链从全历史推进，避免窗口内重复计数）
+- **入池点 = early 当日**（2026-10-18 推翻"等大阳线"后定版）：入池当天即参与，不等大阳；
+  大阳只做事后质量确认（同批子集 early 当天买 +8.9% vs 等大阳 +2.5%）
+- watchlist 去重键 = `code + signal_type + sig_date`；phase = `watching` / `tracking` / `archived`
+- 池内跟踪只用 ≤ 当天数据：现价 / 信号以来收益 / 最高收益 / 回撤 / MA20 / COST35 / 大阳后量比
 
-### 已修复的两个 bug(重要, 别重蹈)
-1. scan_pressure_breakout.cached_kline 缓存命中校验: date列ISO格式 '2026-10-14 00:00:00+08:00', 必须 [:10].replace('-','') 与 end_date('20261014') 比较; 旧版 [:8] 永远不命中 → 每次网络重拉
-2. daily_pipeline.track_watchlist: watchlist code 从CSV读回变 int 前导零丢失(002388→2388), 必须 str(code).zfill(6) 再拼缓存文件名, 否则找不到缓存 → 每只网络重拉卡死
+### 五条出池规则（`pool_rules.next_phase`，纯函数可单测）
+| 优先级 | 规则 | 归档原因 |
+|---|---|---|
+| 1 | 人工标记 `manual_status=skip` | manual |
+| 2 | 大阳确认后满 60 交易日 | expired_60d |
+| 3 | tracking 阶段连续 2 日收盘 < COST35(Ehlers45) | cost35_broken |
+| 4 | 大阳后满 10 日，后10日均量/前20日均量 < 1.15 | volume_weakened |
+| 5 | watching 满 20 交易日仍无大阳 | quality_no_bigline_20d |
 
-### 性能现状
-- 全市场扫描: 单进程 ~35分钟(5534只×detect) — scan_pressure_breakout 已支持 --parts 8 --part k 分片(~5分钟), daily_pipeline.full_scan 尚未加分片
-- 池内跟踪: 317只 ~13秒(纯读缓存)
+- **watching 阶段不应用 COST35 规则**：突破后深回踩是 v3b 的正常路径，
+  early 入池即用破线出池会误杀二次买点。
+- 单票最长在池 = 20（等大阳）+ 60（跟踪）= 80 交易日。
+- 质量分层 A/B/C 只标注不硬过滤（A 需大阳：vol_ratio≥1.5 且 big_pct≥7 且 cool≥40
+  且 profit≥0.80 且 dev35∈[5,35]）。
 
-### 待 reasonix 定版的问题(用户与豆包对齐中, 未最终确认)
-1. **入池标准**: "值得关注的"具体定义? 全部命中317只全加 vs 只加刚置空未大涨(如置空≤20天且涨幅<30%)? 用户强调"已经大涨的就不需要观察" → 可能入池就该排除已涨大的
-2. **池子定位**: 317只全量当历史候选池(每天跟踪活跃子集) vs 精选滚动小池?
-3. **出池阈值**: DONE_RET=50 是否合适? 已走完(大涨)自动出池
-4. **每天简报形式**: 新入池名单+池内异动 是否满足? 是否要推送到IM/邮件?
+### 每日输出（`result/daily_report_{date}.md`）
+1. 今日新增入池（类型/分级/画像/大阳状态）
+2. 状态迁移（watching→tracking、出池及原因）
+3. 归档复盘（按原因汇总数量与信号以来收益）
+4. 池内活跃（tracking 明细 + watching 等待天数）
 
-### 红线(不变)
-- 第i天判定只用≤i数据(无未来函数); 换手率用逐日历史流通股本(本信号不依赖); 修改前先 git status -sb; 三仓全推才算完成
+### 命令
+```bash
+python daily_pipeline.py 20261016                      # 单进程全流程
+python daily_pipeline.py 20261016 --parts 8 --part 0   # 分片扫描
+python daily_pipeline.py 20261016 --merge              # 合并分片后入库/跟踪/报告
+python daily_pipeline.py 20261016 --limit 50           # 小样本试跑
+python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
+```
+
+### 性能与缓存
+- 行情缓存优先 `result/scan_cache_daily/`，其次回溯缓存 `result/scan_cache_v3b/`，最后联网；
+  末端日期够新或 12 小时内拉过即命中（同 scan_pressure_breakout 口径）。
+- 池内跟踪纯读缓存（317 只约十几秒）；全市场扫描首次慢，分片 8 进程约数分钟。
+
+### 红线
+- 第 i 天判定只用 ≤i 数据；大阳/收益仅事后标签，禁止进入入场判定。
+- `scan_pressure_breakout.py` 保留（旧 pressure early/void 模式），但不再是每日池主链路。
+
+## qfq_flag 可复现链路（2026-10-18 reasonix 补齐；原生成脚本已丢失）
+
+- **问题**：`fake_filter_v3b_5y.py` 底座依赖 `qfq_flag=0`，但该列由未入库临时脚本生成；
+  环境 reset 后无法从 `backtest_v3b_5y.csv` 重建 67,276 行底座。
+- **定义（本仓库定版）**：信号日之后 60 个交易日内存在除权/股本变动记录
+  （`capital_changes.category_raw ∈ {1,2,3,5,9,14}`）→ 1；无 → 0；窗口不足/接口失败 → NaN。
+- **实现**：`add_qfq_flag.py`
+  - 主路径 `client.corporate.capital_changes(code)`；回退 `get_xdxr(code)`（递归解析日期）
+  - 除权日期缓存 `result/xdxr_cache/{code}.json`；支持断点续跑
+  - 输出 `result/backtest_v3b_5y_qfq.csv`（原列 + qfq_flag/qfq_events/qfq_window_days）
+- **链路**：backtest_v3b_5y → merge_backtest → **add_qfq_flag** → overcome_analysis → fake_filter → report
+- **红线**：qfq_flag 是事后数据质量标记（用到信号日之后信息），**只能用于回溯样本剔除，
+  严禁进入 signal/scan 买入判定**。
+- **复现文档**：`docs/v3b_pipeline.md`（完整命令、字段口径、已知限制）。
+- **报告入库**：`.gitignore` 放行 `result/*_report.md`；CSV/图片/缓存仍不入库。
+- **fake_filter 口径常量**改为运行时计算（不再 assert 67,276），重跑数据不会因行数变化中断。
+
+## 工程修复（2026-10-18）
+- `merge_backtest.py` 原硬编码 Linux 绝对路径 → 改为 `__file__` 目录；支持
+  `--nparts/--win-start/--win-end`，自动发现 `backtest_v3b_shard*.csv`，qfq_flag 等可选列透传。
+- `challenge_scan.scan_recent` 新增 `df=` 参数，供 daily_pipeline 复用本地缓存（避免重复取数）。
+- 迁移/兼容提醒：旧 pressure 池（无 `signal_type/phase` 列）不会被新管线处理；
+  如需保留，先归档或删除 `result/watchlist.csv`。
 
 ## ⭐ 入池时点重大修正: "要刚要进入主升的, 不是已经猛涨的"(2026-10-15 reasonix, 用户定版)
 **背景**: 豆包原 `scan_pressure_breakout.detect` 入池条件 = 压制期 + 近20天**置空**(dev>13% 价格冲出压制半径) + 收>MA20。
