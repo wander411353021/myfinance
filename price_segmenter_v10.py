@@ -546,6 +546,15 @@ def compute_buy_sell_signals(df_ohlc, result, dur_horizon=120, touch_norm=3,
 # ============================================================
 # 四、图表 — 4面板（同 V9）
 # ============================================================
+def _profile_rect_bottom(n_prof):
+    """信号画像区底部留白比例（tight_layout rect bottom）。
+
+    2026-10-18: 必须按「窗口内实际画像数」计算；用全历史 v3b 信号数会把主图压扁
+    （300437 全历史 8 个、窗口内 2 个 → 旧逻辑留白 0.45）。
+    """
+    return 0.05 + 0.05 * max(0, int(n_prof))
+
+
 def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 tail_days=200, name="", save_path=None,
                                 bs_strength=None, all_levels=None,
@@ -1375,7 +1384,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     if _has_prof and v3b_sig_dates:
         # 2026-10-18 修复: 底部留白按“窗口内实际画像数”计算，不能用全历史 v3b 信号数
         # （300437 全历史 8 个、窗口内仅 2 个 → 旧逻辑把主图压到上半部分）
-        fig.tight_layout(pad=1.5, rect=(0, 0.05 + 0.05 * _n_prof, 1, 1))
+        fig.tight_layout(pad=1.5, rect=(0, _profile_rect_bottom(_n_prof), 1, 1))
     else:
         fig.tight_layout(pad=1.5)
     if save_path:
