@@ -69,7 +69,10 @@ def load(code, end, datalen):
     return tq.get_daily_kline_from_tdx(code, end, datalen, with_turnover=True)
 
 def compute(df):
-    """全量计算 V10 线: 返回 (closes, dates_str, gt_p, gt2, c35s, base)"""
+    """全量计算 V10 原始线: 返回 (closes, dates_str, gt_p, gt2, c35s, base)。
+
+    注意：gt_p/gt2 的置空日保持 NaN（原始口径）。需要“置空备用线”时用 compute_eff。
+    """
     df = df.reset_index(drop=True)
     cl = df['close'].values.astype(float); hi = df['high'].values.astype(float)
     lo = df['low'].values.astype(float); vo = df['volume'].values.astype(float)
@@ -89,8 +92,39 @@ def compute(df):
         c35s = np.full(n, np.nan)
     return cl, [_bd(d) for d in df['date'].values], gt_p, gt2, c35s, base
 
-def signal_at(cl, gt_p, gt2, c35s, darr, i):
-    """判定第 i 天是否成立 v3 挑战信号(压制期不含当日)。返回 (ok, 特征dict)"""
+def compute_eff(df, max_dev=0.13):
+    """compute + 置空备用线（2026-10-18 P0-2）。
+
+    返回 (cl, darr, gt_p_raw, gt2_raw, gt_p_eff, gt2_eff, c35s, base)。
+    约定：
+      · 当日判定用 *_eff（置空日 = base×(1+max_dev)）；
+      · 历史窗口（压制期/摸线/回踩）用 *_raw，置空日保持 NaN 不参与统计。
+    这样既消除失明，又不改变原压制期口径（否则 9/5 的 v3 会被误杀）。
+    """
+    cl, darr, gt_p, gt2, c35s, base = compute(df)
+    gt_p_eff, gt2_eff = effective_lines(gt_p, gt2, base, max_dev=max_dev)
+    return cl, darr, gt_p, gt2, gt_p_eff, gt2_eff, c35s, base
+
+
+def effective_lines(gt_p, gt2, base, max_dev=0.13):
+    """gt_p/gt2 的 NaN 日用 base×(1+max_dev) 替换；返回 (p, p2)。"""
+    if base is None:
+        return gt_p, gt2
+    base = np.asarray(base, dtype=float)
+    gt_p = np.asarray(gt_p, dtype=float)
+    gt2 = np.asarray(gt2, dtype=float)
+    fb = np.where(np.isfinite(base) & (base > 0), base * (1.0 + max_dev), np.nan)
+    p = np.where(np.isfinite(gt_p) & (gt_p > 0), gt_p, fb)
+    p2 = np.where(np.isfinite(gt2) & (gt2 > 0), gt2, fb)
+    return p, p2
+
+
+def signal_at(cl, gt_p, gt2, c35s, darr, i, gt_p_eff=None, gt2_eff=None):
+    """判定第 i 天是否成立 v3 挑战信号(压制期不含当日)。返回 (ok, 特征dict)
+
+    P0-2: 历史压制期用原始 gt_p（置空日 NaN 不计入）；当日突破判定
+    优先用 gt_p_eff/gt2_eff（置空日 = base×1.13），避免失明。
+    """
     if i < MIN_I: return False, None
     win = slice(i - LOOKBACK, i)
     m = np.isfinite(gt_p[win])
@@ -100,12 +134,14 @@ def signal_at(cl, gt_p, gt2, c35s, darr, i):
     if abr > PRESS_ABOVE_MAX: return False, None
     gap = np.median((gt[m] / c[m] - 1) * 100)
     if gap < PRESS_GAP_MIN or gap >= PRESS_GAP_MAX: return False, None
-    if not (np.isfinite(gt_p[i]) and np.isfinite(c35s[i]) and np.isfinite(gt2[i])): return False, None
-    if not (cl[i] > gt_p[i] and cl[i] > c35s[i]): return False, None
-    if cl[i] < gt2[i] * TOUCH: return False, None
+    p_i = gt_p_eff[i] if gt_p_eff is not None else gt_p[i]
+    p2_i = gt2_eff[i] if gt2_eff is not None else gt2[i]
+    if not (np.isfinite(p_i) and np.isfinite(c35s[i]) and np.isfinite(p2_i)): return False, None
+    if not (cl[i] > p_i and cl[i] > c35s[i]): return False, None
+    if cl[i] < p2_i * TOUCH: return False, None
     feats = dict(gap=round(gap, 1), abr=round(abr, 1),
                  dev35=round((cl[i] / c35s[i] - 1) * 100, 1),
-                 dist_purple=round((gt2[i] / cl[i] - 1) * 100, 1))
+                 dist_purple=round((p2_i / cl[i] - 1) * 100, 1))
     return True, feats
 
 # ─────────────────────────────────────────────────────────────
@@ -126,11 +162,12 @@ V3B_GAP_MIN = 5.0; V3B_GAP_MAX = 20.0   # 二次突破 gap
 V3B_VOL_MULT = 1.2      # 二次突破日量能 >= 1.2×前20日均量
 
 
-def v3b_signal_at(cl, gt_p, gt2, c35s, vol, i):
+def v3b_signal_at(cl, gt_p, gt2, c35s, vol, i, gt_p_eff=None, gt2_eff=None):
     """判定第 i 天是否成立 v3b 二次买点(只用<=i数据, 无未来函数)。
+    P0-2: 当日摸紫线/ gap 用 *_eff；历史摸线窗口仍用原始线（置空日不计数）。
     返回 (ok, 特征dict)"""
     if i < MIN_I: return False, None
-    p2i = gt2[i]
+    p2i = gt2_eff[i] if gt2_eff is not None else gt2[i]
     if not (np.isfinite(p2i) and p2i > 0): return False, None
     # 1) 二次突破: 当日摸到紫线
     if cl[i] < p2i * V3B_TOUCH: return False, None
@@ -147,7 +184,7 @@ def v3b_signal_at(cl, gt_p, gt2, c35s, vol, i):
     if not np.any(np.isfinite(cw) & (cw > 0) & (cl[rlo:rhi] < cw * V3B_REC_DIP)):
         return False, None
     # 4) gap 过滤: 相对粉线 5%~20%
-    pi = gt_p[i]
+    pi = gt_p_eff[i] if gt_p_eff is not None else gt_p[i]
     if np.isfinite(pi) and pi > 0:
         gap = (cl[i] / pi - 1) * 100
         if not (V3B_GAP_MIN <= gap < V3B_GAP_MAX): return False, None
@@ -162,14 +199,16 @@ def v3b_signal_at(cl, gt_p, gt2, c35s, vol, i):
     return True, feats
 
 
-def v3b_early_at(cl, gt_p, gt2, c35s, vol, i):
+def v3b_early_at(cl, gt_p, gt2, c35s, vol, i, gt_p_eff=None, gt2_eff=None):
     """v3b 提前观察信号(2026-10-16 polo4111): 与 v3b 同源, 但成立条件从
     '摸紫线'放宽为'站上 COST35×1.03 且未到紫线'——用于 COST35 与红压线
     之间长期有余量、主信号偏晚的场景, 提前标记潜在启动前兆。
     (2026-10-16 曾试连续两天站上收紧, 覆盖率60.6%→49%且提前量缩短, 用户还原)
+    P0-2: 当日判定用 *_eff；历史摸线窗口仍用原始线。
     只用<=i数据, 无未来函数。返回 (ok, 特征dict)"""
     if i < MIN_I: return False, None
-    p2i = gt2[i]; c35i = c35s[i]
+    p2i = gt2_eff[i] if gt2_eff is not None else gt2[i]
+    c35i = c35s[i]
     if not (np.isfinite(p2i) and p2i > 0): return False, None
     if not (np.isfinite(c35i) and c35i > 0): return False, None
     # 1) 提前位: 站上 COST35 3% 之上, 但尚未摸到紫线(保证比 v3b 早)
@@ -189,7 +228,7 @@ def v3b_early_at(cl, gt_p, gt2, c35s, vol, i):
         return False, None
     # 4) gap 上限过滤: 相对粉线 < 20%(防高位滞涨), **不设下限**——early 定位是
     #    站上成本线的提前观察, 价格往往还在粉线下方(gap为负), 设下限会卡掉提前点
-    pi = gt_p[i]
+    pi = gt_p_eff[i] if gt_p_eff is not None else gt_p[i]
     if np.isfinite(pi) and pi > 0:
         gap = (cl[i] / pi - 1) * 100
         if gap >= V3B_GAP_MAX: return False, None
@@ -211,8 +250,12 @@ def v3b_early_at(cl, gt_p, gt2, c35s, vol, i):
 #   做同样画像并展示在图上。用户明确: 不给分数, 只整理信息。
 # ─────────────────────────────────────────────────────────────
 
-def signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, i):
-    """信号日多维画像(纯<=i数据, 无未来函数)。返回指标dict"""
+def signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, i,
+                   gt_p_eff=None, gt2_eff=None):
+    """信号日多维画像(纯<=i数据, 无未来函数)。返回指标dict
+
+    P0-2: gap 优先用 gt_p_eff（置空日 = base×1.13），避免画像在失明段变 NaN。
+    """
     n = len(cl)
     # ① 量能: 量比 = 当日/前20日均量
     ma20 = vol[max(0, i - 20):i].mean()
@@ -250,7 +293,7 @@ def signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, i):
     else:
         bw, profit = 0.5, 0.5
     # ⑥ gap: 相对粉线
-    pi = gt_p[i]
+    pi = gt_p_eff[i] if gt_p_eff is not None else gt_p[i]
     gap = (cl[i] / pi - 1) * 100 if (np.isfinite(pi) and pi > 0) else 15.0
     return dict(
         close=round(float(cl[i]), 2),
@@ -266,26 +309,30 @@ def signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, i):
         gap=round(gap, 1))
 
 
-def scan_hist_v3b(code, end, datalen=1600, win_start=None, win_end=None):
-    """v3b 历史全信号(冷却去重, 无未来函数)"""
+def scan_hist_v3b(code, end, datalen=1600, win_start=None, win_end=None, mode=None):
+    """v3b 历史全信号（结构冷却/旧天数冷却由 mode 决定，无未来函数）"""
     try:
         df = load(code, end, datalen)
     except Exception:
         return []
     if df is None or len(df) < MIN_I + 130: return []
-    cl, darr, gt_p, gt2, c35s, _ = compute(df)
+    cl, darr, gt_p, gt2, gt_p_eff, gt2_eff, c35s, _ = compute_eff(df)
     vol = df['volume'].values.astype(float)
-    n = len(cl); hits = []; last_sig = -10 ** 9
-    for i in range(MIN_I, n - 125):
-        if i - last_sig < V3B_COOL: continue
+    n = len(cl)
+    hits = []
+    # P0-1: 冷却链从 MIN_I 全历史推进，窗口只影响输出
+    sig = scan_series(cl, gt_p, gt2, c35s, vol, start_i=MIN_I,
+                      end_i=n - 125, types=('v3b',), mode=mode,
+                      gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
+    for _, i in sig:
         if win_start and darr[i] < win_start: continue
         if win_end and darr[i] > win_end: break
-        ok, feats = v3b_signal_at(cl, gt_p, gt2, c35s, vol, i)
+        ok, feats = v3b_signal_at(cl, gt_p, gt2, c35s, vol, i,
+                                  gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
         if not ok: continue
         fut = lambda k: round((cl[i + 1:i + k + 1].max() / cl[i] - 1) * 100, 1) if i + k < n else None
         hits.append((code, darr[i], round(float(cl[i]), 2), feats['gap'], feats['dist_purple'],
                      fut(20), fut(60), fut(120)))
-        last_sig = i
     return hits
 
 
@@ -296,32 +343,37 @@ def scan_daily(code, end, datalen=1000):
     except Exception:
         return None
     if df is None or len(df) < MIN_I + 5: return None
-    cl, darr, gt_p, gt2, c35s, _ = compute(df)
+    cl, darr, gt_p, gt2, gt_p_eff, gt2_eff, c35s, _ = compute_eff(df)
     i = len(cl) - 1
-    ok, feats = signal_at(cl, gt_p, gt2, c35s, darr, i)
+    ok, feats = signal_at(cl, gt_p, gt2, c35s, darr, i,
+                          gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
     if not ok: return None
     return (code, darr[i], round(float(cl[i]), 2), feats['gap'], feats['abr'],
             feats['dev35'], feats['dist_purple'])
 
-def scan_hist(code, end, datalen=1600, win_start=None, win_end=None):
-    """历史全信号(冷却去重)"""
+def scan_hist(code, end, datalen=1600, win_start=None, win_end=None, mode=None):
+    """v3 历史全信号（结构冷却/旧天数冷却由 mode 决定，无未来函数）"""
     try:
         df = load(code, end, datalen)
     except Exception:
         return []
     if df is None or len(df) < MIN_I + 130: return []
-    cl, darr, gt_p, gt2, c35s, _ = compute(df)
-    n = len(cl); hits = []; last_sig = -10 ** 9
-    for i in range(MIN_I, n - 125):
-        if i - last_sig < COOL: continue
+    cl, darr, gt_p, gt2, gt_p_eff, gt2_eff, c35s, _ = compute_eff(df)
+    vol = df['volume'].values.astype(float)
+    n = len(cl)
+    hits = []
+    sig = scan_series(cl, gt_p, gt2, c35s, vol, start_i=MIN_I,
+                      end_i=n - 125, types=('v3',), mode=mode, darr=darr,
+                      gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
+    for _, i in sig:
         if win_start and darr[i] < win_start: continue
         if win_end and darr[i] > win_end: break
-        ok, feats = signal_at(cl, gt_p, gt2, c35s, darr, i)
+        ok, feats = signal_at(cl, gt_p, gt2, c35s, darr, i,
+                              gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
         if not ok: continue
         fut = lambda k: round((cl[i + 1:i + k + 1].max() / cl[i] - 1) * 100, 1) if i + k < n else None
         hits.append((code, darr[i], round(float(cl[i]), 2), feats['gap'], feats['abr'],
                      feats['dev35'], feats['dist_purple'], fut(20), fut(60), fut(120)))
-        last_sig = i
     return hits
 
 # ─────────────────────────────────────────────────────────────
@@ -336,17 +388,16 @@ BIG_LOOK = 20        # early 后等待窗口(交易日)
 BIG_VOL_MULT = 1.5   # 大阳线放量定义(>=1.5×前20日均量)
 
 
-def bigline_hits(cl, darr, gt_p, gt2, c35s, vol):
-    """对每个 early 信号(冷却20), 找其后 BIG_LOOK 天内第一根大阳线。
+def bigline_hits(cl, darr, gt_p, gt2, c35s, vol, mode=None,
+                 gt_p_eff=None, gt2_eff=None):
+    """对每个 early 信号（结构冷却/旧天数冷却由 mode 决定），找其后 BIG_LOOK 天内第一根大阳线。
     返回 [(big_i, early_i, wait, big_pct, vol_ratio)], 只用<=big_i数据, 无未来函数"""
     n = len(cl)
     pct = np.full(n, 0.0); pct[1:] = cl[1:] / cl[:-1] - 1.0
-    early_idx = []; last = -10 ** 9
-    for i in range(MIN_I, n - 5):
-        if i - last < V3B_COOL: continue
-        ok, _ = v3b_early_at(cl, gt_p, gt2, c35s, vol, i)
-        if ok:
-            early_idx.append(i); last = i
+    early_idx = [i for _, i in scan_series(cl, gt_p, gt2, c35s, vol,
+                                           start_i=MIN_I, end_i=n - 5,
+                                           types=('early',), mode=mode,
+                                           gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)]
     hits = []
     for e in early_idx:
         for k in range(e + 1, min(e + BIG_LOOK + 1, n - 1)):
@@ -358,7 +409,7 @@ def bigline_hits(cl, darr, gt_p, gt2, c35s, vol):
     return hits
 
 
-def scan_bigline(code, end, datalen=1600, fresh=10):
+def scan_bigline(code, end, datalen=1600, fresh=10, mode=None):
     """单只: 全部 bigline 起点信号, 保留 early 日(入池点)在最近 fresh 个交易日内的新鲜信号。
     画像字段(只用<=大阳线日数据, 无未来函数):
       code/big_date/early_date/wait/big_pct/vol_ratio/close/dev35/gap/band/profit/dist_high/rec_depth/cool_days
@@ -369,17 +420,19 @@ def scan_bigline(code, end, datalen=1600, fresh=10):
     except Exception:
         return []
     if df is None or len(df) < MIN_I + BIG_LOOK + 5: return []
-    cl, darr, gt_p, gt2, c35s, _ = compute(df)
+    cl, darr, gt_p, gt2, gt_p_eff, gt2_eff, c35s, _ = compute_eff(df)
     vol = df['volume'].values.astype(float)
     hi = df['high'].values.astype(float); lo = df['low'].values.astype(float)
     turn = df['turnover'].values.astype(float)
     n = len(cl)
-    hits = bigline_hits(cl, darr, gt_p, gt2, c35s, vol)
+    hits = bigline_hits(cl, darr, gt_p, gt2, c35s, vol, mode=mode,
+                        gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
     # fresh: early 日(入池点)在最近 fresh 根K线内 (2026-10-18 从 big_i 改为 early_i)
     rows = []
     for big_i, early_i, wait, bpct, vr in hits:
         if early_i < n - fresh: continue
-        pf = signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, big_i)
+        pf = signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, big_i,
+                            gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
         rows.append((code, darr[big_i], darr[early_i], wait, bpct, vr,
                      pf['close'], pf['dev35'], pf['gap'], pf['band'],
                      pf['profit'], pf['dist_high'], pf['rec_depth'], pf['cool_days']))
@@ -414,13 +467,79 @@ def _first_bigline(cl, i, look=BIG_LOOK):
     return None
 
 
-def scan_recent(code, end, fresh=10, datalen=1000, df=None):
-    """单只: 最近 fresh 个交易日内的 v3b / early 信号（含画像与事后 big 标签）。
+# ─────────────────────────────────────────────────────────────
+# 统一信号序列扫描（2026-10-18 P0-1）
+#   旧实现: 同类型信号固定间隔 V3B_COOL(20) 天。问题(688099 实测):
+#     7/25 early 之后 8/13-8/19 的 early 全被 20 天冷却吞掉, 但 8/13 才是
+#     本轮更靠近成本线的位置; 反过来, 若一轮结束后 20 天内又启动新的一轮,
+#     新信号也会被吞掉 —— 固定天数既会漏真信号, 也会保留错时点。
+#   新实现(mode='structure', 默认): 每种信号独立维护 armed;
+#     收盘跌破 COST35×STRUCT_BREAK(0.98) 才重新武装;
+#     同一结构区间只输出第一次触发。跌破成本线是**因果**的重新武装条件,
+#     不使用未来数据; 同轮不重复提示, 避免"每次反弹都报一次"。
+#   mode='days' 保留旧口径, 用于 A/B 对照与历史复现。
+# ─────────────────────────────────────────────────────────────
+COOLDOWN_MODE = 'structure'   # 'structure' | 'days'
+STRUCT_BREAK = 0.98           # 跌破 COST35×0.98 = 本轮结构结束, 重新武装
+
+
+def scan_series(cl, gt_p, gt2, c35s, vol, start_i=MIN_I, end_i=None,
+                types=('v3b', 'early'), mode=None, cool=V3B_COOL, darr=None,
+                gt_p_eff=None, gt2_eff=None):
+    """统一扫描 v3 / v3b / early 信号序列（严格因果）。返回 [(type, i)] 升序。
+
+    mode='structure': 跌破 COST35×0.98 重新武装; 同轮只输出第一次触发。
+    mode='days':      同类型信号间隔 >= cool 个交易日（旧口径）。
+    v3 需要 darr（signal_at 的日期轴）；不传时 types 中的 v3 会被跳过。
+    P0-2: 当日判定优先用 gt_p_eff/gt2_eff；历史窗口仍用原始 gt_p/gt2。
+    """
+    n = len(cl)
+    end_i = n if end_i is None else min(end_i, n)
+    mode = mode or COOLDOWN_MODE
+    out = []
+    last = {t: -10 ** 9 for t in types}
+    armed = {t: True for t in types}
+    for i in range(start_i, end_i):
+        if mode == 'structure' and np.isfinite(c35s[i]) and c35s[i] > 0 \
+                and cl[i] < c35s[i] * STRUCT_BREAK:
+            for t in types:
+                armed[t] = True
+        for t in types:
+            if mode == 'days':
+                if i - last[t] < cool:
+                    continue
+            elif not armed[t]:
+                continue
+            if t == 'v3b':
+                ok, _ = v3b_signal_at(cl, gt_p, gt2, c35s, vol, i,
+                                      gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
+            elif t == 'early':
+                ok, _ = v3b_early_at(cl, gt_p, gt2, c35s, vol, i,
+                                     gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
+            elif t == 'v3':
+                if darr is None:
+                    continue
+                ok, _ = signal_at(cl, gt_p, gt2, c35s, darr, i,
+                                  gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
+            else:
+                continue
+            if ok:
+                out.append((t, i))
+                last[t] = i
+                armed[t] = False
+    return out
+
+
+def scan_recent(code, end, fresh=10, datalen=1000, df=None, mode=None):
+    """单只: 最近 fresh 个交易日内的 v3 / v3b / early 信号（含画像与事后 big 标签）。
 
     · 判定/画像全部只用 <=信号日 数据（无未来函数）；
     · big_* 是信号日之后的信息，仅用于入池后的质量分层/复盘，禁止参与入场判定；
-    · v3b 与 early 各自独立冷却 V3B_COOL(20) 天，冷却链从全历史推进（窗口外也推进），
-      避免"最近10天"窗口内重复计数；
+    · 冷却口径由 scan_series 决定：默认结构去重（跌破 COST35×0.98 重新武装），
+      mode='days' 可回退旧 20 天冷却做 A/B；
+    · v3 / v3b / early 各自独立 armed/冷却；冷却链从全历史推进；
+    · 2026-10-18 P1-1: 接入 v3（首次压制突破）——旧版只扫 v3b/early，
+      688099 9/5、9/10 的 v3 真实可执行信号完全没有进入每日池；
     · df 可由调用方传入（daily_pipeline 的本地缓存），为 None 时才联网 load。
     返回 list[dict]，字段见 RECENT_FIELDS。
     """
@@ -431,7 +550,7 @@ def scan_recent(code, end, fresh=10, datalen=1000, df=None):
             return []
     if df is None or len(df) < MIN_I + 50:
         return []
-    cl, darr, gt_p, gt2, c35s, _ = compute(df)
+    cl, darr, gt_p, gt2, gt_p_eff, gt2_eff, c35s, _ = compute_eff(df)
     vol = df['volume'].values.astype(float)
     hi = df['high'].values.astype(float)
     lo = df['low'].values.astype(float)
@@ -439,32 +558,22 @@ def scan_recent(code, end, fresh=10, datalen=1000, df=None):
     n = len(cl)
     start_i = max(MIN_I, n - fresh)
 
-    hits = []
-    last_v3b = -10 ** 9
-    last_early = -10 ** 9
-    # 冷却链必须从 MIN_I 全历史推进；画像只对窗口内信号计算（省时间）
-    for i in range(MIN_I, n):
-        if i - last_v3b >= V3B_COOL:
-            ok, _ = v3b_signal_at(cl, gt_p, gt2, c35s, vol, i)
-            if ok:
-                last_v3b = i
-                if i >= start_i:
-                    hits.append(('v3b', i))
-        if i - last_early >= V3B_COOL:
-            ok, _ = v3b_early_at(cl, gt_p, gt2, c35s, vol, i)
-            if ok:
-                last_early = i
-                if i >= start_i:
-                    hits.append(('early', i))
+    # P0-1: 统一结构冷却（跌破 COST35×0.98 重新武装；同轮只提示第一次）
+    # P1-1: v3/v3b/early 三种类型独立 armed；v3 需要 darr
+    sig = scan_series(cl, gt_p, gt2, c35s, vol, start_i=MIN_I,
+                      types=('v3', 'v3b', 'early'), mode=mode, darr=darr,
+                      gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
+    hits = [(t, i) for t, i in sig if i >= start_i]
 
     rows = []
     for stype, i in hits:
-        pf = signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, i)
+        pf = signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, i,
+                            gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
         big_date = None
         big_wait = None
         big_pct = None
         big_vr = None
-        if stype == 'early':
+        if stype in ('early', 'v3'):
             bg = _first_bigline(cl, i)
             if bg is not None:
                 k, wait, pct = bg
@@ -562,17 +671,19 @@ if __name__ == '__main__':
             print(f'取数失败: {e}'); sys.exit(1)
         if df is None or len(df) < MIN_I + 5:
             print('数据不足'); sys.exit(1)
-        cl, darr, gt_p, gt2, c35s, _ = compute(df)
+        cl, darr, gt_p, gt2, gt_p_eff, gt2_eff, c35s, _ = compute_eff(df)
         hi = df['high'].values.astype(float); lo = df['low'].values.astype(float)
         vol = df['volume'].values.astype(float); turn = df['turnover'].values.astype(float)
         if date:
             idx = next((k for k, d in enumerate(darr) if d == date), None)
             if idx is None:
                 print(f'{code} 在 {end} 前无 {date} 数据'); sys.exit(1)
-            ok, vf = v3b_signal_at(cl, gt_p, gt2, c35s, vol, idx)
+            ok, vf = v3b_signal_at(cl, gt_p, gt2, c35s, vol, idx,
+                                   gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
             print(f'== {code} {date} 信号判定: {ok} ==')
             if ok:
-                pf = signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, idx)
+                pf = signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, idx,
+                                    gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
                 print(f'  信号日收盘: {pf["close"]}')
                 print(f'  量能       : 量比 {pf["vol_ratio"]}x (当日/前20日均量)')
                 print(f'  回踩结构   : 最深 {pf["rec_depth"]}% (相对COST35), 跌破 {pf["rec_days"]} 天')
@@ -582,12 +693,15 @@ if __name__ == '__main__':
                 print(f'  gap        : 相对粉线 {pf["gap"]}%')
         else:
             print(f'== {code} 全部 v3b 信号画像(至 {end}) ==')
-            last_sig = -10 ** 9
-            for i in range(MIN_I, len(cl) - 5):
-                if i - last_sig < V3B_COOL: continue
-                ok, vf = v3b_signal_at(cl, gt_p, gt2, c35s, vol, i)
+            sig = scan_series(cl, gt_p, gt2, c35s, vol, start_i=MIN_I,
+                              end_i=len(cl) - 5, types=('v3b',),
+                              gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
+            for _, i in sig:
+                ok, vf = v3b_signal_at(cl, gt_p, gt2, c35s, vol, i,
+                                       gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
                 if not ok: continue
-                pf = signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, i)
+                pf = signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, i,
+                                    gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
                 print(f'  {darr[i]} 收{pf["close"]} | 量比{pf["vol_ratio"]}x | 回踩{pf["rec_depth"]}%({pf["rec_days"]}天) | '
                       f'冷却{pf["cool_days"]}天 | 距前高{pf["dist_high"]}% | dev35={pf["dev35"]}% | '
                       f'带宽{pf["band"]}% | 获利{pf["profit"]:.0%} | gap{pf["gap"]}%')

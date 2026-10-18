@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
-"""每日股票池管线（v3b / early）— 2026-10-18 reasonix 重写
+"""每日股票池管线（v3 / v3b / early）— 2026-10-18 reasonix 重写
 
 旧版 daily_pipeline 复用 scan_pressure_breakout（压制→置空突破），与当前信号体系脱节：
   · 入池口径错：等"置空突破"= 已经猛涨之后（skill 2026-10-15 已推翻）；
-  · 没有接入 v3b / early / 大阳确认；
+  · 没有接入 v3 / v3b / early / 大阳确认；
   · 出池只有 DONE_RET=50 一条，缺少 skill 定版的五条规则。
 
 新版流程（严格无未来函数：所有信号判定只用 <= 当天数据）：
-  Step1 全市场扫描  challenge_scan.scan_recent(code, end, fresh) → 最近 N 日的 v3b/early
+  Step1 全市场扫描  challenge_scan.scan_recent(code, end, fresh) → 最近 N 日的 v3/v3b/early
+                    （P0-1 结构冷却；P0-2 置空备用线；P1-1 v3 已接入）
   Step2 入池        result/watchlist.csv（去重键 = code + signal_type + sig_date）
   Step3 池内跟踪    逐只更新行情/画像/大阳确认/量能/COST35，跑五条出池规则
   Step4 简报        result/daily_report_{date}.md（新增 / 状态迁移 / 归档复盘 / 活跃明细）

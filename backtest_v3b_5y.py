@@ -28,7 +28,8 @@ try:
 except Exception:
     pass
 import tdx_quant as tq
-from challenge_scan import (load, compute, v3b_signal_at, v3b_early_at, signal_profile,
+from challenge_scan import (load, compute, compute_eff, v3b_signal_at, v3b_early_at,
+                            signal_profile, scan_series, COOLDOWN_MODE,
                             V3B_COOL, MIN_I, BIG_PCT, BIG_PCT_MAX)
 
 END = '20261016'
@@ -82,8 +83,10 @@ def _bigline_post(cl, i):
     return 0, -1
 
 
-def make_row(code, sym, date, stype, cl, hi, lo, vol, turn, gt_p, gt2, c35s, i):
-    pf = signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, i)
+def make_row(code, sym, date, stype, cl, hi, lo, vol, turn, gt_p, gt2, c35s, i,
+             gt_p_eff=None, gt2_eff=None):
+    pf = signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, i,
+                        gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
     f60mx, f60mn, f60d = _fut(cl, i, 60)
     f120mx, _, f120d = _fut(cl, i, 120)
     big20, big_wait = _bigline_post(cl, i)
@@ -98,41 +101,31 @@ def make_row(code, sym, date, stype, cl, hi, lo, vol, turn, gt_p, gt2, c35s, i):
                 big20=big20, big_wait=big_wait)
 
 
-def process(code, sym):
-    """单只股票全信号扫描(含窗口外冷却链延续)。返回 (rows, status)"""
+def process(code, sym, mode=None):
+    """单只股票全信号扫描（P0-1: 结构冷却由 scan_series 统一）。返回 (rows, status)"""
     df = get_df(code)
     if df is None or len(df) < MIN_I + 2:
         return None, 'short'
-    cl, darr, gt_p, gt2, c35s, _ = compute(df)
+    cl, darr, gt_p, gt2, gt_p_eff, gt2_eff, c35s, _ = compute_eff(df)
     vol = df['volume'].values.astype(float)
     hi = df['high'].values.astype(float)
     lo = df['low'].values.astype(float)
     turn = df['turnover'].values.astype(float)
     n = len(cl)
     rows = []
-    last_v3b = -10 ** 9
-    last_early = -10 ** 9
-    for i in range(MIN_I, n - 1):
+    # 冷却链从 MIN_I 全历史推进；窗口只影响输出（窗口外信号不再单独模拟）
+    sig = scan_series(cl, gt_p, gt2, c35s, vol, start_i=MIN_I, end_i=n - 1,
+                      types=('v3b', 'early'), mode=mode,
+                      gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
+    for stype, i in sig:
         d = darr[i]
         if d < WIN_START:
-            # 窗口外信号仍推进冷却链(保证窗口起始处冷却语义正确)
-            if i - last_v3b >= V3B_COOL and v3b_signal_at(cl, gt_p, gt2, c35s, vol, i)[0]:
-                last_v3b = i
-            if i - last_early >= V3B_COOL and v3b_early_at(cl, gt_p, gt2, c35s, vol, i)[0]:
-                last_early = i
             continue
         if d > WIN_END:
             break
-        if i - last_v3b >= V3B_COOL:
-            ok, _ = v3b_signal_at(cl, gt_p, gt2, c35s, vol, i)
-            if ok:
-                last_v3b = i
-                rows.append(make_row(code, sym, d, 'v3b', cl, hi, lo, vol, turn, gt_p, gt2, c35s, i))
-        if i - last_early >= V3B_COOL:
-            ok2, _ = v3b_early_at(cl, gt_p, gt2, c35s, vol, i)
-            if ok2:
-                last_early = i
-                rows.append(make_row(code, sym, d, 'early', cl, hi, lo, vol, turn, gt_p, gt2, c35s, i))
+        rows.append(make_row(code, sym, d, stype, cl, hi, lo, vol, turn,
+                             gt_p, gt2, c35s, i,
+                             gt_p_eff=gt_p_eff, gt2_eff=gt2_eff))
     return rows, 'ok'
 
 
@@ -147,7 +140,7 @@ def verify(code, date, datalen):
     df = load(code, END, datalen)
     if df is None or len(df) < MIN_I + 5:
         print(f'{code}: 数据不足'); return
-    cl, darr, gt_p, gt2, c35s, _ = compute(df)
+    cl, darr, gt_p, gt2, gt_p_eff, gt2_eff, c35s, _ = compute_eff(df)
     vol = df['volume'].values.astype(float)
     hi = df['high'].values.astype(float)
     lo = df['low'].values.astype(float)
@@ -155,10 +148,13 @@ def verify(code, date, datalen):
     idx = next((k for k, d in enumerate(darr) if d == date), None)
     if idx is None:
         print(f'{code} 在 {END} 前无 {date} 数据'); return
-    ok_v, _ = v3b_signal_at(cl, gt_p, gt2, c35s, vol, idx)
-    ok_e, _ = v3b_early_at(cl, gt_p, gt2, c35s, vol, idx)
+    ok_v, _ = v3b_signal_at(cl, gt_p, gt2, c35s, vol, idx,
+                            gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
+    ok_e, _ = v3b_early_at(cl, gt_p, gt2, c35s, vol, idx,
+                           gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
     print(f'== {code} {date} idx={idx} v3b={ok_v} early={ok_e} ==')
-    pf = signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, idx)
+    pf = signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, idx,
+                        gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
     for k, v in pf.items():
         print(f'   {k} = {v}')
     f60mx, f60mn, f60d = _fut(cl, idx, 60)
