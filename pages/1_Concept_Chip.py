@@ -119,13 +119,13 @@ st.image(tmp_png, width='stretch')
 V = df['volume'].values.astype(float)
 turn = turnover_proxy(V)
 from chip_panel import cost_series
-from algo_config import (COST_PCT, COST_PCT_LOW, COST_PCT_HIGH,
-                         COST_LABEL, COST_LOW_LABEL, COST_HIGH_LABEL)
+from algo_config import (COST_PCT, COST_PCT_LOW, COST_PCT_MID, COST_PCT_HIGH,
+                         COST_LABEL, COST_LOW_LABEL, COST_MID_LABEL, COST_HIGH_LABEL)
 H = df['high'].values.astype(float)
 L = df['low'].values.astype(float)
 C = df['close'].values.astype(float)
 c35 = float(cost_series(H, L, V, turn, COST_PCT_LOW)[-1])
-c50 = float(cost_series(H, L, V, turn, COST_PCT)[-1])
+c50 = float(cost_series(H, L, V, turn, COST_PCT_MID)[-1])
 c75 = float(cost_series(H, L, V, turn, COST_PCT_HIGH)[-1])
 close = float(C[-1])
 
@@ -159,7 +159,7 @@ else:
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("收盘", f"{close:.2f}")
 col2.metric(f"{COST_LOW_LABEL}（筹码峰下沿）", f"{summary['c35']:.2f}")
-col3.metric(f"{COST_LABEL}（成本中线）", f"{summary['c50']:.2f}")
+col3.metric(f"{COST_MID_LABEL}（筹码中线）", f"{summary['c50']:.2f}")
 col4.metric(f"{COST_HIGH_LABEL}（筹码峰上沿）", f"{summary['c75']:.2f}")
 st.markdown(f"**板块筹码状态：{pos}**　偏离 {COST_LOW_LABEL} `{below35*100:+.1f}%` · 偏离 {COST_HIGH_LABEL} `{above75*100:+.1f}%`")
 st.caption(f"📊 {note}　·　注: 概念指数无股本, 换手率用代理(0.05×量/MA20), 绝对成本价不可当压力位; 统计存在样本重叠")
@@ -169,5 +169,5 @@ if style.startswith("V10"):
         st.markdown(
             f"- 深绿虚线 = {COST_LOW_LABEL}（Ehlers45 平滑，跌破段深绿填充）\n"
             f"- 橙红虚线 = {COST_HIGH_LABEL}（Ehlers20，放量段显示）\n"
-            f"- 深蓝实线 = {COST_LABEL}\n"
+            f"- 深蓝实线 = {COST_MID_LABEL}\n"
             "- 与 DOWN zone low 同色的绿色虚线是 V10 分段支撑线，非筹码线")

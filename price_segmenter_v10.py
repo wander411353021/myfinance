@@ -1281,9 +1281,9 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                     else:
                         from algo_config import COST_PCT as _COST_PCT, COST_LABEL as _COST_LABEL
                 except Exception:
-                    _COST_PCT, _COST_LABEL = 0.50, 'COST50'
+                    _COST_PCT, _COST_LABEL = 0.90, 'COST90'
                     _COST_HIGH, _COST_HIGH_LABEL = 0.75, 'COST75'
-                    _COST_EHLERS, _COST_HIGH_EHLERS = 45, 20
+                    _COST_EHLERS, _COST_HIGH_EHLERS = 10, 20
                 _c35 = _cs2(_H, _L, _V, _turn, _COST_PCT)     # 全量长度
                 _c75 = _cs2(_H, _L, _V, _turn, _COST_HIGH)    # 全量长度, 筹码峰上沿
                 def _ehlers_smooth(_x, _period):

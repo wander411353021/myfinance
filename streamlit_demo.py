@@ -261,12 +261,12 @@ with st.sidebar:
         min_value=60, max_value=2000, value=150, step=10,
     )
     cost_pct = st.slider(
-        "成本线分位 COST_PCT（0.50 = COST50）",
+        f"成本线分位 COST_PCT（默认 {DEFAULT_COST_PCT:.2f}）",
         min_value=0.10, max_value=0.90,
         value=float(DEFAULT_COST_PCT), step=0.01, format="%.2f",
     )
     ehlers_period = st.slider(
-        "成本线平滑周期 Ehlers（默认 45）",
+        f"成本线平滑周期 Ehlers（默认 {int(DEFAULT_COST_EHLERS)}）",
         min_value=5, max_value=120,
         value=int(DEFAULT_COST_EHLERS), step=1,
     )

@@ -1267,10 +1267,11 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
 
 ### 全局参数入口（2026-10-18 用户定版）
 - **唯一入口 `algo_config.py`**，以后只改这里，不要再散改各脚本：
-  - `COST_PCT=0.50`：主成本线（v3 / v3b / early / 结构冷却 / V10 深绿线）
-  - `COST_PCT_LOW=0.35` / `COST_PCT_HIGH=0.75`：板块/筹码三档的下沿/上沿（必须保持 LOW<COST_PCT<HIGH）
+  - `COST_PCT=0.90`：主成本线（v3 / v3b / early / 结构冷却 / V10 深绿线）
+  - `COST_PCT_LOW=0.35` / `COST_PCT_MID=0.50` / `COST_PCT_HIGH=0.75`：板块/筹码三档
+    （与主成本线独立，必须保持 LOW<MID<HIGH）
   - `CHIP_BAND_LO=0.10` / `CHIP_BAND_HI=0.90`：`signal_profile` 的带宽/获利盘
-  - `COST_EHLERS=45` / `COST_HIGH_EHLERS=20`：主成本线 / COST75 的 Ehlers 平滑周期
+  - `COST_EHLERS=10` / `COST_HIGH_EHLERS=20`：主成本线 / COST75 的 Ehlers 平滑周期
 - 环境变量可临时覆盖，例如 `COST_PCT=0.35 python -m streamlit run streamlit_demo.py`。
 - **streamlit 侧边栏滑轨**：`成本线分位 COST_PCT`（0.10–0.90，步长 0.01）+ `成本线平滑周期 Ehlers`
   （5–120，步长 1），拖动后自动重算本页；不改 `algo_config.py` 的全局默认。

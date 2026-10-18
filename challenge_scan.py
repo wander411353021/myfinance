@@ -3,7 +3,7 @@
 信号定义(到达紫线才成立, 区别于 early 启动前低位):
   1. 压制期: 前60天(不含当日) 粉线有效>=70%, 价格>粉线占比<=10%(90%低于), gap∈[3%,20%)
   2. 已突破: close > 粉线(Grid Target第一阶梯) 且 close > 主成本线 COST_PCT
-     （默认 COST50，Ehlers45 平滑；全局参数见 algo_config.py）
+     （默认由 algo_config 控制：COST_PCT=0.90 / Ehlers=10）
   3. 成立:   close >= 紫线(第二阶梯)*0.98 —— 价格真正到达紫色压制线(滤掉摸不到紫线的假突破)
 用法:
   python3 challenge_scan.py scan   <part> <nparts> [end]   # 全市场每日候选池(分片并行)
