@@ -551,8 +551,10 @@ def _profile_rect_bottom(n_prof):
 
     2026-10-18: 必须按「窗口内实际画像数」计算；用全历史 v3b 信号数会把主图压扁
     （300437 全历史 8 个、窗口内 2 个 → 旧逻辑留白 0.45）。
+    2026-10-18 二次修复: 画像数可能很多（600403 窗口内 15 个），线性 0.05+0.05*n
+    会留白 0.80，把主图压到 20%；改为封顶 0.30，保证主图至少占 70%。
     """
-    return 0.05 + 0.05 * max(0, int(n_prof))
+    return min(0.30, 0.05 + 0.05 * max(0, int(n_prof)))
 
 
 def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,

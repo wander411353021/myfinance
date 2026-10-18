@@ -15,8 +15,9 @@ class TestProfileRectBottom(unittest.TestCase):
         self.assertAlmostEqual(_profile_rect_bottom(0), 0.05)
         # 300437 修复场景：窗口内 2 个 -> 0.15（旧逻辑 8 个会算成 0.45）
         self.assertAlmostEqual(_profile_rect_bottom(2), 0.15)
-        # 全历史 8 个不应再被直接传入；函数本身仍保持线性
-        self.assertAlmostEqual(_profile_rect_bottom(8), 0.45)
+        # 600403 场景：窗口内 15 个 -> 封顶 0.30（线性会算成 0.80，主图只剩 20%）
+        self.assertAlmostEqual(_profile_rect_bottom(15), 0.30)
+        self.assertAlmostEqual(_profile_rect_bottom(30), 0.30)
 
     def test_negative_is_clamped(self):
         self.assertAlmostEqual(_profile_rect_bottom(-3), 0.05)
