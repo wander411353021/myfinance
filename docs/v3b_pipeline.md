@@ -123,15 +123,14 @@ python challenge_scan.py assess 600550 20261016 20260904
 
 - 验证要点：688099 的 8/13–8/19 early 被旧 20 天冷却吞掉；8/25–9/4 置空失明 9 天；9/5、9/10 的 v3 旧管线看不到。
 - 截断一致性必须在 `compute_eff` 口径下重算（raw+eff），不能只截断价格不重算线。
-- **全局参数入口**：`algo_config.py`（`COST_PCT=0.90` 参考线 A；`COST2_PCT=0.30` /
-  `COST2_EHLERS=90` 主力成本线 B；信号默认口径 `SIGNAL_COST_* = COST2_*`；
-  `COST_PCT_LOW/MID/HIGH=0.35/0.50/0.75` 板块三档；`CHIP_BAND_LO/HI` 带宽）。
-  环境变量可覆盖。已接入 `challenge_scan` / `price_segmenter_v10` /
-  `concept_chip_scan` / `pages/1_Concept_Chip` / `_compare_k`。
-- **streamlit 滑轨（A/B 区分）**：`参考线 A · 分位` + `参考线 A · Ehlers 周期`（仅参考）；
-  `主力成本线 B · 分位` + `主力成本线 B · Ehlers 周期`（参与 v3/v3b/early/结构冷却）。
+- **全局参数入口**：`algo_config.py`（`COST_PCT=0.90` 主成本线 A；`COST_PCT_LOW/MID/HIGH=0.35/0.50/0.75`
+  板块三档；`CHIP_BAND_LO/HI` 带宽；`COST_EHLERS=10` 主成本线平滑；
+  `COST2_PCT=0.30` / `COST2_EHLERS=90` 参考线 B）。环境变量可覆盖。已接入
+  `challenge_scan` / `price_segmenter_v10` / `concept_chip_scan` / `pages/1_Concept_Chip` / `_compare_k`。
+- **streamlit 滑轨（A/B 区分）**：`主成本线 A · 分位` + `主成本线 A · Ehlers 周期`（参与信号）；
+  `参考成本线 B · 分位` + `参考成本线 B · Ehlers 周期`（仅红色线+红色填充，不参与信号）。
   拖动后自动重绘；不修改全局默认。
-- **主图颜色**：A 参考 深绿虚线 + 绿色填充 alpha 0.15；B 主力 深红虚线 + 红色填充 alpha 0.30。
+- **主图颜色**：A 深绿虚线 + 绿色填充 alpha 0.15；B 深红虚线 + 红色填充 alpha 0.30。
 - **自动重算**默认开启：拖动滑轨/tail_days 后用上次行情重绘（不重新取数）；改代码/日期仍需点按钮。
 - ⚠️ `dev35` 字段名保留兼容，值已是主成本线偏离；历史回测 CSV 仍是 COST35 口径。
 

@@ -1326,18 +1326,18 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 if np.any(_below2):
                     ax0.fill_between(_x, lows, _sm2_n, where=_below2,
                                      color='#E53935', alpha=0.30, zorder=1.3,
-                                     label='跌破' + _COST2_LABEL + '(主力B红)')
+                                     label='跌破' + _COST2_LABEL + '(参考红)')
                 ax0.plot(_x, _sm2_n, color='#B71C1C', lw=1.1, alpha=0.9, linestyle='--',
-                         zorder=2.8, label=_COST2_LABEL + ' Ehlers%d(主力B/信号)' % _eh2)
-                # A 参考成本线画在 B 之上，保持参考线可读
+                         zorder=2.8, label=_COST2_LABEL + ' Ehlers%d(参考)' % _eh2)
+                # A 主成本线画在 B 之上，保持主线可读
                 ax0.plot(_x, _sm_n, color='#1B5E20', lw=1.3, alpha=0.95, linestyle='--',
-                         zorder=3, label=_COST_LABEL + ' Ehlers%d(参考A)' % _eh)
-                # 跌破 A 参考成本线填充（透明度调低，避免盖住 B 主力线）
+                         zorder=3, label=_COST_LABEL + ' Ehlers%d(主)' % _eh)
+                # 跌破 A 主成本线填充（透明度调低，避免盖住 B 红线）
                 _below = lows < _sm_n
                 if np.any(_below):
                     ax0.fill_between(_x, lows, _sm_n, where=_below,
                                      color='#2E7D32', alpha=0.15, zorder=1.5,
-                                     label='跌破' + _COST_LABEL + '(参考A绿)')
+                                     label='跌破' + _COST_LABEL + '(主)')
                 # 2026-10-04 用户: 恢复 COST75 橙色线(Ehlers20, 仅放量段EMA10>3%显示);
                 #   紫色填充暂不恢复(横盘震荡段 lows<COST75 太频繁, 视觉杂乱, 待优化)
                 _alpha_t = 2.0 / 11.0
@@ -1497,9 +1497,8 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
             from challenge_scan import scan_series as _cs_series
             from challenge_scan import bigline_hits as _cs_bigline
             # P0-2: raw + eff 两套线；P0-1: scan_series 结构冷却；P1-1: v3 一并显示
-            # 信号口径 = 主力成本线 B（cost2）；cost_pct/cost2 仅控制两条绘制线
             _cl, _darr, _gtp, _gt2, _gtp_e, _gt2_e, _c35, _ = _cs_compute_eff(
-                df_ohlc, cost_pct=cost2_pct, ehlers_period=cost2_ehlers)
+                df_ohlc, cost_pct=cost_pct, ehlers_period=ehlers_period)
             _vol = df_ohlc['volume'].values.astype(float)
             _hi = df_ohlc['high'].values.astype(float)
             _lo = df_ohlc['low'].values.astype(float)
