@@ -125,7 +125,7 @@ python challenge_scan.py assess 600550 20261016 20260904
 - 截断一致性必须在 `compute_eff` 口径下重算（raw+eff），不能只截断价格不重算线。
 - **全局参数入口**：`algo_config.py`（`COST_PCT=0.90` 主成本线 A；`COST_PCT_LOW/MID/HIGH=0.35/0.50/0.75`
   板块三档；`CHIP_BAND_LO/HI` 带宽；`COST_EHLERS=10` 主成本线平滑；
-  `COST2_PCT=0.30` / `COST2_EHLERS=90` 参考线 B）。环境变量可覆盖。已接入
+  `COST2_PCT=0.40` / `COST2_EHLERS=40` 参考线 B）。环境变量可覆盖。已接入
   `challenge_scan` / `price_segmenter_v10` / `concept_chip_scan` / `pages/1_Concept_Chip` / `_compare_k`。
 - **streamlit 滑轨（A/B 区分）**：`主成本线 A · 分位` + `主成本线 A · Ehlers 周期`（参与信号）；
   `参考成本线 B · 分位` + `参考成本线 B · Ehlers 周期`（仅红色线+红色填充，不参与信号）。
