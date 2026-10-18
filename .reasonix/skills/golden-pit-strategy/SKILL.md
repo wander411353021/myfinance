@@ -1396,8 +1396,8 @@ gap>25% 反而差(后60日 +4.5%/胜47.6%) → 压制线过远的也不选。
   - `dev35` 现价相对COST35偏离% / `band` 集中带宽(COST90-COST10)/价 / `profit` 获利盘近似 clip((close-C10)/(C90-C10))
   - `gap` 相对粉线%
 - **CLI**: `python3 challenge_scan.py assess <code> <end> [date]` — 带 date 打印单日画像(逐行中文明细); 不带 date 一行一只信号全历史画像
-- **V10 画图集成**(price_segmenter_v10.py): `run_segmentation` 在 v3b 循环内同步调 signal_profile 构建 `v3b_profiles={date:feats}` 传给 plot; `plot_price_segmentation_v10` 新增 `v3b_profiles=None` 形参, **图底部画画像信息块**(fig.text, monospace): 每个信号日两行(①收/量比/回踩/冷却 ②距前高/dev35/带宽/获利/gap), **只显示窗口内(图中可见)信号**(用 `_win_dates={_bd(d) for d in ohlc['date'].values}` 过滤窗口外信号)
-  - 布局: 有画像时 show_chip figsize 22×13→22×14.4, `fig.tight_layout(pad=1.5, rect=(0, 0.05+0.05*len(信号), 1, 1))` 底部留白
+- **V10 画图集成**(price_segmenter_v10.py): `run_segmentation` 仍构建 `v3b_profiles={date:feats}`；**2026-10-18 用户要求移除图底部画像文字**，`plot_price_segmentation_v10` 不再用 `fig.text` 打印画像，仅保留 `v3b_sig_dates` 的竖线标记；`v3b_profiles` 形参保留兼容但不再绘制
+  - 布局: 移除底部文字后统一 `fig.tight_layout(pad=1.5)` 铺满全高，不再用 `rect` 留白；`_profile_rect_bottom` 仅保留为历史 helper（当前绘图不调用）。600403 验证：12 个画像时旧线性留白 0.65 会把主图压到 35%，移除文字后主图满高
 - **验证案例画像**(参考口径): 600550 20200227(量比2.94/回踩-28.3% 65天/冷却24天/距前高37.7%/dev35=-8.1%/带宽73.5%/获利14%/gap5.8); 300204 20250418(量比4.76/回踩-15.9% 39天/冷却105天/距前高3.4%/dev35=22.4%/带宽19.8%/获利100%/gap12.0); 301080 20260701(量比1.75/回踩-22.3% 45天/冷却196天/距前高30.7%/dev35=14.5%/带宽21.3%/获利100%/gap7.6)
 
 ## v3b 提前观察信号(2026-10-16 polo4111, 已入库) — 解决"COST35与红压线之间余量大、主信号偏晚"
