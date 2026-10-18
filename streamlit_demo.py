@@ -124,12 +124,22 @@ def compute_and_store(df, tail_days, name, code=None, end_date=None, cost_pct=No
     st.session_state["last_png"] = tmp_png
     st.session_state["last_out"] = out
     st.session_state["last_name"] = name
+    # 自动重算所需：保存上次行情与参数，滑轨/窗口变化时不再重新取数
+    st.session_state["last_df"] = df
+    st.session_state["last_code"] = code
+    st.session_state["last_end"] = end_date
+    st.session_state["last_cost_pct"] = cost_pct
+    st.session_state["last_tail"] = tail_days
     return out
 
 
 # ── 显示（统一在此渲染）──
 def display_last():
     out = st.session_state["last_out"]
+    _cp = st.session_state.get("last_cost_pct")
+    if _cp is not None:
+        st.markdown(f"**当前成本线：COST{int(round(_cp * 100))}**"
+                    f"（COST_PCT={_cp:.2f}，Ehlers45）")
     st.image(st.session_state["last_png"], width='stretch')
 
     c_result, bs_signal, bs_reason, bs_strength, all_levels = out
@@ -247,10 +257,11 @@ with st.sidebar:
         min_value=60, max_value=2000, value=150, step=10,
     )
     cost_pct = st.slider(
-        "成本线分位 COST_PCT（0.50 = COST50；拖动后点「拉取并出图」）",
+        "成本线分位 COST_PCT（0.50 = COST50）",
         min_value=0.10, max_value=0.90,
         value=float(DEFAULT_COST_PCT), step=0.01, format="%.2f",
     )
+    auto_recompute = st.checkbox("自动重算（拖动滑轨/窗口立即重绘）", value=True)
     go = st.button("拉取并出图", type="primary", width='stretch')
 
 # 板块导航 / 同行业列表点行 / 手动「拉取并出图」都会走到这里
@@ -276,9 +287,6 @@ if go or auto_go:
                            f"该股票可能已退市 / 停牌 / 无行情数据，已保留上一只股票的图表。")
     if df_full is not None and len(df_full) >= 2:
         st.success(f"已拉取 {len(df_full)} 根，日期 {df_full['date'].iloc[0].date()} ~ {df_full['date'].iloc[-1].date()}（前复权）")
-        _COST_LABEL = 'COST%d' % int(round(cost_pct * 100))
-        st.markdown(f"**当前成本线：{_COST_LABEL}**（COST_PCT={cost_pct:.2f}，Ehlers45）"
-                    f" · 拖动滑轨后重新点「拉取并出图」")
         _end_str = end_date.strftime("%Y%m%d") if hasattr(end_date, "strftime") else str(end_date).replace("-", "")
         compute_and_store(df_full, tail_days, f"{code}", code=code, end_date=_end_str,
                           cost_pct=cost_pct)
@@ -286,6 +294,21 @@ if go or auto_go:
         # 仅在输入框手动改码 / 板块导航点股票时清空，需用户手动点「刷新同行业个股」按钮重新查询。
     elif df_full is not None:
         st.error("取数不足 2 根，请检查代码或结束日期。")
+
+# ── 自动重算：cost_pct / tail_days 变化时，用上次行情重绘（不重新取数）──
+if auto_recompute and not go and not auto_go:
+    _last_df = st.session_state.get("last_df")
+    _last_code = st.session_state.get("last_code")
+    _last_end = st.session_state.get("last_end")
+    _last_cost = st.session_state.get("last_cost_pct")
+    _last_tail = st.session_state.get("last_tail")
+    _end_now = end_date.strftime("%Y%m%d") if hasattr(end_date, "strftime") else str(end_date).replace("-", "")
+    if (_last_df is not None and _last_code
+            and str(code) == str(_last_code) and _end_now == str(_last_end)
+            and (_last_cost != cost_pct or _last_tail != tail_days)):
+        with st.spinner("按新参数重算…"):
+            compute_and_store(_last_df, tail_days, str(_last_code),
+                              code=_last_code, end_date=_last_end, cost_pct=cost_pct)
 
 # ── 双向组件声明（成分股列表）──
 # 注意：st.components.v1.html 是静态 iframe，不会回传值；必须用 declare_component。

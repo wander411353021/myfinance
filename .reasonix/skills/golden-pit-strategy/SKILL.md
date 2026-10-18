@@ -1273,6 +1273,8 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
 - 环境变量可临时覆盖，例如 `COST_PCT=0.35 python -m streamlit run streamlit_demo.py`。
 - **streamlit 侧边栏滑轨**：`成本线分位 COST_PCT`（0.10–0.90，步长 0.01），拖动后点
   「拉取并出图」即可临时调整本页成本线/信号/填充；不改 `algo_config.py` 的全局默认。
+- **自动重算开关**（默认开）：拖动滑轨或 tail_days 后，用上次行情直接重绘，不重新取数；
+  改代码/结束日期后仍需点「拉取并出图」。
 - 已接入：`challenge_scan.py` / `price_segmenter_v10.py` / `concept_chip_scan.py` /
   `pages/1_Concept_Chip.py` / `_compare_k.py`。
 - ⚠️ `signal_profile` 的 `dev35` 字段名保留兼容，**值已是主成本线偏离**；
