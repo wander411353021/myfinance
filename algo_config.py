@@ -20,8 +20,8 @@ Ehlers SuperSmoother 平滑周期:
     COST_HIGH_EHLERS 默认 20  → COST75 筹码峰上沿
 
 参考成本线 B（仅主图参考，不参与信号判定）:
-    COST2_PCT        默认 0.40 → COST40
-    COST2_EHLERS     默认 40
+    COST2_PCT        默认 0.35 → COST35
+    COST2_EHLERS     默认 20
 
 环境变量可临时覆盖，例如:
     COST_PCT=0.50 python -m streamlit run streamlit_demo.py
@@ -50,8 +50,8 @@ COST_EHLERS = int(_f('COST_EHLERS', '10'))
 COST_HIGH_EHLERS = int(_f('COST_HIGH_EHLERS', '20'))
 
 # 参考成本线 B（2026-10-18 用户要求：独立分位/周期，主图红色线+红色填充，不参与信号）
-COST2_PCT = _f('COST2_PCT', '0.40')
-COST2_EHLERS = int(_f('COST2_EHLERS', '40'))
+COST2_PCT = _f('COST2_PCT', '0.35')
+COST2_EHLERS = int(_f('COST2_EHLERS', '20'))
 
 
 def _label(p):
