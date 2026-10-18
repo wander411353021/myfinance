@@ -1274,7 +1274,7 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
   - `COST_EHLERS=25` / `COST_HIGH_EHLERS=20`：主成本线 A / COST75 的 Ehlers 平滑周期
   - `COST2_PCT=0.45` / `COST2_EHLERS=25`：参考成本线 B（仅主图红色线+红色填充，不参与信号）
   - 代码变量 `c35s` 与历史文档里的“COST35”都指**主成本线 A**，实际分位跟随 `COST_PCT`（当前 COST75），不是固定 35%
-- 环境变量可临时覆盖，例如 `COST_PCT=0.35 python -m streamlit run streamlit_demo.py`。
+- 环境变量可临时覆盖，例如 `COST_PCT=0.50 python -m streamlit run streamlit_demo.py`。
 - **streamlit 侧边栏滑轨（A/B 区分）**：
   - `主成本线 A · 分位` / `主成本线 A · Ehlers 周期`：参与 v3/v3b/early/结构冷却；
   - `参考成本线 B · 分位` / `参考成本线 B · Ehlers 周期`：仅主图红色线与红色填充，不参与信号。
@@ -1296,7 +1296,8 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
 - Windows GBK 终端：新代码避免使用 `⚠/ℹ` 等非 GBK 字符，统一用 `[!]/[i]`；
   运行长脚本可加 `PYTHONIOENCODING=utf-8`。
 
-### 2026-10-18 当日收尾：成本线 A/B 与 V10 布局
+### 2026-10-18~19 成本线 A/B 与 V10 布局
+- **2026-10-19 定版**：主成本线 A = **COST75 / Ehlers25**；参考成本线 B = **COST45 / Ehlers25**（B 不参与信号）。
 - **信号口径 = 主成本线 A（COST75 / Ehlers25）**：v3 / v3b / early / 结构冷却 / 回测 / 每日池全部使用 A。
 - **参考成本线 B（COST45 / Ehlers25）**：仅主图红色线与红色填充（alpha 0.30），**不参与信号**。
 - 当日曾尝试把信号切到 B，已 **revert**；不要再把 B 当信号线。
