@@ -1278,7 +1278,7 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
   - `主成本线 A · 分位` / `主成本线 A · Ehlers 周期`：参与 v3/v3b/early/结构冷却；
   - `参考成本线 B · 分位` / `参考成本线 B · Ehlers 周期`：仅主图红色线与红色填充，不参与信号。
   - 拖动任一滑轨自动重算本页；不改 `algo_config.py` 全局默认。
-- **主图颜色**：A = 深绿虚线 + 绿色填充（alpha 0.15）；B = 深红虚线 + 红色填充（alpha 0.16）。
+- **主图颜色**：A = 深绿虚线 + 绿色填充（alpha 0.15）；B = 深红虚线 + 红色填充（alpha 0.30）。
 - **自动重算开关**（默认开）：拖动滑轨或 tail_days 后，用上次行情直接重绘，不重新取数；
   改代码/结束日期后仍需点「拉取并出图」。
 - 已接入：`challenge_scan.py` / `price_segmenter_v10.py` / `concept_chip_scan.py` /

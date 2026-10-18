@@ -1325,7 +1325,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _below2 = lows < _sm2_n
                 if np.any(_below2):
                     ax0.fill_between(_x, lows, _sm2_n, where=_below2,
-                                     color='#E53935', alpha=0.16, zorder=1.3,
+                                     color='#E53935', alpha=0.30, zorder=1.3,
                                      label='跌破' + _COST2_LABEL + '(参考红)')
                 ax0.plot(_x, _sm2_n, color='#B71C1C', lw=1.1, alpha=0.9, linestyle='--',
                          zorder=2.8, label=_COST2_LABEL + ' Ehlers%d(参考)' % _eh2)
