@@ -123,6 +123,10 @@ python challenge_scan.py assess 600550 20261016 20260904
 
 - 验证要点：688099 的 8/13–8/19 early 被旧 20 天冷却吞掉；8/25–9/4 置空失明 9 天；9/5、9/10 的 v3 旧管线看不到。
 - 截断一致性必须在 `compute_eff` 口径下重算（raw+eff），不能只截断价格不重算线。
+- **全局参数入口**：`algo_config.py`（`COST_PCT=0.50` 主成本线；`COST_PCT_LOW/HIGH` 板块三档；
+  `CHIP_BAND_LO/HI` 带宽）。环境变量可覆盖。已接入 `challenge_scan` / `price_segmenter_v10` /
+  `concept_chip_scan` / `pages/1_Concept_Chip` / `_compare_k`。
+- ⚠️ `dev35` 字段名保留兼容，值已是主成本线偏离；历史回测 CSV 仍是 COST35 口径。
 
 ---
 

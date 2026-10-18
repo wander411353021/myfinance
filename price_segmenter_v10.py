@@ -1260,11 +1260,14 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             try:
                 from chip_panel import cost_series as _cs2
                 try:
-                    from challenge_scan import COST_PCT as _COST_PCT, COST_LABEL as _COST_LABEL
+                    from algo_config import (COST_PCT as _COST_PCT, COST_LABEL as _COST_LABEL,
+                                             COST_PCT_HIGH as _COST_HIGH,
+                                             COST_HIGH_LABEL as _COST_HIGH_LABEL)
                 except Exception:
                     _COST_PCT, _COST_LABEL = 0.50, 'COST50'
+                    _COST_HIGH, _COST_HIGH_LABEL = 0.75, 'COST75'
                 _c35 = _cs2(_H, _L, _V, _turn, _COST_PCT)     # 全量长度
-                _c75 = _cs2(_H, _L, _V, _turn, 0.75)          # 全量长度, 额外算COST75
+                _c75 = _cs2(_H, _L, _V, _turn, _COST_HIGH)    # 全量长度, 筹码峰上沿
                 def _ehlers_smooth(_x, _period):
                     _x = np.asarray(_x, dtype=float)
                     _n = len(_x)
@@ -1314,7 +1317,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _sm75_n = _sm75_show[offset:offset + n]
                 if np.any(np.isfinite(_sm75_n)):
                     ax0.plot(_x, _sm75_n, color='#E65100', lw=1.6, alpha=0.95, linestyle='--',
-                             zorder=4, label='筹码峰上沿(COST75,仅放量段)')
+                             zorder=4, label='筹码峰上沿(' + _COST_HIGH_LABEL + ',仅放量段)')
             except Exception as _e2:
                 print(f'[chip 峰带] 失败: {_e2}')
         except Exception as _e:

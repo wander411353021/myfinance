@@ -1264,6 +1264,17 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
 ### 口径提醒
 - 结构冷却/备用线/趋势确认都必须用**同批样本**比较；不同批次（如 22 池 vs 全市场）不可直接比。
 - 截断一致性务必在 `compute_eff` 口径下跑（截断后重算 raw+eff），不要只截断价格不重算线。
+
+### 全局参数入口（2026-10-18 用户定版）
+- **唯一入口 `algo_config.py`**，以后只改这里，不要再散改各脚本：
+  - `COST_PCT=0.50`：主成本线（v3 / v3b / early / 结构冷却 / V10 深绿线）
+  - `COST_PCT_LOW=0.35` / `COST_PCT_HIGH=0.75`：板块/筹码三档的下沿/上沿（必须保持 LOW<COST_PCT<HIGH）
+  - `CHIP_BAND_LO=0.10` / `CHIP_BAND_HI=0.90`：`signal_profile` 的带宽/获利盘
+- 环境变量可临时覆盖，例如 `COST_PCT=0.35 python -m streamlit run streamlit_demo.py`。
+- 已接入：`challenge_scan.py` / `price_segmenter_v10.py` / `concept_chip_scan.py` /
+  `pages/1_Concept_Chip.py` / `_compare_k.py`。
+- ⚠️ `signal_profile` 的 `dev35` 字段名保留兼容，**值已是主成本线偏离**；
+  历史回测 CSV / fake_filter 结果仍是 COST35 口径，需重跑后才能与 COST50 混用。
 - `merge_backtest.py` 原硬编码 Linux 绝对路径 → 改为 `__file__` 目录；支持
   `--nparts/--win-start/--win-end`，自动发现 `backtest_v3b_shard*.csv`，qfq_flag 等可选列透传。
 - `challenge_scan.scan_recent` 新增 `df=` 参数，供 daily_pipeline 复用本地缓存（避免重复取数）。

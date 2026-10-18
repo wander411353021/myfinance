@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
 from chip_panel import cost_series
 from index_v10_plot import fetch_index
+from algo_config import COST_PCT
 
 BLOCKS = [('人工智能', '880948'), ('芯片', '880952'), ('存储芯片', '880973')]
 END = '20261009'
@@ -19,8 +20,8 @@ def depth_series(idx_df, k):
     ratio = np.where(ma20 > 0, V/ma20, 1.0)
     turn = (k * ratio).clip(0.005, 0.30)
     turn[:20] = k
-    c35 = cost_series(H, L, V, turn, 0.35)
-    return C / c35 - 1  # 偏离COST35
+    c35 = cost_series(H, L, V, turn, COST_PCT)
+    return C / c35 - 1  # 偏离主成本线（全局 COST_PCT）
 
 def fwd(idx_df, h):
     C = idx_df['close'].values.astype(float)

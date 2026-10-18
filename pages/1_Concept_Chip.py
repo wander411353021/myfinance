@@ -119,12 +119,14 @@ st.image(tmp_png, width='stretch')
 V = df['volume'].values.astype(float)
 turn = turnover_proxy(V)
 from chip_panel import cost_series
+from algo_config import (COST_PCT, COST_PCT_LOW, COST_PCT_HIGH,
+                         COST_LABEL, COST_LOW_LABEL, COST_HIGH_LABEL)
 H = df['high'].values.astype(float)
 L = df['low'].values.astype(float)
 C = df['close'].values.astype(float)
-c35 = float(cost_series(H, L, V, turn, 0.35)[-1])
-c50 = float(cost_series(H, L, V, turn, 0.50)[-1])
-c75 = float(cost_series(H, L, V, turn, 0.75)[-1])
+c35 = float(cost_series(H, L, V, turn, COST_PCT_LOW)[-1])
+c50 = float(cost_series(H, L, V, turn, COST_PCT)[-1])
+c75 = float(cost_series(H, L, V, turn, COST_PCT_HIGH)[-1])
 close = float(C[-1])
 
 if summary is None:
@@ -136,19 +138,19 @@ below35 = close / summary['c35'] - 1
 #   "收<COST35 越深 → 后续 60 日反弹越强"(深度-8~-15%: +34%/胜率67%; <-15%: +89%/胜率72%),
 #   而"收>COST75"后续平庸(+1.5%~+8%) —— 方向与"强势=好"直觉相反, 标签改为中性/超跌语义。
 if below35 < -0.15:
-    pos = "极深超跌（收盘 << COST35）"
+    pos = f"极深超跌（收盘 << {COST_LOW_LABEL}）"
     note = "统计: 60日 +89%/胜率72%(n=263, 均值受尾部驱动)"
 elif below35 < -0.08:
-    pos = "深度跌破（收盘 < COST35）"
+    pos = f"深度跌破（收盘 < {COST_LOW_LABEL}）"
     note = "统计: 60日 +34%/胜率67%(n=955)"
 elif below35 < 0:
-    pos = "轻度跌破（收盘 < COST35）"
+    pos = f"轻度跌破（收盘 < {COST_LOW_LABEL}）"
     note = "统计: 60日 +5~11%(优势不明显)"
 elif above75 > 0.08:
-    pos = "高位（收盘 >> COST75）"
+    pos = f"高位（收盘 >> {COST_HIGH_LABEL}）"
     note = "统计: 60日均值 +38% 但胜率仅 52%(尾部驱动)"
 elif above75 > 0:
-    pos = "突破筹码峰（收盘 > COST75）"
+    pos = f"突破筹码峰（收盘 > {COST_HIGH_LABEL}）"
     note = "统计: 60日 +1.5%~+8%(偏平庸)"
 else:
     pos = "中间（部分套牢/获利）"
@@ -156,16 +158,16 @@ else:
 
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("收盘", f"{close:.2f}")
-col2.metric("COST35（筹码峰下沿）", f"{summary['c35']:.2f}")
-col3.metric("COST50（成本中线）", f"{summary['c50']:.2f}")
-col4.metric("COST75（筹码峰上沿）", f"{summary['c75']:.2f}")
-st.markdown(f"**板块筹码状态：{pos}**　偏离 COST35 `{below35*100:+.1f}%` · 偏离 COST75 `{above75*100:+.1f}%`")
+col2.metric(f"{COST_LOW_LABEL}（筹码峰下沿）", f"{summary['c35']:.2f}")
+col3.metric(f"{COST_LABEL}（成本中线）", f"{summary['c50']:.2f}")
+col4.metric(f"{COST_HIGH_LABEL}（筹码峰上沿）", f"{summary['c75']:.2f}")
+st.markdown(f"**板块筹码状态：{pos}**　偏离 {COST_LOW_LABEL} `{below35*100:+.1f}%` · 偏离 {COST_HIGH_LABEL} `{above75*100:+.1f}%`")
 st.caption(f"📊 {note}　·　注: 概念指数无股本, 换手率用代理(0.05×量/MA20), 绝对成本价不可当压力位; 统计存在样本重叠")
 
 if style.startswith("V10"):
     with st.expander("说明：V10 图上的筹码线"):
         st.markdown(
-            "- 深绿虚线 = COST35（Ehlers45 平滑，跌破段深绿填充）\n"
-            "- 橙红虚线 = COST75（Ehlers20，放量段显示）\n"
-            "- 深蓝实线 = COST50\n"
+            f"- 深绿虚线 = {COST_LOW_LABEL}（Ehlers45 平滑，跌破段深绿填充）\n"
+            f"- 橙红虚线 = {COST_HIGH_LABEL}（Ehlers20，放量段显示）\n"
+            f"- 深蓝实线 = {COST_LABEL}\n"
             "- 与 DOWN zone low 同色的绿色虚线是 V10 分段支撑线，非筹码线")

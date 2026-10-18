@@ -2,7 +2,8 @@
 """挑战信号(压制突破) v3 定版扫描器 — 2026-10-15 polo4111 定版
 信号定义(到达紫线才成立, 区别于 early 启动前低位):
   1. 压制期: 前60天(不含当日) 粉线有效>=70%, 价格>粉线占比<=10%(90%低于), gap∈[3%,20%)
-  2. 已突破: close > 粉线(Grid Target第一阶梯) 且 close > COST35(Ehlers45平滑)
+  2. 已突破: close > 粉线(Grid Target第一阶梯) 且 close > 主成本线 COST_PCT
+     （默认 COST50，Ehlers45 平滑；全局参数见 algo_config.py）
   3. 成立:   close >= 紫线(第二阶梯)*0.98 —— 价格真正到达紫色压制线(滤掉摸不到紫线的假突破)
 用法:
   python3 challenge_scan.py scan   <part> <nparts> [end]   # 全市场每日候选池(分片并行)
@@ -15,15 +16,14 @@ warnings.filterwarnings('ignore')
 import tdx_quant as tq
 import panic_reversal as pr
 from chip_panel import cost_series
+from algo_config import COST_PCT, COST_LABEL, CHIP_BAND_LO, CHIP_BAND_HI
 
 LOOKBACK = 60; PRESS_VALID_MIN = 0.70; PRESS_ABOVE_MAX = 10
 PRESS_GAP_MIN = 3.0; PRESS_GAP_MAX = 20.0
 TOUCH = 0.98          # 到达紫线阈值(close >= 紫线*0.98)
 MIN_I = 400           # reg250(250)+压制期(60)+缓冲 预热
 COOL = 30             # 历史扫描冷却(天)
-# 成本线分位（2026-10-18 用户定版默认 COST50；设 COST_PCT=0.35 可回退 COST35）
-COST_PCT = float(os.environ.get('COST_PCT', '0.50'))
-COST_LABEL = 'COST%d' % int(round(COST_PCT * 100))
+# 成本线分位统一定义在 algo_config.py（唯一入口，可用 COST_PCT 环境变量覆盖）
 
 def ehlers_smooth(x, period):
     """Ehlers SuperSmoother 二阶IIR低通(因果, 第k天只用<=k数据)"""
@@ -284,11 +284,11 @@ def signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, i,
     # ④ 前高位置: 现价相对近250日最高价
     h250 = float(np.nanmax(hi[max(0, i - 250):i + 1]))
     ratio = h250 / cl[i] if cl[i] > 0 else 9.0
-    # ⑤ 筹码: dev35(相对COST35) + 集中带宽(COST90-COST10)/价 + 获利盘近似
+    # ⑤ 筹码: dev35(相对主成本线 COST_PCT；字段名保留兼容) + 集中带宽(COST90-COST10)/价 + 获利盘近似
     c35i = c35s[i]
     dev35 = (cl[i] / c35i - 1) * 100 if (np.isfinite(c35i) and c35i > 0) else 0.0
-    c10 = cost_series(hi, lo, vol, turn, 0.10)
-    c90 = cost_series(hi, lo, vol, turn, 0.90)
+    c10 = cost_series(hi, lo, vol, turn, CHIP_BAND_LO)
+    c90 = cost_series(hi, lo, vol, turn, CHIP_BAND_HI)
     c10i, c90i = c10[i], c90[i]
     if np.isfinite(c10i) and np.isfinite(c90i) and c90i > c10i and cl[i] > 0:
         bw = (c90i - c10i) / cl[i]
@@ -491,7 +491,7 @@ def scan_series(cl, gt_p, gt2, c35s, vol, start_i=MIN_I, end_i=None,
                 gt_p_eff=None, gt2_eff=None):
     """统一扫描 v3 / v3b / early 信号序列（严格因果）。返回 [(type, i)] 升序。
 
-    mode='structure': 跌破 COST35×0.98 重新武装; 同轮只输出第一次触发。
+    mode='structure': 跌破主成本线 COST_PCT×0.98 重新武装; 同轮只输出第一次触发。
     mode='days':      同类型信号间隔 >= cool 个交易日（旧口径）。
     v3 需要 darr（signal_at 的日期轴）；不传时 types 中的 v3 会被跳过。
     P0-2: 当日判定优先用 gt_p_eff/gt2_eff；历史窗口仍用原始 gt_p/gt2。
@@ -689,7 +689,7 @@ if __name__ == '__main__':
                                     gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
                 print(f'  信号日收盘: {pf["close"]}')
                 print(f'  量能       : 量比 {pf["vol_ratio"]}x (当日/前20日均量)')
-                print(f'  回踩结构   : 最深 {pf["rec_depth"]}% (相对COST35), 跌破 {pf["rec_days"]} 天')
+                print(f'  回踩结构   : 最深 {pf["rec_depth"]}% (相对{COST_LABEL}), 跌破 {pf["rec_days"]} 天')
                 print(f'  冷却期     : 距上次摸紫线 {pf["cool_days"]} 天 (近250日摸线 {pf["hist_touch"]} 次)')
                 print(f'  前高位置   : 现价距近250日最高 {pf["dist_high"]}%')
                 print(f'  筹码       : dev35={pf["dev35"]}% 集中带宽={pf["band"]}% 获利盘≈{pf["profit"]:.0%}')

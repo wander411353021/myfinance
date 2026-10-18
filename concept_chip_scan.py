@@ -20,6 +20,7 @@ from eltdx import Client
 
 from chip_panel import cost_series
 from eltdx_compat import get_bars
+from algo_config import COST_PCT, COST_PCT_LOW, COST_PCT_HIGH
 
 _MAP = 'tdx_block_names.json'
 
@@ -94,9 +95,9 @@ def scan(end=None, min_days=300, out=None, limit=None, quiet=False):
         rows = []
         for it in indexes:
             turn = turnover_proxy(it['volume'])
-            c35 = cost_series(it['high'], it['low'], it['volume'], turn, 0.35)
-            c50 = cost_series(it['high'], it['low'], it['volume'], turn, 0.50)
-            c75 = cost_series(it['high'], it['low'], it['volume'], turn, 0.75)
+            c35 = cost_series(it['high'], it['low'], it['volume'], turn, COST_PCT_LOW)
+            c50 = cost_series(it['high'], it['low'], it['volume'], turn, COST_PCT)
+            c75 = cost_series(it['high'], it['low'], it['volume'], turn, COST_PCT_HIGH)
             v35, v50, v75 = float(c35[-1]), float(c50[-1]), float(c75[-1])
             if not all(np.isfinite((v35, v50, v75))):
                 continue
