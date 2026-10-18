@@ -1259,7 +1259,11 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             # 特性: 因果(第k天只用≤k数据, 无未来函数) + 平滑度高 + 滞后仅为等效SMA的一半
             try:
                 from chip_panel import cost_series as _cs2
-                _c35 = _cs2(_H, _L, _V, _turn, 0.35)          # 全量长度
+                try:
+                    from challenge_scan import COST_PCT as _COST_PCT, COST_LABEL as _COST_LABEL
+                except Exception:
+                    _COST_PCT, _COST_LABEL = 0.50, 'COST50'
+                _c35 = _cs2(_H, _L, _V, _turn, _COST_PCT)     # 全量长度
                 _c75 = _cs2(_H, _L, _V, _turn, 0.75)          # 全量长度, 额外算COST75
                 def _ehlers_smooth(_x, _period):
                     _x = np.asarray(_x, dtype=float)
@@ -1278,18 +1282,18 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                         _out[_k] = (_c1 * (_x[_k] + _x[_k - 1]) / 2
                                     + _c2 * _out[_k - 1] + _c3 * _out[_k - 2])
                     return _out
-                # COST35 Ehlers45 (用户指定测试)
+                # COST 成本线（Ehlers45，分位由 COST_PCT 控制）
                 _sm = _ehlers_smooth(_c35, 45)
                 _sm_n = _sm[offset:offset + n]
                 _x = np.arange(n)
                 ax0.plot(_x, _sm_n, color='#1B5E20', lw=1.3, alpha=0.95, linestyle='--',
-                         zorder=3, label='COST35 Ehlers45')
+                         zorder=3, label=_COST_LABEL + ' Ehlers45')
                 # 跌破填充
                 _below = lows < _sm_n
                 if np.any(_below):
                     ax0.fill_between(_x, lows, _sm_n, where=_below,
                                      color='#2E7D32', alpha=0.30, zorder=1.5,
-                                     label='跌破COST35(杀破筹码区)')
+                                     label='跌破' + _COST_LABEL + '(杀破筹码区)')
                 # 2026-10-04 用户: 恢复 COST75 橙色线(Ehlers20, 仅放量段EMA10>3%显示);
                 #   紫色填充暂不恢复(横盘震荡段 lows<COST75 太频繁, 视觉杂乱, 待优化)
                 _alpha_t = 2.0 / 11.0

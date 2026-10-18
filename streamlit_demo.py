@@ -269,6 +269,12 @@ if go or auto_go:
                            f"该股票可能已退市 / 停牌 / 无行情数据，已保留上一只股票的图表。")
     if df_full is not None and len(df_full) >= 2:
         st.success(f"已拉取 {len(df_full)} 根，日期 {df_full['date'].iloc[0].date()} ~ {df_full['date'].iloc[-1].date()}（前复权）")
+        try:
+            from challenge_scan import COST_LABEL as _COST_LABEL, COST_PCT as _COST_PCT
+        except Exception:
+            _COST_LABEL, _COST_PCT = 'COST50', 0.50
+        st.markdown(f"**当前成本线：{_COST_LABEL}**（COST_PCT={_COST_PCT:.2f}，Ehlers45）"
+                    f" · 修改 COST_PCT 后需重启服务并重新点「拉取并出图」")
         _end_str = end_date.strftime("%Y%m%d") if hasattr(end_date, "strftime") else str(end_date).replace("-", "")
         compute_and_store(df_full, tail_days, f"{code}", code=code, end_date=_end_str)
         # 注意：同行业列表不再随主图加载自动刷新（避免卡顿与误刷新）。

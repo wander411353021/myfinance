@@ -21,6 +21,9 @@ PRESS_GAP_MIN = 3.0; PRESS_GAP_MAX = 20.0
 TOUCH = 0.98          # 到达紫线阈值(close >= 紫线*0.98)
 MIN_I = 400           # reg250(250)+压制期(60)+缓冲 预热
 COOL = 30             # 历史扫描冷却(天)
+# 成本线分位（2026-10-18 用户定版默认 COST50；设 COST_PCT=0.35 可回退 COST35）
+COST_PCT = float(os.environ.get('COST_PCT', '0.50'))
+COST_LABEL = 'COST%d' % int(round(COST_PCT * 100))
 
 def ehlers_smooth(x, period):
     """Ehlers SuperSmoother 二阶IIR低通(因果, 第k天只用<=k数据)"""
@@ -87,7 +90,7 @@ def compute(df):
         max_dev=0.13, down_confirm=10)
     gt2 = second_stair(base, gt_p, gl_p)
     try:
-        c35 = cost_series(hi, lo, vo, turn, 0.35); c35s = ehlers_smooth(c35, 45)
+        c35 = cost_series(hi, lo, vo, turn, COST_PCT); c35s = ehlers_smooth(c35, 45)
     except Exception:
         c35s = np.full(n, np.nan)
     return cl, [_bd(d) for d in df['date'].values], gt_p, gt2, c35s, base
