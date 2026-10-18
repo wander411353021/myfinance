@@ -85,12 +85,16 @@ def _to_date(v):
     if v is None:
         return None
     try:
-        t = pd.to_datetime(v, errors='coerce')
+        t = pd.Timestamp(pd.to_datetime(v, errors='coerce'))
     except Exception:
         return None
     if pd.isna(t):
         return None
-    return pd.Timestamp(t).normalize()
+    # tdx 返回的日期带 +08:00；统一成本地墙钟的 naive 日期，
+    # 否则 naive 信号日与 tz-aware 日期轴比较会全部 miss（2026-10-18 实测）。
+    if getattr(t, 'tzinfo', None) is not None:
+        t = t.tz_localize(None)
+    return t.normalize()
 
 
 def _extract_dates(obj, depth=0):
@@ -195,6 +199,14 @@ def get_event_dates(code, refresh=False):
     return dates, source, err
 
 
+def _naive_date_list(values):
+    """日期序列 -> naive normalize 的 Timestamp 列表（去掉 +08:00 时区）。"""
+    s = pd.to_datetime(pd.Series(values), errors='coerce')
+    if getattr(s.dt, 'tz', None) is not None:
+        s = s.dt.tz_localize(None)
+    return s.dt.normalize().dropna().tolist()
+
+
 # ────────────────────────── 日线日期轴 ──────────────────────────
 def _load_dates(code, end_date=None):
     """读本地缓存拿交易日数组；都没有则联网拉一次（只取日期）。"""
@@ -203,7 +215,7 @@ def _load_dates(code, end_date=None):
         if os.path.exists(fp):
             try:
                 df = pd.read_csv(fp, usecols=['date'])
-                return pd.to_datetime(df['date']).dt.normalize().tolist(), 'cache:' + os.path.basename(d)
+                return _naive_date_list(df['date']), 'cache:' + os.path.basename(d)
             except Exception:
                 pass
     try:
@@ -211,7 +223,7 @@ def _load_dates(code, end_date=None):
         df = tq.get_daily_kline_from_tdx(code, end_date or '', 1800, with_turnover=False)
         if df is None or not len(df):
             return [], 'empty'
-        return pd.to_datetime(df['date']).dt.normalize().tolist(), 'tdx'
+        return _naive_date_list(df['date']), 'tdx'
     except Exception as e:
         return [], 'error:%s' % e
 

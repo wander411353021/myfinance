@@ -149,12 +149,18 @@ def full_scan(end_date, parts=1, part=0, limit=None, quiet=False, fresh=False):
         codes = codes[:limit]
 
     rows, n_ok, n_fail = [], 0, 0
+    fail_kind = {'no_data': 0, 'short': 0, 'error': 0}
     t0 = time.time()
     for i, code in enumerate(codes):
         try:
             df = cached_kline(code, end_date, fresh=fresh)
-            if df is None or len(df) < cs.MIN_I + 50:
+            if df is None:
                 n_fail += 1
+                fail_kind['no_data'] += 1
+                continue
+            if len(df) < cs.MIN_I + 50:
+                n_fail += 1
+                fail_kind['short'] += 1
                 continue
             hits = cs.scan_recent(code, end_date, fresh=FRESH_DAYS, df=df)
             for r in hits:
@@ -163,8 +169,9 @@ def full_scan(end_date, parts=1, part=0, limit=None, quiet=False, fresh=False):
             n_ok += 1
         except Exception as e:
             n_fail += 1
-            if n_fail <= 3:
-                print('  ⚠ %s 失败: %s %s' % (code, type(e).__name__, str(e)[:60]), flush=True)
+            fail_kind['error'] += 1
+            if fail_kind['error'] <= 3:
+                print('  [!] %s 失败: %s %s' % (code, type(e).__name__, str(e)[:60]), flush=True)
         if not quiet and (i + 1) % 500 == 0:
             print('  [%d/%d] 进度 %d/%d 命中%d 失败%d 耗时%.0fs'
                   % (part + 1, parts, i + 1, len(codes), len(rows), n_fail, time.time() - t0), flush=True)
@@ -173,8 +180,10 @@ def full_scan(end_date, parts=1, part=0, limit=None, quiet=False, fresh=False):
     if len(df):
         df['code'] = df['code'].astype(str).str.zfill(6)
         df = df.drop_duplicates(subset=['code', 'signal_type', 'sig_date']).reset_index(drop=True)
-    print('  [分片%d/%d] 完成: 扫描%d只 成功%d 失败%d 命中%d 耗时%.0fs'
-          % (part + 1, parts, len(codes), n_ok, n_fail, len(df), time.time() - t0), flush=True)
+    print('  [分片%d/%d] 完成: 扫描%d只 成功%d 失败%d（无数据%d/数据不足%d/异常%d）命中%d 耗时%.0fs'
+          % (part + 1, parts, len(codes), n_ok, n_fail,
+             fail_kind['no_data'], fail_kind['short'], fail_kind['error'],
+             len(df), time.time() - t0), flush=True)
     if parts > 1:
         os.makedirs(RESULT_DIR, exist_ok=True)
         fp = os.path.join(RESULT_DIR, 'scan_hits_%s_part%d.csv' % (end_date, part))
@@ -273,6 +282,18 @@ def merge_pool(new_df, end_date):
     """新信号合并进池（去重键 code+signal_type+sig_date），返回 (池, 新增数)。"""
     os.makedirs(RESULT_DIR, exist_ok=True)
     wl = _load_pool(WATCHLIST)
+    # 旧 pressure 池迁移（2026-10-18）：无 signal_type/phase 的行不属于新管线，
+    # 标记 archived 保留可查，不再静默忽略（否则用户会误以为池子丢了）。
+    if len(wl):
+        legacy_mask = wl['signal_type'].map(_s) == ''
+        n_legacy = int(legacy_mask.sum())
+        if n_legacy:
+            wl.loc[legacy_mask, 'phase'] = rules.PHASE_ARCHIVED
+            wl.loc[legacy_mask, 'status'] = 'archived'
+            wl.loc[legacy_mask, 'archive_reason'] = 'legacy_pressure_pool'
+            wl.loc[legacy_mask, 'archive_date'] = end_date
+            print('[!] 检测到 %d 行旧 pressure 池（无 signal_type），已标记 archived，不参与新管线'
+                  % n_legacy, flush=True)
     added = 0
     if new_df is not None and len(new_df):
         new_df = new_df.copy()
@@ -315,14 +336,15 @@ def _metrics(cl, darr, vol, c35s, sig_i, sig_close, big_i=None):
     m = dict(
         days_in_pool=cur_i - sig_i,
         last_date=darr[cur_i], last_close=round(cur, 2),
-        post_ret=(cur / sig_close - 1) * 100 if sig_close else None,
-        high_ret=(hi / sig_close - 1) * 100 if sig_close else None,
-        dd=(cur / hi - 1) * 100 if hi else None,
-        ma20=float(np.nanmean(cl[max(0, cur_i - 19):cur_i + 1])),
+        post_ret=round((cur / sig_close - 1) * 100, 2) if sig_close else None,
+        high_ret=round((hi / sig_close - 1) * 100, 2) if sig_close else None,
+        dd=round((cur / hi - 1) * 100, 2) if hi else None,
+        ma20=round(float(np.nanmean(cl[max(0, cur_i - 19):cur_i + 1])), 2),
         cost35=_f(c35s[cur_i]),
         above_cost35=(bool(cur >= c35s[cur_i]) if np.isfinite(c35s[cur_i]) else None),
-        pct_1d=((cur / cl[cur_i - 1] - 1) * 100) if cur_i >= 1 and cl[cur_i - 1] > 0 else None,
-        vol_ratio_now=(float(vol[cur_i] / np.nanmean(vol[max(0, cur_i - 20):cur_i]))
+        pct_1d=(round((cur / cl[cur_i - 1] - 1) * 100, 2)
+                if cur_i >= 1 and cl[cur_i - 1] > 0 else None),
+        vol_ratio_now=(round(float(vol[cur_i] / np.nanmean(vol[max(0, cur_i - 20):cur_i])), 2)
                        if cur_i > 0 and np.nanmean(vol[max(0, cur_i - 20):cur_i]) > 0 else None),
         prev_close=float(cl[cur_i - 1]) if cur_i >= 1 else None,
         prev_cost35=_f(c35s[cur_i - 1]) if cur_i >= 1 else None,

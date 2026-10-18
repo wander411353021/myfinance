@@ -1213,13 +1213,24 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
 - **复现文档**：`docs/v3b_pipeline.md`（完整命令、字段口径、已知限制）。
 - **报告入库**：`.gitignore` 放行 `result/*_report.md`；CSV/图片/缓存仍不入库。
 - **fake_filter 口径常量**改为运行时计算（不再 assert 67,276），重跑数据不会因行数变化中断。
+- **真实环境验证（2026-10-18，chip_analyzer / Python 3.12 / eltdx 3.1.7）**：
+  - 600865 20250530 信号（60 日窗口含 2025-06-06 除权）→ `qfq_flag=1/events=1`；
+    20250930 → `0`；`capital_changes` 返回 40 条事件，主路径可用。
+  - **修复时区 bug**：tdx `date` 带 `+08:00`，naive 信号日与 tz-aware 日期轴比较会全部
+    `sig_date_missing`；统一 `tz_localize(None)` 后正常。单测必须覆盖带时区日期。
+  - `daily_pipeline.py --limit 5` 真实跑通；600865 0828 early / 0904 v3b 画像与 skill
+    历史记录逐项一致；`track_pool` 真实行情下 v3b 0904 自动发现 0907 大阳 → tracking。
 
 ## 工程修复（2026-10-18）
 - `merge_backtest.py` 原硬编码 Linux 绝对路径 → 改为 `__file__` 目录；支持
   `--nparts/--win-start/--win-end`，自动发现 `backtest_v3b_shard*.csv`，qfq_flag 等可选列透传。
 - `challenge_scan.scan_recent` 新增 `df=` 参数，供 daily_pipeline 复用本地缓存（避免重复取数）。
-- 迁移/兼容提醒：旧 pressure 池（无 `signal_type/phase` 列）不会被新管线处理；
-  如需保留，先归档或删除 `result/watchlist.csv`。
+- 迁移/兼容提醒：旧 pressure 池（无 `signal_type/phase` 列）不会参与新管线；
+  新管线会自动把这类行标记 `archived / legacy_pressure_pool` 并在运行日志提示，
+  不再静默忽略（否则用户会误以为池子丢了）。
+- 失败统计细分：`full_scan` 打印 `无数据 / 数据不足(<MIN_I+50) / 异常` 三类计数。
+- Windows GBK 终端：新代码避免使用 `⚠/ℹ` 等非 GBK 字符，统一用 `[!]/[i]`；
+  运行长脚本可加 `PYTHONIOENCODING=utf-8`。
 
 ## ⭐ 入池时点重大修正: "要刚要进入主升的, 不是已经猛涨的"(2026-10-15 reasonix, 用户定版)
 **背景**: 豆包原 `scan_pressure_breakout.detect` 入池条件 = 压制期 + 近20天**置空**(dev>13% 价格冲出压制半径) + 收>MA20。
