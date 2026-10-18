@@ -16,7 +16,8 @@ warnings.filterwarnings('ignore')
 import tdx_quant as tq
 import panic_reversal as pr
 from chip_panel import cost_series
-from algo_config import COST_PCT, COST_LABEL, CHIP_BAND_LO, CHIP_BAND_HI
+from algo_config import (COST_PCT, COST_LABEL, CHIP_BAND_LO, CHIP_BAND_HI,
+                         COST_EHLERS)
 
 LOOKBACK = 60; PRESS_VALID_MIN = 0.70; PRESS_ABOVE_MAX = 10
 PRESS_GAP_MIN = 3.0; PRESS_GAP_MAX = 20.0
@@ -71,10 +72,10 @@ def _bd(d):
 def load(code, end, datalen):
     return tq.get_daily_kline_from_tdx(code, end, datalen, with_turnover=True)
 
-def compute(df, cost_pct=None):
+def compute(df, cost_pct=None, ehlers_period=None):
     """全量计算 V10 原始线: 返回 (closes, dates_str, gt_p, gt2, c35s, base)。
 
-    cost_pct 可覆盖全局 algo_config.COST_PCT（streamlit 滑轨用）；
+    cost_pct / ehlers_period 可覆盖全局 algo_config（streamlit 滑轨用）；
     None = 使用全局默认。gt_p/gt2 的置空日保持 NaN（原始口径）。
     """
     df = df.reset_index(drop=True)
@@ -92,18 +93,21 @@ def compute(df, cost_pct=None):
     gt2 = second_stair(base, gt_p, gl_p)
     try:
         _cost_pct = COST_PCT if cost_pct is None else float(cost_pct)
-        c35 = cost_series(hi, lo, vo, turn, _cost_pct); c35s = ehlers_smooth(c35, 45)
+        _ehlers = COST_EHLERS if ehlers_period is None else int(ehlers_period)
+        c35 = cost_series(hi, lo, vo, turn, _cost_pct)
+        c35s = ehlers_smooth(c35, max(2, _ehlers))
     except Exception:
         c35s = np.full(n, np.nan)
     return cl, [_bd(d) for d in df['date'].values], gt_p, gt2, c35s, base
 
-def compute_eff(df, max_dev=0.13, cost_pct=None):
+def compute_eff(df, max_dev=0.13, cost_pct=None, ehlers_period=None):
     """compute + 置空备用线（2026-10-18 P0-2）。
 
     返回 (cl, darr, gt_p_raw, gt2_raw, gt_p_eff, gt2_eff, c35s, base)。
-    cost_pct 透传给 compute（None = 全局 algo_config.COST_PCT）。
+    cost_pct / ehlers_period 透传给 compute（None = 全局 algo_config）。
     """
-    cl, darr, gt_p, gt2, c35s, base = compute(df, cost_pct=cost_pct)
+    cl, darr, gt_p, gt2, c35s, base = compute(df, cost_pct=cost_pct,
+                                              ehlers_period=ehlers_period)
     gt_p_eff, gt2_eff = effective_lines(gt_p, gt2, base, max_dev=max_dev)
     return cl, darr, gt_p, gt2, gt_p_eff, gt2_eff, c35s, base
 
@@ -532,7 +536,8 @@ def scan_series(cl, gt_p, gt2, c35s, vol, start_i=MIN_I, end_i=None,
     return out
 
 
-def scan_recent(code, end, fresh=10, datalen=1000, df=None, mode=None, cost_pct=None):
+def scan_recent(code, end, fresh=10, datalen=1000, df=None, mode=None,
+                cost_pct=None, ehlers_period=None):
     """单只: 最近 fresh 个交易日内的 v3 / v3b / early 信号（含画像与事后 big 标签）。
 
     · 判定/画像全部只用 <=信号日 数据（无未来函数）；
@@ -552,7 +557,8 @@ def scan_recent(code, end, fresh=10, datalen=1000, df=None, mode=None, cost_pct=
             return []
     if df is None or len(df) < MIN_I + 50:
         return []
-    cl, darr, gt_p, gt2, gt_p_eff, gt2_eff, c35s, _ = compute_eff(df, cost_pct=cost_pct)
+    cl, darr, gt_p, gt2, gt_p_eff, gt2_eff, c35s, _ = compute_eff(
+        df, cost_pct=cost_pct, ehlers_period=ehlers_period)
     vol = df['volume'].values.astype(float)
     hi = df['high'].values.astype(float)
     lo = df['low'].values.astype(float)

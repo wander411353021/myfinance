@@ -22,7 +22,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from price_segmenter_v10 import run_segmentation
-from algo_config import COST_PCT as DEFAULT_COST_PCT
+from algo_config import COST_PCT as DEFAULT_COST_PCT, COST_EHLERS as DEFAULT_COST_EHLERS
 from tdx_quant import (load_block_csvs, load_stock_list, BLOCK_KEYS)
 
 # ── 路径 ──
@@ -112,7 +112,8 @@ def fetch_tdx_kline(code, end_date, datalen=800):
 
 
 # ── 计算 + 存 session（绘图代码零改动）──
-def compute_and_store(df, tail_days, name, code=None, end_date=None, cost_pct=None):
+def compute_and_store(df, tail_days, name, code=None, end_date=None,
+                      cost_pct=None, ehlers_period=None):
     fd, tmp_png = tempfile.mkstemp(suffix=".png")
     os.close(fd)
     out = run_segmentation(df, tail_days=tail_days, name=name, save_path=tmp_png,
@@ -120,7 +121,8 @@ def compute_and_store(df, tail_days, name, code=None, end_date=None, cost_pct=No
                            hide_overlay_lines=False,   # 显示 Grid Target 粉阶梯 + 第二阶梯
                            show_reg_line=False,          # REG 基准线不显示(用户 2026-10-14)
                            show_v3b=True,                # v3b 二次买点信号面板(2026-10-16)
-                           cost_pct=cost_pct)            # 滑轨覆盖成本线分位
+                           cost_pct=cost_pct,            # 滑轨覆盖成本线分位
+                           ehlers_period=ehlers_period)  # 滑轨覆盖 Ehlers 平滑周期
     st.session_state["last_png"] = tmp_png
     st.session_state["last_out"] = out
     st.session_state["last_name"] = name
@@ -130,6 +132,7 @@ def compute_and_store(df, tail_days, name, code=None, end_date=None, cost_pct=No
     st.session_state["last_end"] = end_date
     st.session_state["last_cost_pct"] = cost_pct
     st.session_state["last_tail"] = tail_days
+    st.session_state["last_ehlers"] = ehlers_period
     return out
 
 
@@ -137,9 +140,10 @@ def compute_and_store(df, tail_days, name, code=None, end_date=None, cost_pct=No
 def display_last():
     out = st.session_state["last_out"]
     _cp = st.session_state.get("last_cost_pct")
+    _eh = st.session_state.get("last_ehlers") or DEFAULT_COST_EHLERS
     if _cp is not None:
-        st.markdown(f"**当前成本线：COST{int(round(_cp * 100))}**"
-                    f"（COST_PCT={_cp:.2f}，Ehlers45）")
+        st.markdown(f"**当前成本线：COST{int(round(_cp * 100))} Ehlers{int(_eh)}**"
+                    f"（COST_PCT={_cp:.2f}，Ehlers 周期={int(_eh)}）")
     st.image(st.session_state["last_png"], width='stretch')
 
     c_result, bs_signal, bs_reason, bs_strength, all_levels = out
@@ -261,6 +265,11 @@ with st.sidebar:
         min_value=0.10, max_value=0.90,
         value=float(DEFAULT_COST_PCT), step=0.01, format="%.2f",
     )
+    ehlers_period = st.slider(
+        "成本线平滑周期 Ehlers（默认 45）",
+        min_value=5, max_value=120,
+        value=int(DEFAULT_COST_EHLERS), step=1,
+    )
     auto_recompute = st.checkbox("自动重算（拖动滑轨/窗口立即重绘）", value=True)
     go = st.button("拉取并出图", type="primary", width='stretch')
 
@@ -289,7 +298,7 @@ if go or auto_go:
         st.success(f"已拉取 {len(df_full)} 根，日期 {df_full['date'].iloc[0].date()} ~ {df_full['date'].iloc[-1].date()}（前复权）")
         _end_str = end_date.strftime("%Y%m%d") if hasattr(end_date, "strftime") else str(end_date).replace("-", "")
         compute_and_store(df_full, tail_days, f"{code}", code=code, end_date=_end_str,
-                          cost_pct=cost_pct)
+                          cost_pct=cost_pct, ehlers_period=ehlers_period)
         # 注意：同行业列表不再随主图加载自动刷新（避免卡顿与误刷新）。
         # 仅在输入框手动改码 / 板块导航点股票时清空，需用户手动点「刷新同行业个股」按钮重新查询。
     elif df_full is not None:
@@ -302,13 +311,16 @@ if auto_recompute and not go and not auto_go:
     _last_end = st.session_state.get("last_end")
     _last_cost = st.session_state.get("last_cost_pct")
     _last_tail = st.session_state.get("last_tail")
+    _last_ehlers = st.session_state.get("last_ehlers")
     _end_now = end_date.strftime("%Y%m%d") if hasattr(end_date, "strftime") else str(end_date).replace("-", "")
     if (_last_df is not None and _last_code
             and str(code) == str(_last_code) and _end_now == str(_last_end)
-            and (_last_cost != cost_pct or _last_tail != tail_days)):
+            and (_last_cost != cost_pct or _last_tail != tail_days
+                 or _last_ehlers != ehlers_period)):
         with st.spinner("按新参数重算…"):
             compute_and_store(_last_df, tail_days, str(_last_code),
-                              code=_last_code, end_date=_last_end, cost_pct=cost_pct)
+                              code=_last_code, end_date=_last_end,
+                              cost_pct=cost_pct, ehlers_period=ehlers_period)
 
 # ── 双向组件声明（成分股列表）──
 # 注意：st.components.v1.html 是静态 iframe，不会回传值；必须用 declare_component。

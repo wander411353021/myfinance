@@ -126,9 +126,10 @@ python challenge_scan.py assess 600550 20261016 20260904
 - **全局参数入口**：`algo_config.py`（`COST_PCT=0.50` 主成本线；`COST_PCT_LOW/HIGH` 板块三档；
   `CHIP_BAND_LO/HI` 带宽）。环境变量可覆盖。已接入 `challenge_scan` / `price_segmenter_v10` /
   `concept_chip_scan` / `pages/1_Concept_Chip` / `_compare_k`。
-- **streamlit 滑轨**：侧边栏 `成本线分位 COST_PCT`（0.10–0.90，步长 0.01），拖动后点
-  「拉取并出图」临时调整本页；不修改全局默认。**自动重算**默认开启：拖动滑轨/tail_days
-  后用上次行情重绘（不重新取数）；改代码/日期仍需点按钮。
+  Ehlers 平滑周期：`COST_EHLERS=45`（主成本线）/ `COST_HIGH_EHLERS=20`（COST75）。
+- **streamlit 滑轨**：侧边栏 `成本线分位 COST_PCT`（0.10–0.90，步长 0.01）+ `成本线平滑周期 Ehlers`
+  （5–120，步长 1），拖动后自动重绘；不修改全局默认。
+- **自动重算**默认开启：拖动滑轨/tail_days 后用上次行情重绘（不重新取数）；改代码/日期仍需点按钮。
 - ⚠️ `dev35` 字段名保留兼容，值已是主成本线偏离；历史回测 CSV 仍是 COST35 口径。
 
 ---
