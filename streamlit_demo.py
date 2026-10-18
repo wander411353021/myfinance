@@ -22,6 +22,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from price_segmenter_v10 import run_segmentation
+from algo_config import COST_PCT as DEFAULT_COST_PCT
 from tdx_quant import (load_block_csvs, load_stock_list, BLOCK_KEYS)
 
 # ── 路径 ──
@@ -111,14 +112,15 @@ def fetch_tdx_kline(code, end_date, datalen=800):
 
 
 # ── 计算 + 存 session（绘图代码零改动）──
-def compute_and_store(df, tail_days, name, code=None, end_date=None):
+def compute_and_store(df, tail_days, name, code=None, end_date=None, cost_pct=None):
     fd, tmp_png = tempfile.mkstemp(suffix=".png")
     os.close(fd)
     out = run_segmentation(df, tail_days=tail_days, name=name, save_path=tmp_png,
                            show_chip=True, code=code, end_date=end_date,
                            hide_overlay_lines=False,   # 显示 Grid Target 粉阶梯 + 第二阶梯
                            show_reg_line=False,          # REG 基准线不显示(用户 2026-10-14)
-                           show_v3b=True)                # v3b 二次买点信号面板(2026-10-16)
+                           show_v3b=True,                # v3b 二次买点信号面板(2026-10-16)
+                           cost_pct=cost_pct)            # 滑轨覆盖成本线分位
     st.session_state["last_png"] = tmp_png
     st.session_state["last_out"] = out
     st.session_state["last_name"] = name
@@ -244,6 +246,11 @@ with st.sidebar:
         "显示窗口 tail_days（画最后 N 根）",
         min_value=60, max_value=2000, value=150, step=10,
     )
+    cost_pct = st.slider(
+        "成本线分位 COST_PCT（0.50 = COST50；拖动后点「拉取并出图」）",
+        min_value=0.10, max_value=0.90,
+        value=float(DEFAULT_COST_PCT), step=0.01, format="%.2f",
+    )
     go = st.button("拉取并出图", type="primary", width='stretch')
 
 # 板块导航 / 同行业列表点行 / 手动「拉取并出图」都会走到这里
@@ -269,14 +276,12 @@ if go or auto_go:
                            f"该股票可能已退市 / 停牌 / 无行情数据，已保留上一只股票的图表。")
     if df_full is not None and len(df_full) >= 2:
         st.success(f"已拉取 {len(df_full)} 根，日期 {df_full['date'].iloc[0].date()} ~ {df_full['date'].iloc[-1].date()}（前复权）")
-        try:
-            from challenge_scan import COST_LABEL as _COST_LABEL, COST_PCT as _COST_PCT
-        except Exception:
-            _COST_LABEL, _COST_PCT = 'COST50', 0.50
-        st.markdown(f"**当前成本线：{_COST_LABEL}**（COST_PCT={_COST_PCT:.2f}，Ehlers45）"
-                    f" · 修改 COST_PCT 后需重启服务并重新点「拉取并出图」")
+        _COST_LABEL = 'COST%d' % int(round(cost_pct * 100))
+        st.markdown(f"**当前成本线：{_COST_LABEL}**（COST_PCT={cost_pct:.2f}，Ehlers45）"
+                    f" · 拖动滑轨后重新点「拉取并出图」")
         _end_str = end_date.strftime("%Y%m%d") if hasattr(end_date, "strftime") else str(end_date).replace("-", "")
-        compute_and_store(df_full, tail_days, f"{code}", code=code, end_date=_end_str)
+        compute_and_store(df_full, tail_days, f"{code}", code=code, end_date=_end_str,
+                          cost_pct=cost_pct)
         # 注意：同行业列表不再随主图加载自动刷新（避免卡顿与误刷新）。
         # 仅在输入框手动改码 / 板块导航点股票时清空，需用户手动点「刷新同行业个股」按钮重新查询。
     elif df_full is not None:

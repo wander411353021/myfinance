@@ -1271,6 +1271,8 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
   - `COST_PCT_LOW=0.35` / `COST_PCT_HIGH=0.75`：板块/筹码三档的下沿/上沿（必须保持 LOW<COST_PCT<HIGH）
   - `CHIP_BAND_LO=0.10` / `CHIP_BAND_HI=0.90`：`signal_profile` 的带宽/获利盘
 - 环境变量可临时覆盖，例如 `COST_PCT=0.35 python -m streamlit run streamlit_demo.py`。
+- **streamlit 侧边栏滑轨**：`成本线分位 COST_PCT`（0.10–0.90，步长 0.01），拖动后点
+  「拉取并出图」即可临时调整本页成本线/信号/填充；不改 `algo_config.py` 的全局默认。
 - 已接入：`challenge_scan.py` / `price_segmenter_v10.py` / `concept_chip_scan.py` /
   `pages/1_Concept_Chip.py` / `_compare_k.py`。
 - ⚠️ `signal_profile` 的 `dev35` 字段名保留兼容，**值已是主成本线偏离**；

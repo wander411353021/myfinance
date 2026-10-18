@@ -566,7 +566,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 v3b_profiles=None,
                                 v3b_early_dates=None,
                                 v3_sig_dates=None,
-                                bigline_dates=None):
+                                bigline_dates=None,
+                                cost_pct=None):
     """5面板: K线 + 成交量 + 买卖信号(柱高=突破分量) + 阻力/支撑位生命周期 + 极速杀跌反转signal。
     panic_info: panic_reversal.signal() 返回的 dict(含 signal 状态与门控明细),None 则面板显示提示。
     show_chip=True(2026-09-29): 精简为 3 面板(K线+量+筹码fengwo色带), 隐藏恐慌反转/黄金坑方波面板,
@@ -1260,9 +1261,13 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             try:
                 from chip_panel import cost_series as _cs2
                 try:
-                    from algo_config import (COST_PCT as _COST_PCT, COST_LABEL as _COST_LABEL,
-                                             COST_PCT_HIGH as _COST_HIGH,
+                    from algo_config import (COST_PCT_HIGH as _COST_HIGH,
                                              COST_HIGH_LABEL as _COST_HIGH_LABEL)
+                    if cost_pct is not None:
+                        _COST_PCT = float(cost_pct)
+                        _COST_LABEL = 'COST%d' % int(round(_COST_PCT * 100))
+                    else:
+                        from algo_config import COST_PCT as _COST_PCT, COST_LABEL as _COST_LABEL
                 except Exception:
                     _COST_PCT, _COST_LABEL = 0.50, 'COST50'
                     _COST_HIGH, _COST_HIGH_LABEL = 0.75, 'COST75'
@@ -1387,7 +1392,7 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                      code=None, end_date=None, panic_index=None,
                      enable_panic=False, show_chip=False,
                      hide_overlay_lines=False, show_reg_line=False, mark_date=None,
-                     show_v3b=False):
+                     show_v3b=False, cost_pct=None):
     # hide_overlay_lines=True(2026-10-01 用户): 隐藏 MA120/EMA/REG基准/Grid Target 主目标价/第二阶梯 5条线,
     # 仅保留 K线+UP/DOWN zone+Gap+Key candle+Resistance+COST 系列; 恢复=改回 False。
     """fast_mode: True=跳过画图，返回 bool（最后一天有买入信号）。
@@ -1451,7 +1456,8 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
             from challenge_scan import scan_series as _cs_series
             from challenge_scan import bigline_hits as _cs_bigline
             # P0-2: raw + eff 两套线；P0-1: scan_series 结构冷却；P1-1: v3 一并显示
-            _cl, _darr, _gtp, _gt2, _gtp_e, _gt2_e, _c35, _ = _cs_compute_eff(df_ohlc)
+            _cl, _darr, _gtp, _gt2, _gtp_e, _gt2_e, _c35, _ = _cs_compute_eff(
+                df_ohlc, cost_pct=cost_pct)
             _vol = df_ohlc['volume'].values.astype(float)
             _hi = df_ohlc['high'].values.astype(float)
             _lo = df_ohlc['low'].values.astype(float)
@@ -1509,5 +1515,6 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                                 v3b_profiles=v3b_profiles,
                                 v3b_early_dates=v3b_early_dates,
                                 v3_sig_dates=v3_sig_dates,
-                                bigline_dates=bigline_dates)
+                                bigline_dates=bigline_dates,
+                                cost_pct=cost_pct)
     return c_result, bs_signal, bs_reason, bs_strength, all_levels
