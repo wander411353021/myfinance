@@ -16,8 +16,12 @@
     CHIP_BAND_HI    默认 0.90
 
 Ehlers SuperSmoother 平滑周期:
-    COST_EHLERS      默认 10  → 主成本线
+    COST_EHLERS      默认 10  → 主成本线 A
     COST_HIGH_EHLERS 默认 20  → COST75 筹码峰上沿
+
+参考成本线 B（仅主图参考，不参与信号判定）:
+    COST2_PCT        默认 0.50 → COST50
+    COST2_EHLERS     默认 20
 
 环境变量可临时覆盖，例如:
     COST_PCT=0.50 python -m streamlit run streamlit_demo.py
@@ -45,6 +49,10 @@ CHIP_BAND_HI = _f('CHIP_BAND_HI', '0.90')
 COST_EHLERS = int(_f('COST_EHLERS', '10'))
 COST_HIGH_EHLERS = int(_f('COST_HIGH_EHLERS', '20'))
 
+# 参考成本线 B（2026-10-18 用户要求：独立分位/周期，主图红色线+红色填充，不参与信号）
+COST2_PCT = _f('COST2_PCT', '0.50')
+COST2_EHLERS = int(_f('COST2_EHLERS', '20'))
+
 
 def _label(p):
     return 'COST%d' % int(round(p * 100))
@@ -54,3 +62,4 @@ COST_LABEL = _label(COST_PCT)
 COST_LOW_LABEL = _label(COST_PCT_LOW)
 COST_MID_LABEL = _label(COST_PCT_MID)
 COST_HIGH_LABEL = _label(COST_PCT_HIGH)
+COST2_LABEL = _label(COST2_PCT)

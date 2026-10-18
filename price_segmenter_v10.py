@@ -577,7 +577,9 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 v3_sig_dates=None,
                                 bigline_dates=None,
                                 cost_pct=None,
-                                ehlers_period=None):
+                                ehlers_period=None,
+                                cost2_pct=None,
+                                cost2_ehlers=None):
     """5面板: K线 + 成交量 + 买卖信号(柱高=突破分量) + 阻力/支撑位生命周期 + 极速杀跌反转signal。
     panic_info: panic_reversal.signal() 返回的 dict(含 signal 状态与门控明细),None 则面板显示提示。
     show_chip=True(2026-09-29): 精简为 3 面板(K线+量+筹码fengwo色带), 隐藏恐慌反转/黄金坑方波面板,
@@ -1274,7 +1276,9 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                     from algo_config import (COST_PCT_HIGH as _COST_HIGH,
                                              COST_HIGH_LABEL as _COST_HIGH_LABEL,
                                              COST_EHLERS as _COST_EHLERS,
-                                             COST_HIGH_EHLERS as _COST_HIGH_EHLERS)
+                                             COST_HIGH_EHLERS as _COST_HIGH_EHLERS,
+                                             COST2_PCT as _COST2_PCT_DEFAULT,
+                                             COST2_EHLERS as _COST2_EHLERS_DEFAULT)
                     if cost_pct is not None:
                         _COST_PCT = float(cost_pct)
                         _COST_LABEL = 'COST%d' % int(round(_COST_PCT * 100))
@@ -1284,6 +1288,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                     _COST_PCT, _COST_LABEL = 0.90, 'COST90'
                     _COST_HIGH, _COST_HIGH_LABEL = 0.75, 'COST75'
                     _COST_EHLERS, _COST_HIGH_EHLERS = 10, 20
+                    _COST2_PCT_DEFAULT, _COST2_EHLERS_DEFAULT = 0.50, 20
                 _c35 = _cs2(_H, _L, _V, _turn, _COST_PCT)     # 全量长度
                 _c75 = _cs2(_H, _L, _V, _turn, _COST_HIGH)    # 全量长度, 筹码峰上沿
                 def _ehlers_smooth(_x, _period):
@@ -1303,20 +1308,36 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                         _out[_k] = (_c1 * (_x[_k] + _x[_k - 1]) / 2
                                     + _c2 * _out[_k - 1] + _c3 * _out[_k - 2])
                     return _out
-                # COST 成本线（Ehlers 周期可调；分位由 COST_PCT 控制）
+                # A 主成本线（绿；Ehlers 周期可调；分位由 COST_PCT 控制）
                 _eh = int(ehlers_period) if ehlers_period is not None else int(_COST_EHLERS)
                 _eh = max(2, _eh)
                 _sm = _ehlers_smooth(_c35, _eh)
                 _sm_n = _sm[offset:offset + n]
                 _x = np.arange(n)
+                # B 参考成本线（红；独立分位/周期，仅视觉参考，不参与信号）
+                _COST2_PCT = float(cost2_pct) if cost2_pct is not None else float(_COST2_PCT_DEFAULT)
+                _COST2_LABEL = 'COST%d' % int(round(_COST2_PCT * 100))
+                _eh2 = int(cost2_ehlers) if cost2_ehlers is not None else int(_COST2_EHLERS_DEFAULT)
+                _eh2 = max(2, _eh2)
+                _c2line = _cs2(_H, _L, _V, _turn, _COST2_PCT)
+                _sm2 = _ehlers_smooth(_c2line, _eh2)
+                _sm2_n = _sm2[offset:offset + n]
+                _below2 = lows < _sm2_n
+                if np.any(_below2):
+                    ax0.fill_between(_x, lows, _sm2_n, where=_below2,
+                                     color='#E53935', alpha=0.16, zorder=1.3,
+                                     label='跌破' + _COST2_LABEL + '(参考红)')
+                ax0.plot(_x, _sm2_n, color='#B71C1C', lw=1.1, alpha=0.9, linestyle='--',
+                         zorder=2.8, label=_COST2_LABEL + ' Ehlers%d(参考)' % _eh2)
+                # A 主成本线画在 B 之上，保持主线可读
                 ax0.plot(_x, _sm_n, color='#1B5E20', lw=1.3, alpha=0.95, linestyle='--',
-                         zorder=3, label=_COST_LABEL + ' Ehlers%d' % _eh)
-                # 跌破填充
+                         zorder=3, label=_COST_LABEL + ' Ehlers%d(主)' % _eh)
+                # 跌破 A 主成本线填充（透明度调低，避免盖住 B 红线）
                 _below = lows < _sm_n
                 if np.any(_below):
                     ax0.fill_between(_x, lows, _sm_n, where=_below,
-                                     color='#2E7D32', alpha=0.30, zorder=1.5,
-                                     label='跌破' + _COST_LABEL + '(杀破筹码区)')
+                                     color='#2E7D32', alpha=0.15, zorder=1.5,
+                                     label='跌破' + _COST_LABEL + '(主)')
                 # 2026-10-04 用户: 恢复 COST75 橙色线(Ehlers20, 仅放量段EMA10>3%显示);
                 #   紫色填充暂不恢复(横盘震荡段 lows<COST75 太频繁, 视觉杂乱, 待优化)
                 _alpha_t = 2.0 / 11.0
@@ -1411,7 +1432,8 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                      code=None, end_date=None, panic_index=None,
                      enable_panic=False, show_chip=False,
                      hide_overlay_lines=False, show_reg_line=False, mark_date=None,
-                     show_v3b=False, cost_pct=None, ehlers_period=None):
+                     show_v3b=False, cost_pct=None, ehlers_period=None,
+                     cost2_pct=None, cost2_ehlers=None):
     # hide_overlay_lines=True(2026-10-01 用户): 隐藏 MA120/EMA/REG基准/Grid Target 主目标价/第二阶梯 5条线,
     # 仅保留 K线+UP/DOWN zone+Gap+Key candle+Resistance+COST 系列; 恢复=改回 False。
     """fast_mode: True=跳过画图，返回 bool（最后一天有买入信号）。
@@ -1536,5 +1558,7 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                                 v3_sig_dates=v3_sig_dates,
                                 bigline_dates=bigline_dates,
                                 cost_pct=cost_pct,
-                                ehlers_period=ehlers_period)
+                                ehlers_period=ehlers_period,
+                                cost2_pct=cost2_pct,
+                                cost2_ehlers=cost2_ehlers)
     return c_result, bs_signal, bs_reason, bs_strength, all_levels

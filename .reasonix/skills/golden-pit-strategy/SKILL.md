@@ -1271,10 +1271,14 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
   - `COST_PCT_LOW=0.35` / `COST_PCT_MID=0.50` / `COST_PCT_HIGH=0.75`：板块/筹码三档
     （与主成本线独立，必须保持 LOW<MID<HIGH）
   - `CHIP_BAND_LO=0.10` / `CHIP_BAND_HI=0.90`：`signal_profile` 的带宽/获利盘
-  - `COST_EHLERS=10` / `COST_HIGH_EHLERS=20`：主成本线 / COST75 的 Ehlers 平滑周期
+  - `COST_EHLERS=10` / `COST_HIGH_EHLERS=20`：主成本线 A / COST75 的 Ehlers 平滑周期
+  - `COST2_PCT=0.50` / `COST2_EHLERS=20`：参考成本线 B（仅主图红色线+红色填充，不参与信号）
 - 环境变量可临时覆盖，例如 `COST_PCT=0.35 python -m streamlit run streamlit_demo.py`。
-- **streamlit 侧边栏滑轨**：`成本线分位 COST_PCT`（0.10–0.90，步长 0.01）+ `成本线平滑周期 Ehlers`
-  （5–120，步长 1），拖动后自动重算本页；不改 `algo_config.py` 的全局默认。
+- **streamlit 侧边栏滑轨（A/B 区分）**：
+  - `主成本线 A · 分位` / `主成本线 A · Ehlers 周期`：参与 v3/v3b/early/结构冷却；
+  - `参考成本线 B · 分位` / `参考成本线 B · Ehlers 周期`：仅主图红色线与红色填充，不参与信号。
+  - 拖动任一滑轨自动重算本页；不改 `algo_config.py` 全局默认。
+- **主图颜色**：A = 深绿虚线 + 绿色填充（alpha 0.15）；B = 深红虚线 + 红色填充（alpha 0.16）。
 - **自动重算开关**（默认开）：拖动滑轨或 tail_days 后，用上次行情直接重绘，不重新取数；
   改代码/结束日期后仍需点「拉取并出图」。
 - 已接入：`challenge_scan.py` / `price_segmenter_v10.py` / `concept_chip_scan.py` /

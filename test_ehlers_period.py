@@ -32,7 +32,11 @@ class TestEhlersPeriod(unittest.TestCase):
 
     def test_signatures_expose_period(self):
         for fn in (compute, scan_recent, run_segmentation, plot_price_segmentation_v10):
-            self.assertIn('ehlers_period', inspect.signature(fn).parameters, fn.__name__)
+            params = inspect.signature(fn).parameters
+            self.assertIn('ehlers_period', params, fn.__name__)
+            if fn in (run_segmentation, plot_price_segmentation_v10):
+                self.assertIn('cost2_pct', params, fn.__name__)
+                self.assertIn('cost2_ehlers', params, fn.__name__)
 
 
 if __name__ == '__main__':
