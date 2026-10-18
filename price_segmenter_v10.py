@@ -1355,6 +1355,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     tp = list(range(0, n, ts2)); tl = [_bd(dates[i]) for i in tp]
     axes[-1].set_xticks(tp); axes[-1].set_xticklabels(tl, rotation=45, fontsize=7)
     # ── v3b 信号画像信息块(2026-10-16): 每个信号日的多维指标, 画在图底部 ──
+    _n_prof = 0
     if _has_prof and v3b_sig_dates:
         _win_dates = {_bd(d) for d in ohlc['date'].values}  # 只显示窗口内(图中可见)的信号
         _blk = []
@@ -1366,12 +1367,15 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 continue
             _blk.append(f"■ {_ds}  收{_pf['close']}  |  量比{_pf['vol_ratio']}x  |  回踩{_pf['rec_depth']}%({_pf['rec_days']}天)  |  冷却{_pf['cool_days']}天({_pf['hist_touch']}次摸线)")
             _blk.append(f"    距前高{_pf['dist_high']}%  |  dev35={_pf['dev35']}%  |  带宽{_pf['band']}%  |  获利≈{_pf['profit']:.0%}  |  gap{_pf['gap']}%")
+        _n_prof = len(_blk) // 2
         if _blk:
             fig.text(0.012, 0.006, '\n'.join(_blk), fontsize=8.5, va='bottom',
                      family='monospace', color='#c8cedd', linespacing=1.5)
     # tight_layout 在渲染前基于最终内容计算间距，比 constrained_layout 更稳定可靠
     if _has_prof and v3b_sig_dates:
-        fig.tight_layout(pad=1.5, rect=(0, 0.05 + 0.05 * len(v3b_sig_dates), 1, 1))
+        # 2026-10-18 修复: 底部留白按“窗口内实际画像数”计算，不能用全历史 v3b 信号数
+        # （300437 全历史 8 个、窗口内仅 2 个 → 旧逻辑把主图压到上半部分）
+        fig.tight_layout(pad=1.5, rect=(0, 0.05 + 0.05 * _n_prof, 1, 1))
     else:
         fig.tight_layout(pad=1.5)
     if save_path:
