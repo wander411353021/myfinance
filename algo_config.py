@@ -4,7 +4,7 @@
 以后改成本线/筹码分位，只改这个文件（或用环境变量覆盖），不要在各脚本里散改。
 
 主成本线（信号判定 / V10 深绿线 / 结构冷却 / early / v3b / v3）:
-    COST_PCT        默认 0.75  → COST75
+    COST_PCT        默认 0.70  → COST70
 
 板块/筹码三档（必须保持低<中<高；与主成本线独立）:
     COST_PCT_LOW    默认 0.35  → 下沿（受压/跌破）
@@ -16,12 +16,12 @@
     CHIP_BAND_HI    默认 0.90
 
 Ehlers SuperSmoother 平滑周期:
-    COST_EHLERS      默认 25  → 主成本线 A
+    COST_EHLERS      默认 90  → 主成本线 A
     COST_HIGH_EHLERS 默认 20  → COST75 筹码峰上沿
 
 参考成本线 B（仅主图参考，不参与信号判定）:
     COST2_PCT        默认 0.35 → COST35
-    COST2_EHLERS     默认 10
+    COST2_EHLERS     默认 90
 
 环境变量可临时覆盖，例如:
     COST_PCT=0.50 python -m streamlit run streamlit_demo.py
@@ -36,7 +36,7 @@ def _f(name, default):
         return float(default)
 
 
-COST_PCT = _f('COST_PCT', '0.75')
+COST_PCT = _f('COST_PCT', '0.70')
 COST_PCT_LOW = _f('COST_PCT_LOW', '0.35')
 COST_PCT_MID = _f('COST_PCT_MID', '0.50')
 COST_PCT_HIGH = _f('COST_PCT_HIGH', '0.75')
@@ -44,14 +44,14 @@ CHIP_BAND_LO = _f('CHIP_BAND_LO', '0.10')
 CHIP_BAND_HI = _f('CHIP_BAND_HI', '0.90')
 
 # Ehlers SuperSmoother 平滑周期（2026-10-18 可调）
-#   COST_EHLERS        主成本线（COST_PCT）的平滑周期，默认 25
+#   COST_EHLERS        主成本线（COST_PCT）的平滑周期，默认 90
 #   COST_HIGH_EHLERS   COST75 筹码峰上沿的平滑周期，默认 20
-COST_EHLERS = int(_f('COST_EHLERS', '25'))
+COST_EHLERS = int(_f('COST_EHLERS', '90'))
 COST_HIGH_EHLERS = int(_f('COST_HIGH_EHLERS', '20'))
 
 # 参考成本线 B（2026-10-18 用户要求：独立分位/周期，主图红色线+红色填充，不参与信号）
 COST2_PCT = _f('COST2_PCT', '0.35')
-COST2_EHLERS = int(_f('COST2_EHLERS', '10'))
+COST2_EHLERS = int(_f('COST2_EHLERS', '90'))
 
 
 def _label(p):

@@ -1267,13 +1267,13 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
 
 ### 全局参数入口（2026-10-18 用户定版）
 - **唯一入口 `algo_config.py`**，以后只改这里，不要再散改各脚本：
-  - `COST_PCT=0.75`：主成本线（v3 / v3b / early / 结构冷却 / V10 深绿线）
+  - `COST_PCT=0.70`：主成本线（v3 / v3b / early / 结构冷却 / V10 深绿线）
   - `COST_PCT_LOW=0.35` / `COST_PCT_MID=0.50` / `COST_PCT_HIGH=0.75`：板块/筹码三档
     （与主成本线独立，必须保持 LOW<MID<HIGH）
   - `CHIP_BAND_LO=0.10` / `CHIP_BAND_HI=0.90`：`signal_profile` 的带宽/获利盘
-  - `COST_EHLERS=25` / `COST_HIGH_EHLERS=20`：主成本线 A / COST75 的 Ehlers 平滑周期
-  - `COST2_PCT=0.35` / `COST2_EHLERS=10`：参考成本线 B（仅主图红色线+红色填充，不参与信号）
-  - 代码变量 `c35s` 与历史文档里的“COST35”都指**主成本线 A**，实际分位跟随 `COST_PCT`（当前 COST75），不是固定 35%
+  - `COST_EHLERS=90` / `COST_HIGH_EHLERS=20`：主成本线 A / COST75 的 Ehlers 平滑周期
+  - `COST2_PCT=0.35` / `COST2_EHLERS=90`：参考成本线 B（仅主图红色线+红色填充，不参与信号）
+  - 代码变量 `c35s` 与历史文档里的“COST35”都指**主成本线 A**，实际分位跟随 `COST_PCT`（当前 COST70），不是固定 35%
 - 环境变量可临时覆盖，例如 `COST_PCT=0.50 python -m streamlit run streamlit_demo.py`。
 - **streamlit 侧边栏滑轨（A/B 区分）**：
   - `主成本线 A · 分位` / `主成本线 A · Ehlers 周期`：参与 v3/v3b/early/结构冷却；
@@ -1297,9 +1297,9 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
   运行长脚本可加 `PYTHONIOENCODING=utf-8`。
 
 ### 2026-10-18~19 成本线 A/B 与 V10 布局
-- **2026-10-19 定版**：主成本线 A = **COST75 / Ehlers25**；参考成本线 B = **COST35 / Ehlers10**（B 不参与信号）。
-- **信号口径 = 主成本线 A（COST75 / Ehlers25）**：v3 / v3b / early / 结构冷却 / 回测 / 每日池全部使用 A。
-- **参考成本线 B（COST35 / Ehlers10）**：仅主图红色线与红色填充（alpha 0.30），**不参与信号**。
+- **2026-10-19 定版**：主成本线 A = **COST70 / Ehlers90**；参考成本线 B = **COST35 / Ehlers90**（B 不参与信号）。
+- **信号口径 = 主成本线 A（COST70 / Ehlers90）**：v3 / v3b / early / 结构冷却 / 回测 / 每日池全部使用 A。
+- **参考成本线 B（COST35 / Ehlers90）**：仅主图红色线与红色填充（alpha 0.30），**不参与信号**。
 - 当日曾尝试把信号切到 B，已 **revert**；不要再把 B 当信号线。
 - streamlit 四条滑轨：`主成本线 A · 分位` / `主成本线 A · Ehlers 周期` / `参考成本线 B · 分位` / `参考成本线 B · Ehlers 周期`；A 绿填充 alpha 0.15。
 - **V10 底部信号画像文字已移除**：不再打印 `■ 日期 收… 量比… 回踩…`；`fig.tight_layout(pad=1.5)` 铺满全高。
