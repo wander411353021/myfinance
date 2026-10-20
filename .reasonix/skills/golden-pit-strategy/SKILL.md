@@ -1008,6 +1008,7 @@ if confirmed:
 - **改动**: 第一阶梯(洋红#D81B60)基准从 `max(reg120, reg250)` 改成 **COST35 Ehlers60**；第二阶梯(深紫#4A148C)仍 REG（已隐藏）
 - **原因**: REG回归线滞后大, 阶梯线跟不上价格变化; COST35是筹码峰下沿, 更贴近价格
 - **600865 600天/150日窗口验证（2026-10-20）**: REG max 5+5 目标价/收盘中位 **+29.0%**、>收盘×1.2 为 **103/150** 天；COST35 Ehlers30 中位 +14.2%、>1.2× 36 天；**COST35 Ehlers60 中位 +16.6%、>1.2× 56 天**。用户选择 E60：比 E30 更平滑，避免格栅线过度缓动。
+- **2026-10-20 动态 min_level（用户批准，V10 已启用）**: 上涨/震荡 `min_level=4`（+0%）；昨日收盘 < base 时 `min_level_downtrend=0`（允许目标价低于基准，最低 -9%）。50只池/300日对比：static median +12.7%、>base 100%、cross 3.4、lvl 3.3；dyn0 median +7.6%、>base 56.7%、cross 5.3、lvl 8.9（dyn2：+9.3%、56.7%、4.5、6.7）。300251：static +17.3% → dyn0 +10.4%，>base 100% → 61%。代价是穿越/变档增加，先按用户选择启用 dyn0。
 - **实现**: Grid Target 块先算 COST35 Ehlers60 (`_base35`), 然后 `compute_grid_target_price(closes, _base35, _base35, ...)`; 第二阶梯同理
 - **streamlit**: `streamlit_demo.py` 直接 `from price_segmenter_v10 import run_segmentation`, 改代码自动生效
 - **档位不变**: `levels=(-0.09,-0.06,-0.03,0.00,0.03,0.06,0.09,0.12)`, `down_confirm=10`, 第二阶梯 confirm=40 慢速+粉线档+2档

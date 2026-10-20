@@ -702,7 +702,9 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             if _base_gt is not None:
                 _gt, _gl = _prgt.compute_grid_target_price(
                     _fc_gt, _base_gt, _base_gt,
-                    levels=_glv_def, max_dev=None, down_confirm=10)
+                    levels=_glv_def, max_dev=None, down_confirm=10,
+                    min_level=4, min_level_downtrend=0,
+                    dynamic_min_level=True, down_buffer=0.0)
                 _gt_win = _gt[offset:offset + n]
                 if np.any(np.isfinite(_gt_win)):
                     ax0.plot(x, _gt_win, color='#D81B60', lw=1.6, alpha=1.0, zorder=13,

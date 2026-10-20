@@ -71,6 +71,23 @@ class TestGridTargetP0(unittest.TestCase):
                                                min_level=0, base_mode='trend')
         self.assertLess(t_trend[7], t_max[7])
 
+    def test_dynamic_min_level_allows_below_base(self):
+        # 持续跌破基准：动态下限允许目标价低于 base；静态下限仍被 +0% 档封住
+        closes = np.array([10.0] * 5 + [9.0] * 35)
+        t_static, l_static = _run(closes, dynamic_min_level=False)
+        t_dyn, l_dyn = _run(closes, dynamic_min_level=True, min_level_downtrend=0)
+        finite_static = t_static[np.isfinite(t_static)]
+        self.assertTrue(np.all(finite_static >= 10.0 - 1e-9))
+        self.assertTrue(np.any(t_dyn[np.isfinite(t_dyn)] < 10.0))
+        self.assertTrue(np.any(l_dyn < 4))
+
+    def test_dynamic_truncation_consistency(self):
+        closes = np.array([10.0] * 5 + [9.0] * 25 + [9.5] * 5)
+        full, _ = _run(closes, dynamic_min_level=True, min_level_downtrend=0)
+        for end in range(2, len(closes) + 1):
+            part, _ = _run(closes[:end], dynamic_min_level=True, min_level_downtrend=0)
+            np.testing.assert_allclose(part, full[:end], equal_nan=True)
+
 
 if __name__ == '__main__':
     unittest.main()
