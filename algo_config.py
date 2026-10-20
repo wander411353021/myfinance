@@ -15,6 +15,7 @@
     SIGNAL_DOWN_BUFFER  默认 0.02（连续 3 日低于 base×0.98 才进入下跌段）
     SIGNAL_DYNAMIC_CONFIRM 默认 3（进入/退出确认天数）
     SIGNAL_DYNAMIC_EXIT 默认 0.01（连续 3 日高于 base×1.01 才退出）
+    SIGNAL_MIN_TARGET_GAP 默认 0.03（目标价至少高于前收 3%，减少来回穿插）
     A/B 成本线（COST_PCT / COST2_PCT）仅用于显示，不参与信号判定。
 
 板块/筹码三档（必须保持低<中<高；与主成本线独立）:
@@ -81,6 +82,7 @@ SIGNAL_DYNAMIC_MIN_LEVEL = _b('SIGNAL_DYNAMIC_MIN_LEVEL', True)
 SIGNAL_DOWN_BUFFER = _f('SIGNAL_DOWN_BUFFER', '0.02')
 SIGNAL_DYNAMIC_CONFIRM = int(_f('SIGNAL_DYNAMIC_CONFIRM', '3'))
 SIGNAL_DYNAMIC_EXIT = _f('SIGNAL_DYNAMIC_EXIT', '0.01')
+SIGNAL_MIN_TARGET_GAP = _f('SIGNAL_MIN_TARGET_GAP', '0.03')
 
 
 def _label(p):

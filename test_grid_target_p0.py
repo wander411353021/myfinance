@@ -88,6 +88,12 @@ class TestGridTargetP0(unittest.TestCase):
             part, _ = _run(closes[:end], dynamic_min_level=True, min_level_downtrend=0)
             np.testing.assert_allclose(part, full[:end], equal_nan=True)
 
+    def test_min_target_gap_above_prev_close(self):
+        closes = np.array([10.0] * 10)
+        target, _ = _run(closes, min_target_gap=0.03, min_level=0)
+        finite = target[1:][np.isfinite(target[1:])]
+        self.assertTrue(np.all(finite >= 10.3 - 1e-9))
+
 
 if __name__ == '__main__':
     unittest.main()

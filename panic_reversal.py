@@ -1662,6 +1662,7 @@ def compute_grid_target_price(closes, reg120, reg250,
                               down_buffer=0.0,
                               dynamic_confirm=3,
                               dynamic_exit_buffer=0.01,
+                              min_target_gap=0.0,
                               void_confirm=2,
                               void_exit_buffer=0.02,
                               base_mode='max'):
@@ -1702,6 +1703,9 @@ def compute_grid_target_price(closes, reg120, reg250,
         进入/退出下跌段所需的连续确认天数。
     dynamic_exit_buffer : float, default 0.01
         退出下跌段的缓冲（收盘高于 base×(1+该值) 才计入退出确认）。
+    min_target_gap : float, default 0.0
+        目标价相对**昨日收盘**的最小间距（例如 0.03 = 至少高 3%）。
+        仅用昨日收盘，目标价不足时自动抬到上一档；用于减少价格在目标线附近来回穿插。
     follow_price : bool, default False
         档位跟随价格(实验): 线 = 价格上方最近格栅档, 滞回 hyst_up/hyst_dn 档。
         ⚠️ 实测在平缓段反而更差(价在线上 45% vs 原版 22%), 默认 False, 仅保留供实验。
@@ -1785,6 +1789,7 @@ def compute_grid_target_price(closes, reg120, reg250,
     down_buffer = max(0.0, float(down_buffer))
     dynamic_confirm = max(1, int(dynamic_confirm))
     dynamic_exit_buffer = max(0.0, float(dynamic_exit_buffer))
+    min_target_gap = max(0.0, float(min_target_gap))
     _dyn_down = False
     _dyn_down_cnt = 0
     _dyn_up_cnt = 0
@@ -1826,12 +1831,20 @@ def compute_grid_target_price(closes, reg120, reg250,
         else:
             _min_t = _min_up
         # 1) 用昨天的状态 + 今天的 base 计算今天目标价(当天价格不参与)
+        # 2026-10-20: 目标价至少高于昨日收盘 min_target_gap；不足时抬到上一档，
+        # 避免价格在目标线附近来回穿插。只用昨日收盘，仍严格因果。
+        _eff_cur = cur
+        if min_target_gap > 0 and t > 0 and np.isfinite(closes[t - 1]) and np.isfinite(base[t]):
+            _need = closes[t - 1] * (1.0 + min_target_gap)
+            while (_eff_cur < len(levels) - 1
+                   and base[t] * (1 + levels[_eff_cur]) < _need):
+                _eff_cur += 1
         if void:
             target[t] = np.nan
             lvl[t] = -1
         else:
-            target[t] = base[t] * (1 + levels[cur])
-            lvl[t] = cur
+            target[t] = base[t] * (1 + levels[_eff_cur])
+            lvl[t] = _eff_cur
         # 2) 收盘后: 用今天收盘更新状态(影响明天)
         if not np.isfinite(closes[t]):
             continue

@@ -701,7 +701,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                     _base_gt = np.maximum(np.asarray(_gt120), np.asarray(_gt250))
             if _base_gt is not None:
                 from algo_config import (SIGNAL_DOWN_BUFFER, SIGNAL_DYNAMIC_CONFIRM,
-                                         SIGNAL_DYNAMIC_EXIT)
+                                         SIGNAL_DYNAMIC_EXIT, SIGNAL_MIN_TARGET_GAP)
                 _gt, _gl = _prgt.compute_grid_target_price(
                     _fc_gt, _base_gt, _base_gt,
                     levels=_glv_def, max_dev=None, down_confirm=10,
@@ -709,7 +709,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                     dynamic_min_level=True,
                     down_buffer=SIGNAL_DOWN_BUFFER,
                     dynamic_confirm=SIGNAL_DYNAMIC_CONFIRM,
-                    dynamic_exit_buffer=SIGNAL_DYNAMIC_EXIT)
+                    dynamic_exit_buffer=SIGNAL_DYNAMIC_EXIT,
+                    min_target_gap=SIGNAL_MIN_TARGET_GAP)
                 _gt_win = _gt[offset:offset + n]
                 if np.any(np.isfinite(_gt_win)):
                     ax0.plot(x, _gt_win, color='#D81B60', lw=1.6, alpha=1.0, zorder=13,

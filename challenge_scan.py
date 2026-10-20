@@ -20,7 +20,8 @@ from algo_config import (COST_LABEL, CHIP_BAND_LO, CHIP_BAND_HI,
                          SIGNAL_COST_PCT, SIGNAL_COST_EHLERS,
                          SIGNAL_MIN_LEVEL, SIGNAL_MIN_LEVEL_DOWN,
                          SIGNAL_DYNAMIC_MIN_LEVEL, SIGNAL_DOWN_BUFFER,
-                         SIGNAL_DYNAMIC_CONFIRM, SIGNAL_DYNAMIC_EXIT)
+                         SIGNAL_DYNAMIC_CONFIRM, SIGNAL_DYNAMIC_EXIT,
+                         SIGNAL_MIN_TARGET_GAP)
 
 LOOKBACK = 60; PRESS_VALID_MIN = 0.70; PRESS_ABOVE_MAX = 10
 PRESS_GAP_MIN = 3.0; PRESS_GAP_MAX = 20.0
@@ -109,7 +110,8 @@ def compute(df, cost_pct=None, ehlers_period=None):
         dynamic_min_level=SIGNAL_DYNAMIC_MIN_LEVEL,
         down_buffer=SIGNAL_DOWN_BUFFER,
         dynamic_confirm=SIGNAL_DYNAMIC_CONFIRM,
-        dynamic_exit_buffer=SIGNAL_DYNAMIC_EXIT)
+        dynamic_exit_buffer=SIGNAL_DYNAMIC_EXIT,
+        min_target_gap=SIGNAL_MIN_TARGET_GAP)
     gt2 = second_stair(base_sig, gt_p, gl_p)
     return cl, [_bd(d) for d in df['date'].values], gt_p, gt2, c35s, base_sig
 
