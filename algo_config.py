@@ -29,7 +29,7 @@ Ehlers SuperSmoother 平滑周期:
 
 参考成本线 B（仅主图参考，不参与信号判定）:
     COST2_PCT        默认 0.35 → COST35
-    COST2_EHLERS     默认 60
+    COST2_EHLERS     默认 50
 
 环境变量可临时覆盖，例如:
     COST_PCT=0.50 python -m streamlit run streamlit_demo.py
@@ -66,7 +66,7 @@ COST_HIGH_EHLERS = int(_f('COST_HIGH_EHLERS', '20'))
 
 # 参考成本线 B（2026-10-18 用户要求：独立分位/周期，主图红色线+红色填充，不参与信号）
 COST2_PCT = _f('COST2_PCT', '0.35')
-COST2_EHLERS = int(_f('COST2_EHLERS', '60'))
+COST2_EHLERS = int(_f('COST2_EHLERS', '50'))
 
 # 信号判定专用标准（2026-10-20 用户定版：v3/v3b/early 全套新标准）
 #   不再跟随 A/B 显示线；A/B 只用于主图。

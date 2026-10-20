@@ -1283,7 +1283,7 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
     （与主成本线独立，必须保持 LOW<MID<HIGH）
   - `CHIP_BAND_LO=0.10` / `CHIP_BAND_HI=0.90`：`signal_profile` 的带宽/获利盘
   - `COST_HIGH_EHLERS=20`：COST75 筹码峰上沿的 Ehlers 平滑周期
-  - `COST2_PCT=0.35` / `COST2_EHLERS=60`：参考成本线 B（仅主图红色线+红色填充）
+  - `COST2_PCT=0.35` / `COST2_EHLERS=50`：参考成本线 B（仅主图红色线+红色填充）
   - **2026-10-20 全套新信号标准**：`SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=60`；
     `SIGNAL_MIN_LEVEL=4` / `SIGNAL_MIN_LEVEL_DOWN=0` / `SIGNAL_DYNAMIC_MIN_LEVEL=True`。
     `challenge_scan.compute` 的 `c35s` 与 `gt_p/gt2` 都用这套标准，**A/B 滑轨只控制显示，不再参与信号**。
@@ -1311,7 +1311,7 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
   运行长脚本可加 `PYTHONIOENCODING=utf-8`。
 
 ### 2026-10-18~19 成本线 A/B 与 V10 布局
-- **2026-10-19 历史**：A = COST70 / Ehlers90；B = COST35 / Ehlers60；当时 A/B 仅显示、信号另定。
+- **2026-10-19 历史**：A = COST70 / Ehlers90；B = COST35 / Ehlers50；当时 A/B 仅显示、信号另定。
 - **2026-10-20 全套新信号标准（用户批准）**：v3 / v3b / early / 结构冷却的 `c35s` 与 `gt_p/gt2` 全部改用
   `SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=60`，并启用 `SIGNAL_MIN_LEVEL_DOWN=0` 动态 min_level；
   A/B 滑轨只控制主图显示，**不再改变信号**。
