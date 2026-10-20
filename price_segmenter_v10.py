@@ -1505,8 +1505,7 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
             from challenge_scan import scan_series as _cs_series
             from challenge_scan import bigline_hits as _cs_bigline
             # P0-2: raw + eff 两套线；P0-1: scan_series 结构冷却；P1-1: v3 一并显示
-            _cl, _darr, _gtp, _gt2, _gtp_e, _gt2_e, _c35, _ = _cs_compute_eff(
-                df_ohlc, cost_pct=cost_pct, ehlers_period=ehlers_period)
+            _cl, _darr, _gtp, _gt2, _gtp_e, _gt2_e, _c35, _ = _cs_compute_eff(df_ohlc)
             _vol = df_ohlc['volume'].values.astype(float)
             _hi = df_ohlc['high'].values.astype(float)
             _lo = df_ohlc['low'].values.astype(float)

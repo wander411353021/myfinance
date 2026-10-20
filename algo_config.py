@@ -3,8 +3,16 @@
 
 以后改成本线/筹码分位，只改这个文件（或用环境变量覆盖），不要在各脚本里散改。
 
-主成本线（信号判定 / V10 深绿线 / 结构冷却 / early / v3b / v3）:
+主成本线（仅主图显示；信号判定见下方 SIGNAL_* 新标准）:
     COST_PCT        默认 0.70  → COST70
+
+信号判定标准（v3 / v3b / early，2026-10-20 用户定版，全套新标准）:
+    SIGNAL_COST_PCT      默认 0.35 → COST35
+    SIGNAL_COST_EHLERS   默认 60
+    SIGNAL_MIN_LEVEL     默认 4（+0% 档）
+    SIGNAL_MIN_LEVEL_DOWN 默认 0（下跌段允许 -9%）
+    SIGNAL_DYNAMIC_MIN_LEVEL 默认 True
+    A/B 成本线（COST_PCT / COST2_PCT）仅用于显示，不参与信号判定。
 
 板块/筹码三档（必须保持低<中<高；与主成本线独立）:
     COST_PCT_LOW    默认 0.35  → 下沿（受压/跌破）
@@ -36,6 +44,13 @@ def _f(name, default):
         return float(default)
 
 
+def _b(name, default):
+    value = os.environ.get(name)
+    if value is None:
+        return bool(default)
+    return str(value).strip().lower() not in ('0', 'false', 'no', 'off', '')
+
+
 COST_PCT = _f('COST_PCT', '0.70')
 COST_PCT_LOW = _f('COST_PCT_LOW', '0.35')
 COST_PCT_MID = _f('COST_PCT_MID', '0.50')
@@ -52,6 +67,14 @@ COST_HIGH_EHLERS = int(_f('COST_HIGH_EHLERS', '20'))
 # 参考成本线 B（2026-10-18 用户要求：独立分位/周期，主图红色线+红色填充，不参与信号）
 COST2_PCT = _f('COST2_PCT', '0.35')
 COST2_EHLERS = int(_f('COST2_EHLERS', '60'))
+
+# 信号判定专用标准（2026-10-20 用户定版：v3/v3b/early 全套新标准）
+#   不再跟随 A/B 显示线；A/B 只用于主图。
+SIGNAL_COST_PCT = _f('SIGNAL_COST_PCT', '0.35')
+SIGNAL_COST_EHLERS = int(_f('SIGNAL_COST_EHLERS', '60'))
+SIGNAL_MIN_LEVEL = int(_f('SIGNAL_MIN_LEVEL', '4'))
+SIGNAL_MIN_LEVEL_DOWN = int(_f('SIGNAL_MIN_LEVEL_DOWN', '0'))
+SIGNAL_DYNAMIC_MIN_LEVEL = _b('SIGNAL_DYNAMIC_MIN_LEVEL', True)
 
 
 def _label(p):

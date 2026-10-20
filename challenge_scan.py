@@ -2,8 +2,8 @@
 """挑战信号(压制突破) v3 定版扫描器 — 2026-10-15 polo4111 定版
 信号定义(到达紫线才成立, 区别于 early 启动前低位):
   1. 压制期: 前60天(不含当日) 粉线有效>=70%, 价格>粉线占比<=10%(90%低于), gap∈[3%,20%)
-  2. 已突破: close > 粉线(Grid Target第一阶梯) 且 close > 主成本线 COST_PCT
-     （默认由 algo_config 控制：COST_PCT=0.90 / Ehlers=10）
+  2. 已突破: close > 粉线(Grid Target第一阶梯) 且 close > 信号成本线 SIGNAL_COST_PCT
+     （默认 SIGNAL_COST_PCT=0.35 / SIGNAL_COST_EHLERS=60；A/B 只用于显示）
   3. 成立:   close >= 紫线(第二阶梯)*0.98 —— 价格真正到达紫色压制线(滤掉摸不到紫线的假突破)
 用法:
   python3 challenge_scan.py scan   <part> <nparts> [end]   # 全市场每日候选池(分片并行)
@@ -16,15 +16,17 @@ warnings.filterwarnings('ignore')
 import tdx_quant as tq
 import panic_reversal as pr
 from chip_panel import cost_series
-from algo_config import (COST_PCT, COST_LABEL, CHIP_BAND_LO, CHIP_BAND_HI,
-                         COST_EHLERS)
+from algo_config import (COST_LABEL, CHIP_BAND_LO, CHIP_BAND_HI,
+                         SIGNAL_COST_PCT, SIGNAL_COST_EHLERS,
+                         SIGNAL_MIN_LEVEL, SIGNAL_MIN_LEVEL_DOWN,
+                         SIGNAL_DYNAMIC_MIN_LEVEL)
 
 LOOKBACK = 60; PRESS_VALID_MIN = 0.70; PRESS_ABOVE_MAX = 10
 PRESS_GAP_MIN = 3.0; PRESS_GAP_MAX = 20.0
 TOUCH = 0.98          # 到达紫线阈值(close >= 紫线*0.98)
 MIN_I = 400           # reg250(250)+压制期(60)+缓冲 预热
 COOL = 30             # 历史扫描冷却(天)
-# 成本线分位统一定义在 algo_config.py（唯一入口，可用 COST_PCT 环境变量覆盖）
+# 信号成本线标准统一定义在 algo_config.py（SIGNAL_COST_*，2026-10-20 全套新标准）
 
 def ehlers_smooth(x, period):
     """Ehlers SuperSmoother 二阶IIR低通(因果, 第k天只用<=k数据)"""
@@ -75,8 +77,10 @@ def load(code, end, datalen):
 def compute(df, cost_pct=None, ehlers_period=None):
     """全量计算 V10 原始线: 返回 (closes, dates_str, gt_p, gt2, c35s, base)。
 
-    cost_pct / ehlers_period 可覆盖全局 algo_config（streamlit 滑轨用）；
-    None = 使用全局默认。gt_p/gt2 的置空日保持 NaN（原始口径）。
+    2026-10-20 全套新信号标准：
+      c35s 与 gt_p/gt2 都用 SIGNAL_COST_PCT / SIGNAL_COST_EHLERS（COST35/E60），
+      并启用动态 min_level；A/B 成本线只用于显示。
+    cost_pct / ehlers_period 仅作实验覆盖（None = SIGNAL_* 默认）。
     """
     df = df.reset_index(drop=True)
     cl = df['close'].values.astype(float); hi = df['high'].values.astype(float)
@@ -86,19 +90,24 @@ def compute(df, cost_pct=None, ehlers_period=None):
     reg120, _ = pr.compute_rolling_regression(cl, 120)
     reg250, _ = pr.compute_rolling_regression(cl, 250)
     r120s = pr.double_smooth_reg(reg120, 5, 5); r250s = pr.double_smooth_reg(reg250, 5, 5)
-    base = np.maximum(r120s, r250s)
-    gt_p, gl_p = pr.compute_grid_target_price(cl, r120s, r250s,
-        levels=(-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12),
-        max_dev=0.13, down_confirm=10)
-    gt2 = second_stair(base, gt_p, gl_p)
+    base_reg = np.maximum(r120s, r250s)
     try:
-        _cost_pct = COST_PCT if cost_pct is None else float(cost_pct)
-        _ehlers = COST_EHLERS if ehlers_period is None else int(ehlers_period)
+        _cost_pct = SIGNAL_COST_PCT if cost_pct is None else float(cost_pct)
+        _ehlers = SIGNAL_COST_EHLERS if ehlers_period is None else int(ehlers_period)
         c35 = cost_series(hi, lo, vo, turn, _cost_pct)
         c35s = ehlers_smooth(c35, max(2, _ehlers))
     except Exception:
         c35s = np.full(n, np.nan)
-    return cl, [_bd(d) for d in df['date'].values], gt_p, gt2, c35s, base
+    # 新标准：成本线可作基准时优先用它；否则回退 REG，避免短数据/缺换手率直接失效。
+    base_sig = c35s if np.isfinite(c35s).sum() >= max(20, n // 10) else base_reg
+    gt_p, gl_p = pr.compute_grid_target_price(
+        cl, base_sig, base_sig,
+        levels=(-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12),
+        max_dev=None, down_confirm=10,
+        min_level=SIGNAL_MIN_LEVEL, min_level_downtrend=SIGNAL_MIN_LEVEL_DOWN,
+        dynamic_min_level=SIGNAL_DYNAMIC_MIN_LEVEL)
+    gt2 = second_stair(base_sig, gt_p, gl_p)
+    return cl, [_bd(d) for d in df['date'].values], gt_p, gt2, c35s, base_sig
 
 def compute_eff(df, max_dev=0.13, cost_pct=None, ehlers_period=None):
     """compute + 置空备用线（2026-10-18 P0-2）。
@@ -287,7 +296,7 @@ def signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, i,
     # ④ 前高位置: 现价相对近250日最高价
     h250 = float(np.nanmax(hi[max(0, i - 250):i + 1]))
     ratio = h250 / cl[i] if cl[i] > 0 else 9.0
-    # ⑤ 筹码: dev35(相对主成本线 COST_PCT；字段名保留兼容) + 集中带宽(COST90-COST10)/价 + 获利盘近似
+    # ⑤ 筹码: dev35(相对信号成本线 SIGNAL_COST_PCT；字段名保留兼容) + 集中带宽(COST90-COST10)/价 + 获利盘近似
     c35i = c35s[i]
     dev35 = (cl[i] / c35i - 1) * 100 if (np.isfinite(c35i) and c35i > 0) else 0.0
     c10 = cost_series(hi, lo, vol, turn, CHIP_BAND_LO)
@@ -494,7 +503,7 @@ def scan_series(cl, gt_p, gt2, c35s, vol, start_i=MIN_I, end_i=None,
                 gt_p_eff=None, gt2_eff=None):
     """统一扫描 v3 / v3b / early 信号序列（严格因果）。返回 [(type, i)] 升序。
 
-    mode='structure': 跌破主成本线 COST_PCT×0.98 重新武装; 同轮只输出第一次触发。
+    mode='structure': 跌破信号成本线 SIGNAL_COST_PCT×0.98 重新武装; 同轮只输出第一次触发。
     mode='days':      同类型信号间隔 >= cool 个交易日（旧口径）。
     v3 需要 darr（signal_at 的日期轴）；不传时 types 中的 v3 会被跳过。
     P0-2: 当日判定优先用 gt_p_eff/gt2_eff；历史窗口仍用原始 gt_p/gt2。

@@ -1278,17 +1278,20 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
 
 ### 全局参数入口（2026-10-18 用户定版）
 - **唯一入口 `algo_config.py`**，以后只改这里，不要再散改各脚本：
-  - `COST_PCT=0.70`：主成本线（v3 / v3b / early / 结构冷却 / V10 深绿线）
+  - `COST_PCT=0.70` / `COST_EHLERS=90`：主成本线 A，**仅主图显示**
   - `COST_PCT_LOW=0.35` / `COST_PCT_MID=0.50` / `COST_PCT_HIGH=0.75`：板块/筹码三档
     （与主成本线独立，必须保持 LOW<MID<HIGH）
   - `CHIP_BAND_LO=0.10` / `CHIP_BAND_HI=0.90`：`signal_profile` 的带宽/获利盘
-  - `COST_EHLERS=90` / `COST_HIGH_EHLERS=20`：主成本线 A / COST75 的 Ehlers 平滑周期
-  - `COST2_PCT=0.35` / `COST2_EHLERS=60`：参考成本线 B（仅主图红色线+红色填充，不参与信号）
-  - 代码变量 `c35s` 与历史文档里的“COST35”都指**主成本线 A**，实际分位跟随 `COST_PCT`（当前 COST70），不是固定 35%
-- 环境变量可临时覆盖，例如 `COST_PCT=0.50 python -m streamlit run streamlit_demo.py`。
-- **streamlit 侧边栏滑轨（A/B 区分）**：
-  - `主成本线 A · 分位` / `主成本线 A · Ehlers 周期`：参与 v3/v3b/early/结构冷却；
-  - `参考成本线 B · 分位` / `参考成本线 B · Ehlers 周期`：仅主图红色线与红色填充，不参与信号。
+  - `COST_HIGH_EHLERS=20`：COST75 筹码峰上沿的 Ehlers 平滑周期
+  - `COST2_PCT=0.35` / `COST2_EHLERS=60`：参考成本线 B（仅主图红色线+红色填充）
+  - **2026-10-20 全套新信号标准**：`SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=60`；
+    `SIGNAL_MIN_LEVEL=4` / `SIGNAL_MIN_LEVEL_DOWN=0` / `SIGNAL_DYNAMIC_MIN_LEVEL=True`。
+    `challenge_scan.compute` 的 `c35s` 与 `gt_p/gt2` 都用这套标准，**A/B 滑轨只控制显示，不再参与信号**。
+- 环境变量可临时覆盖，例如 `SIGNAL_COST_PCT=0.35 python -m streamlit run streamlit_demo.py`。
+- **streamlit 侧边栏滑轨（A/B 仅显示）**：
+  - `主成本线 A · 分位` / `主成本线 A · Ehlers 周期`：只改主图 A 线和填充；
+  - `参考成本线 B · 分位` / `参考成本线 B · Ehlers 周期`：只改主图 B 线和填充；
+  - v3 / v3b / early / 结构冷却固定使用 `SIGNAL_*` 新标准。
   - 拖动任一滑轨自动重算本页；不改 `algo_config.py` 全局默认。
 - **主图颜色**：A = 深绿虚线 + 绿色填充（alpha 0.15）；B = 深红虚线 + 红色填充（alpha 0.30）。
 - **自动重算开关**（默认开）：拖动滑轨或 tail_days 后，用上次行情直接重绘，不重新取数；
@@ -1308,10 +1311,12 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
   运行长脚本可加 `PYTHONIOENCODING=utf-8`。
 
 ### 2026-10-18~19 成本线 A/B 与 V10 布局
-- **2026-10-19 定版**：主成本线 A = **COST70 / Ehlers90**；参考成本线 B = **COST35 / Ehlers60**（B 不参与信号）。
-- **信号口径 = 主成本线 A（COST70 / Ehlers90）**：v3 / v3b / early / 结构冷却 / 回测 / 每日池全部使用 A。
-- **参考成本线 B（COST35 / Ehlers60）**：仅主图红色线与红色填充（alpha 0.30），**不参与信号**。
-- 当日曾尝试把信号切到 B，已 **revert**；不要再把 B 当信号线。
+- **2026-10-19 历史**：A = COST70 / Ehlers90；B = COST35 / Ehlers60；当时 A/B 仅显示、信号另定。
+- **2026-10-20 全套新信号标准（用户批准）**：v3 / v3b / early / 结构冷却的 `c35s` 与 `gt_p/gt2` 全部改用
+  `SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=60`，并启用 `SIGNAL_MIN_LEVEL_DOWN=0` 动态 min_level；
+  A/B 滑轨只控制主图显示，**不再改变信号**。
+- 真实链路：688099 `fresh=120` → 5 个信号（early 0424、v3b 0427、early 0623/0710/1009）；
+  600865 → 2 个信号（early 0828、v3b 0901）；测试 12 项通过。
 - streamlit 四条滑轨：`主成本线 A · 分位` / `主成本线 A · Ehlers 周期` / `参考成本线 B · 分位` / `参考成本线 B · Ehlers 周期`；A 绿填充 alpha 0.15。
 - **V10 底部信号画像文字已移除**：不再打印 `■ 日期 收… 量比… 回踩…`；`fig.tight_layout(pad=1.5)` 铺满全高。
 - 600403 / 2025-10-15 / 150 天：窗口内 12 个 v3b 画像时，旧线性留白 `0.05+0.05×12=0.65` 把主图压到 35%；移除文字后主图满高。
