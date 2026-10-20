@@ -125,9 +125,7 @@ python challenge_scan.py assess 600550 20261016 20260904
 - 截断一致性必须在 `compute_eff` 口径下重算（raw+eff），不能只截断价格不重算线。
 - **全局参数入口**：`algo_config.py`（`COST_PCT=0.70` / `COST_EHLERS=90` 主成本线 A，仅显示；`COST_PCT_LOW/MID/HIGH=0.35/0.50/0.75`
   板块三档；`CHIP_BAND_LO/HI` 带宽；`COST2_PCT=0.40` / `COST2_EHLERS=50` 参考线 B，仅显示）。
-  **信号标准**：`SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=60`，`SIGNAL_MIN_LEVEL=4` / `SIGNAL_MIN_LEVEL_DOWN=0` /
-  `SIGNAL_DYNAMIC_MIN_LEVEL=False`（已撤销，目标价不能低于基准），`SIGNAL_DOWN_BUFFER=0.02` / `SIGNAL_DYNAMIC_CONFIRM=3` / `SIGNAL_DYNAMIC_EXIT=0.01` /
-  `SIGNAL_MIN_TARGET_GAP=0.0`（已撤销 3% 最小间距）；
+  **信号标准**：`SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=60`，`SIGNAL_MIN_LEVEL=4`（目标价不能低于基准）；
   `challenge_scan.compute` 的 c35s 与 gt_p/gt2 统一使用该标准。环境变量可覆盖。已接入
   `challenge_scan` / `price_segmenter_v10` / `concept_chip_scan` / `pages/1_Concept_Chip` / `_compare_k`。
 - **streamlit 滑轨（A/B 仅显示）**：`主成本线 A · 分位` + `主成本线 A · Ehlers 周期`（只改 A 线和填充）；

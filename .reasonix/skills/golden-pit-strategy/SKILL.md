@@ -1008,9 +1008,7 @@ if confirmed:
 - **改动**: 第一阶梯(洋红#D81B60)基准从 `max(reg120, reg250)` 改成 **COST35 Ehlers60**；第二阶梯(深紫#4A148C)仍 REG（已隐藏）
 - **原因**: REG回归线滞后大, 阶梯线跟不上价格变化; COST35是筹码峰下沿, 更贴近价格
 - **600865 600天/150日窗口验证（2026-10-20）**: REG max 5+5 目标价/收盘中位 **+29.0%**、>收盘×1.2 为 **103/150** 天；COST35 Ehlers30 中位 +14.2%、>1.2× 36 天；**COST35 Ehlers60 中位 +16.6%、>1.2× 56 天**。用户选择 E60：比 E30 更平滑，避免格栅线过度缓动。
-- **2026-10-20 动态 min_level（已撤销）**: 用户已要求撤销，`SIGNAL_DYNAMIC_MIN_LEVEL=False`，Grid Target 回到 `min_level=4`，目标价不能低于基准。历史实验数据保留：50只池 static median +12.7%、>base 100%、cross 3.4、lvl 3.3；dyn0 +7.6%、56.7%、5.3、8.9。
-- **2026-10-20 动态下限滞回修复**: `SIGNAL_DOWN_BUFFER=0.02`（连续 3 日低于 base×0.98 才进入下跌段）、`SIGNAL_DYNAMIC_CONFIRM=3`、`SIGNAL_DYNAMIC_EXIT=0.01`（连续 3 日高于 base×1.01 才退出）。600809 验证：最后 40 天档位切换 **4→2 次**，最后 150 天 **7→5 次**；最后一段由 `4→3→2` 变为 `4→3` 稳定，解决阈值附近来回横跳。
-- **2026-10-20 最小目标间距（已撤销）**: `SIGNAL_MIN_TARGET_GAP=0.0`，回到“目标价不能低于基准”的版本；历史实验 0.03 曾把 600809 上穿 4→0（40日）/4→2（150日），但线离价格过远，已关闭。
+- **2026-10-21 动态下限/滞回/最小间距已移除**: 用户要求删除实验代码，Grid Target 回到 `min_level=4`，目标价不能低于基准；后续重写。
 - **实现**: Grid Target 块先算 COST35 Ehlers60 (`_base35`), 然后 `compute_grid_target_price(closes, _base35, _base35, ...)`; 第二阶梯同理
 - **streamlit**: `streamlit_demo.py` 直接 `from price_segmenter_v10 import run_segmentation`, 改代码自动生效
 - **档位不变**: `levels=(-0.09,-0.06,-0.03,0.00,0.03,0.06,0.09,0.12)`, `down_confirm=10`, 第二阶梯 confirm=40 慢速+粉线档+2档
@@ -1287,7 +1285,7 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
   - `COST_HIGH_EHLERS=20`：COST75 筹码峰上沿的 Ehlers 平滑周期
   - `COST2_PCT=0.40` / `COST2_EHLERS=50`：参考成本线 B（仅主图红色线+红色填充）
   - **2026-10-20 全套新信号标准**：`SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=60`；
-    `SIGNAL_MIN_LEVEL=4` / `SIGNAL_MIN_LEVEL_DOWN=0` / `SIGNAL_DYNAMIC_MIN_LEVEL=False`。
+    `SIGNAL_MIN_LEVEL=4`（目标价不能低于基准）。
     `challenge_scan.compute` 的 `c35s` 与 `gt_p/gt2` 都用这套标准，**A/B 滑轨只控制显示，不再参与信号**。
 - 环境变量可临时覆盖，例如 `SIGNAL_COST_PCT=0.35 python -m streamlit run streamlit_demo.py`。
 - **streamlit 侧边栏滑轨（A/B 仅显示）**：
@@ -1315,8 +1313,7 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
 ### 2026-10-18~19 成本线 A/B 与 V10 布局
 - **2026-10-19 历史**：A = COST70 / Ehlers90；B = COST40 / Ehlers50；当时 A/B 仅显示、信号另定。
 - **2026-10-20 全套新信号标准（用户批准）**：v3 / v3b / early / 结构冷却的 `c35s` 与 `gt_p/gt2` 全部改用
-  `SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=60`，`SIGNAL_DYNAMIC_MIN_LEVEL=False`（目标价不能低于基准）；
-  `SIGNAL_DOWN_BUFFER=0.02` / `SIGNAL_DYNAMIC_CONFIRM=3` / `SIGNAL_DYNAMIC_EXIT=0.01`（进入/退出滞回）；
+  `SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=60`，`min_level=4` 固定（目标价不能低于基准）；
   A/B 滑轨只控制主图显示，**不再改变信号**。
 - 真实链路：688099 `fresh=120` → 5 个信号（early 0424、v3b 0427、early 0623/0710/1009）；
   600865 → 2 个信号（early 0828、v3b 0901）；测试 12 项通过。

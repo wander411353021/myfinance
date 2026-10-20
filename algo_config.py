@@ -6,16 +6,10 @@
 主成本线（仅主图显示；信号判定见下方 SIGNAL_* 新标准）:
     COST_PCT        默认 0.70  → COST70
 
-信号判定标准（v3 / v3b / early，2026-10-20 用户定版，全套新标准）:
+信号判定标准（v3 / v3b / early）:
     SIGNAL_COST_PCT      默认 0.35 → COST35
     SIGNAL_COST_EHLERS   默认 60
-    SIGNAL_MIN_LEVEL     默认 4（+0% 档）
-    SIGNAL_MIN_LEVEL_DOWN 默认 0（下跌段允许 -9%）
-    SIGNAL_DYNAMIC_MIN_LEVEL 默认 False（已撤销，目标价不能低于基准）
-    SIGNAL_DOWN_BUFFER  默认 0.02（保留，动态下限关闭时不生效）
-    SIGNAL_DYNAMIC_CONFIRM 默认 3（保留，动态下限关闭时不生效）
-    SIGNAL_DYNAMIC_EXIT 默认 0.01（保留，动态下限关闭时不生效）
-    SIGNAL_MIN_TARGET_GAP 默认 0.0（已撤销 3% 最小间距）
+    SIGNAL_MIN_LEVEL     默认 4（+0% 档，目标价不能低于基准）
     A/B 成本线（COST_PCT / COST2_PCT）仅用于显示，不参与信号判定。
 
 板块/筹码三档（必须保持低<中<高；与主成本线独立）:
@@ -48,13 +42,6 @@ def _f(name, default):
         return float(default)
 
 
-def _b(name, default):
-    value = os.environ.get(name)
-    if value is None:
-        return bool(default)
-    return str(value).strip().lower() not in ('0', 'false', 'no', 'off', '')
-
-
 COST_PCT = _f('COST_PCT', '0.70')
 COST_PCT_LOW = _f('COST_PCT_LOW', '0.35')
 COST_PCT_MID = _f('COST_PCT_MID', '0.50')
@@ -77,12 +64,6 @@ COST2_EHLERS = int(_f('COST2_EHLERS', '50'))
 SIGNAL_COST_PCT = _f('SIGNAL_COST_PCT', '0.35')
 SIGNAL_COST_EHLERS = int(_f('SIGNAL_COST_EHLERS', '60'))
 SIGNAL_MIN_LEVEL = int(_f('SIGNAL_MIN_LEVEL', '4'))
-SIGNAL_MIN_LEVEL_DOWN = int(_f('SIGNAL_MIN_LEVEL_DOWN', '0'))
-SIGNAL_DYNAMIC_MIN_LEVEL = _b('SIGNAL_DYNAMIC_MIN_LEVEL', False)
-SIGNAL_DOWN_BUFFER = _f('SIGNAL_DOWN_BUFFER', '0.02')
-SIGNAL_DYNAMIC_CONFIRM = int(_f('SIGNAL_DYNAMIC_CONFIRM', '3'))
-SIGNAL_DYNAMIC_EXIT = _f('SIGNAL_DYNAMIC_EXIT', '0.01')
-SIGNAL_MIN_TARGET_GAP = _f('SIGNAL_MIN_TARGET_GAP', '0.0')
 
 
 def _label(p):

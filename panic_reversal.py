@@ -1657,12 +1657,6 @@ def compute_grid_target_price(closes, reg120, reg250,
                               hyst_up=2,
                               hyst_dn=2,
                               min_level=4,
-                              min_level_downtrend=None,
-                              dynamic_min_level=False,
-                              down_buffer=0.0,
-                              dynamic_confirm=3,
-                              dynamic_exit_buffer=0.01,
-                              min_target_gap=0.0,
                               void_confirm=2,
                               void_exit_buffer=0.02,
                               base_mode='max'):
@@ -1687,25 +1681,8 @@ def compute_grid_target_price(closes, reg120, reg250,
             不再硬编码；改档位后自动跟随（2026-10-20 P0）。
 
     min_level : int, default 4
-        上涨/震荡段档位下限(**2026-10-14 用户定版**): 降档不得低于该档位索引(4 = +0% 档)。
+        档位下限(**2026-10-14 用户定版**): 降档不得低于该档位索引(4 = +0% 档)。
         治"横盘/缓跌段线塌到价格上被反复上穿"; 0 = 旧行为(可降到 -9% 档)。
-    min_level_downtrend : int or None, default None
-        下跌段档位下限；None = 跟随 min_level。设为 0 表示允许目标价低于基准（最低 -9%）。
-    dynamic_min_level : bool, default False
-        2026-10-20: 开启后按**昨日收盘**判定下跌段，下跌段用 min_level_downtrend，
-        否则回到 min_level；用于让下跌段格栅线贴近运行区间。
-        2026-10-20 修复：进入/退出都需连续 dynamic_confirm 天确认，且用
-        down_buffer / dynamic_exit_buffer 做滞回，避免在基准附近单日横跳。
-        只用昨日收盘，状态在收盘后更新，仍严格因果。
-    down_buffer : float, default 0.0
-        进入下跌段的缓冲比例（例如 0.02 = 收盘低于 base 2% 才算下跌）。
-    dynamic_confirm : int, default 3
-        进入/退出下跌段所需的连续确认天数。
-    dynamic_exit_buffer : float, default 0.01
-        退出下跌段的缓冲（收盘高于 base×(1+该值) 才计入退出确认）。
-    min_target_gap : float, default 0.0
-        目标价相对**昨日收盘**的最小间距（例如 0.03 = 至少高 3%）。
-        仅用昨日收盘，目标价不足时自动抬到上一档；用于减少价格在目标线附近来回穿插。
     follow_price : bool, default False
         档位跟随价格(实验): 线 = 价格上方最近格栅档, 滞回 hyst_up/hyst_dn 档。
         ⚠️ 实测在平缓段反而更差(价在线上 45% vs 原版 22%), 默认 False, 仅保留供实验。
@@ -1784,15 +1761,6 @@ def compute_grid_target_price(closes, reg120, reg250,
     #   仍保留原有升/降档确认节奏(不是"跟随价格")。
     cur = min(max(int(min_level), 0), len(levels) - 1)   # 档位状态(昨天收盘后确定)
     _min_up = cur
-    _min_down = (_min_up if min_level_downtrend is None
-                 else min(max(int(min_level_downtrend), 0), len(levels) - 1))
-    down_buffer = max(0.0, float(down_buffer))
-    dynamic_confirm = max(1, int(dynamic_confirm))
-    dynamic_exit_buffer = max(0.0, float(dynamic_exit_buffer))
-    min_target_gap = max(0.0, float(min_target_gap))
-    _dyn_down = False
-    _dyn_down_cnt = 0
-    _dyn_up_cnt = 0
     void = False   # 置空状态(昨天收盘后确定)
     void_cnt = 0   # 连续超 max_dev 的确认计数
     down_cnt = 0   # 连续降档确认计数
@@ -1800,51 +1768,14 @@ def compute_grid_target_price(closes, reg120, reg250,
     for t in range(n):
         if not np.isfinite(base[t]):
             continue
-        # 2026-10-20: 动态档位下限。只使用昨日收盘判定下跌段，仍严格因果。
-        # 进入/退出都需连续 dynamic_confirm 天确认，并用 down_buffer / exit_buffer 滞回，
-        # 避免价格在基准附近时 min_level 单日 0/4 来回切换。
-        if dynamic_min_level:
-            _prev_close = closes[t - 1] if t > 0 else np.nan
-            if not _dyn_down:
-                if (np.isfinite(_prev_close) and np.isfinite(base[t])
-                        and _prev_close < base[t] * (1.0 - down_buffer)):
-                    _dyn_down_cnt += 1
-                    if _dyn_down_cnt >= dynamic_confirm:
-                        _dyn_down = True
-                        _dyn_down_cnt = 0
-                        _dyn_up_cnt = 0
-                else:
-                    _dyn_down_cnt = 0
-            else:
-                if (np.isfinite(_prev_close) and np.isfinite(base[t])
-                        and _prev_close > base[t] * (1.0 + dynamic_exit_buffer)):
-                    _dyn_up_cnt += 1
-                    if _dyn_up_cnt >= dynamic_confirm:
-                        _dyn_down = False
-                        _dyn_up_cnt = 0
-                        _dyn_down_cnt = 0
-                else:
-                    _dyn_up_cnt = 0
-            _min_t = _min_down if _dyn_down else _min_up
-            if not _dyn_down and cur < _min_up:
-                cur = _min_up
-        else:
-            _min_t = _min_up
+        # 动态下限、滞回、最小间距已移除（2026-10-21，后续重写）。
         # 1) 用昨天的状态 + 今天的 base 计算今天目标价(当天价格不参与)
-        # 2026-10-20: 目标价至少高于昨日收盘 min_target_gap；不足时抬到上一档，
-        # 避免价格在目标线附近来回穿插。只用昨日收盘，仍严格因果。
-        _eff_cur = cur
-        if min_target_gap > 0 and t > 0 and np.isfinite(closes[t - 1]) and np.isfinite(base[t]):
-            _need = closes[t - 1] * (1.0 + min_target_gap)
-            while (_eff_cur < len(levels) - 1
-                   and base[t] * (1 + levels[_eff_cur]) < _need):
-                _eff_cur += 1
         if void:
             target[t] = np.nan
             lvl[t] = -1
         else:
-            target[t] = base[t] * (1 + levels[_eff_cur])
-            lvl[t] = _eff_cur
+            target[t] = base[t] * (1 + levels[cur])
+            lvl[t] = cur
         # 2) 收盘后: 用今天收盘更新状态(影响明天)
         if not np.isfinite(closes[t]):
             continue
@@ -1854,7 +1785,7 @@ def compute_grid_target_price(closes, reg120, reg250,
             void_cnt += 1
             if void_cnt >= void_confirm:
                 void = True
-                cur = _min_t
+                cur = _min_up
                 down_cnt = 0
                 up_cnt = 0
             continue
@@ -1871,10 +1802,10 @@ def compute_grid_target_price(closes, reg120, reg250,
             void_cnt = 0
             dev_now = closes[t] / base[t] - 1
             req = (1.0 + dev_now) * 1.06 - 1.0  # 目标档位需使 目标价>=价格*1.06
-            cur = _min_t
+            cur = _min_up
             for li, lv in enumerate(levels):
                 if lv >= req:
-                    cur = max(li, _min_t)
+                    cur = max(li, _min_up)
                     break
             else:
                 cur = len(levels) - 1  # 目标已超最高档, 取最高档
@@ -1905,7 +1836,7 @@ def compute_grid_target_price(closes, reg120, reg250,
         else:
             up_cnt = 0
         # 降档: 连续 down_confirm 天跌破上一档线才降(延迟, 防急降)
-        if cur > _min_t and closes[t] < base[t] * (1 + levels[cur - 1]):
+        if cur > _min_up and closes[t] < base[t] * (1 + levels[cur - 1]):
             down_cnt += 1
             if down_cnt >= down_confirm:
                 cur -= 1
