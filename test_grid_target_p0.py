@@ -60,6 +60,17 @@ class TestGridTargetP0(unittest.TestCase):
             part, _ = _run(closes[:end])
             np.testing.assert_allclose(part, full[:end], equal_nan=True)
 
+    def test_trend_base_option(self):
+        # 下跌段：昨日收盘 7 < reg250=10 -> trend 用 reg120=8，目标价应低于 max 口径
+        closes = np.array([10.0] * 6 + [7.0] * 4)
+        reg120 = np.full(len(closes), 8.0)
+        reg250 = np.full(len(closes), 10.0)
+        t_max, _ = compute_grid_target_price(closes, reg120, reg250,
+                                             min_level=0, base_mode='max')
+        t_trend, _ = compute_grid_target_price(closes, reg120, reg250,
+                                               min_level=0, base_mode='trend')
+        self.assertLess(t_trend[7], t_max[7])
+
 
 if __name__ == '__main__':
     unittest.main()

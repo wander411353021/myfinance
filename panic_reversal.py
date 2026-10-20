@@ -1658,7 +1658,8 @@ def compute_grid_target_price(closes, reg120, reg250,
                               hyst_dn=2,
                               min_level=4,
                               void_confirm=2,
-                              void_exit_buffer=0.02):
+                              void_exit_buffer=0.02,
+                              base_mode='max'):
     """阶梯式分段目标价(2026-09-02 polo4111, 严格无未来函数, 因果)。
 
     以 max(reg120, reg250) 为基准, 档位 levels 形成阶梯目标价。
@@ -1688,12 +1689,26 @@ def compute_grid_target_price(closes, reg120, reg250,
     hyst_up / hyst_dn : int, default 2 / 2
         档位跟随的滞回档距(升档需站上 k+hyst_up 档, 降档需跌破 k-hyst_dn 档)。
 
+    base_mode : {'max','trend'}, default 'max'
+        'max'   = max(reg120, reg250)（原口径）。
+        'trend' = 昨日收盘低于 reg250（下跌段）用 reg120，否则用 max；
+                  用于缓解下跌拐点被 reg250 拖慢的滞后（2026-10-20 P1）。
+
     返回 (target, level_idx):
       target[n]: 每日目标价(置空日为NaN)
       level_idx[n]: 目标档位索引(0..len-1, 置空日=-1)
     """
     closes = np.asarray(closes, dtype=float)
-    base = np.maximum(np.asarray(reg120, dtype=float), np.asarray(reg250, dtype=float))
+    _r120 = np.asarray(reg120, dtype=float)
+    _r250 = np.asarray(reg250, dtype=float)
+    if base_mode == 'trend':
+        # 2026-10-20 P1: 趋势感知基准。下跌段（昨日收盘低于 reg250）改用 reg120，
+        # 避免 max(reg120, reg250) 在下跌拐点被高位的 reg250 拖住。
+        _prev = np.concatenate(([np.nan], closes[:-1]))
+        _down = np.isfinite(_prev) & np.isfinite(_r250) & (_prev < _r250)
+        base = np.where(_down, _r120, np.maximum(_r120, _r250))
+    else:
+        base = np.maximum(_r120, _r250)
     n = len(closes)
     # 2026-10-20 P0: max_dev 不再硬编码 0.13，默认由顶档自动推导。
     if max_dev is None:

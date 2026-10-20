@@ -1011,6 +1011,13 @@ if confirmed:
 - **streamlit**: `streamlit_demo.py` 直接 `from price_segmenter_v10 import run_segmentation`, 改代码自动生效
 - **档位不变**: `levels=(-0.09,-0.06,-0.03,0.00,0.03,0.06,0.09,0.12)`, `down_confirm=10`, 第二阶梯 confirm=40 慢速+粉线档+2档
 - **2026-10-20 P0（用户定版）**: `compute_grid_target_price` 的 `max_dev` 默认改为 `levels[-1] + 0.01` 自动推导（当前顶档 +12% → 0.13，不再硬编码）；置空需连续 `void_confirm=2` 天超偏离；恢复需回到 `max_dev - 0.02`（滞回），避免单日闪烁。回归测试：`test_grid_target_p0.py` 4 项（自动推导/两日确认/滞回/无未来函数）。
+- **2026-10-20 P1/P2 对照（50 只池 / 300 日）**: 指标=价格上穿目标线次数 / 价格在线上% / 档位切换次数 / 置空%：
+  - base 7.1 / 8.8% / 6.1 / 5.1；jump 7.5 / 10.1% / 4.9；up3 7.2 / 7.1% / 8.3；trend 11.1 / 14.2% / 8.4；smooth3 7.6 / 8.8% / 5.9；jump3 7.2 / 8.5% / 6.2。
+  - **结论：默认保持 `jump_up=False`、`up_confirm=5`、`base_mode='max'`、reg 平滑 5+5**。
+  - `trend` 基准过度下压（cross 7.1→11.1、价格在线上 8.8%→14.2%），**不采用**；
+  - `smooth3` 无改善（cross 7.1→7.6），**不采用**；
+  - `jump_up` / `up_confirm=3` 在 12 只小样本略优，但 50 只池不成立，**暂不启用**；
+  - `base_mode='trend'` 仅保留为实验参数（默认 max），后续更大样本/分段验证；测试见 `test_grid_target_p0.py::test_trend_base_option`。
 
 ## 概念板块筹码验证与迭代(2026-10-09 reasonix, 用户授权"跑验证+迭代修改")
 **背景**: 用户问"筹码用于概念行业的想法怎么样"; 我提出三项质疑(代理换手率/未验证/成分变动), 随后实跑验证。
