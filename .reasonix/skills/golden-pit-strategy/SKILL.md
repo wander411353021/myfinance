@@ -1283,17 +1283,18 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
     （与主成本线独立，必须保持 LOW<MID<HIGH）
   - `CHIP_BAND_LO=0.10` / `CHIP_BAND_HI=0.90`：`signal_profile` 的带宽/获利盘
   - `COST_HIGH_EHLERS=20`：COST75 筹码峰上沿的 Ehlers 平滑周期
-  - `COST2_PCT=0.40` / `COST2_EHLERS=50`：参考成本线 B（仅主图红色线+红色填充）
+  - `COST2_PCT=0.40` / `COST2_EHLERS=50`：参考成本线 B 参数（当前已隐藏，`_SHOW_COST2=False`）
   - **2026-10-20 全套新信号标准**：`SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=60`；
     `SIGNAL_MIN_LEVEL=4`（目标价不能低于基准）。
     `challenge_scan.compute` 的 `c35s` 与 `gt_p/gt2` 都用这套标准，**A/B 滑轨只控制显示，不再参与信号**。
 - 环境变量可临时覆盖，例如 `SIGNAL_COST_PCT=0.35 python -m streamlit run streamlit_demo.py`。
 - **streamlit 侧边栏滑轨（A/B 仅显示）**：
   - `主成本线 A · 分位` / `主成本线 A · Ehlers 周期`：只改主图 A 线和填充；
-  - `参考成本线 B · 分位` / `参考成本线 B · Ehlers 周期`：只改主图 B 线和填充；
+  - `参考成本线 B · 分位` / `参考成本线 B · Ehlers 周期`：当前 B 线和 fill 已隐藏，滑轨保留但暂不影响绘图；
   - v3 / v3b / early / 结构冷却固定使用 `SIGNAL_*` 新标准。
   - 拖动任一滑轨自动重算本页；不改 `algo_config.py` 全局默认。
-- **主图颜色**：A = 深绿虚线 + 绿色填充（alpha 0.15）；B = 深红虚线 + 红色填充（alpha 0.30）。
+- **主图颜色**：A = 深绿虚线 + 绿色填充（alpha 0.15）；B 参考线/红色填充当前隐藏（`_SHOW_COST2=False`）。
+- **2026-10-21 用户要求**：隐藏参考成本线 B 以及 low~B 之间的红色区域；A 主成本线、信号逻辑不变。
 - **自动重算开关**（默认开）：拖动滑轨或 tail_days 后，用上次行情直接重绘，不重新取数；
   改代码/结束日期后仍需点「拉取并出图」。
 - 已接入：`challenge_scan.py` / `price_segmenter_v10.py` / `concept_chip_scan.py` /

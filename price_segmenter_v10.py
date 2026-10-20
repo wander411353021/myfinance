@@ -1349,13 +1349,17 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _c2line = _cs2(_H, _L, _V, _turn, _COST2_PCT)
                 _sm2 = _ehlers_smooth(_c2line, _eh2)
                 _sm2_n = _sm2[offset:offset + n]
-                _below2 = lows < _sm2_n
-                if np.any(_below2):
-                    ax0.fill_between(_x, lows, _sm2_n, where=_below2,
-                                     color='#E53935', alpha=0.30, zorder=1.3,
-                                     label='跌破' + _COST2_LABEL + '(参考红)')
-                ax0.plot(_x, _sm2_n, color='#B71C1C', lw=1.1, alpha=0.9, linestyle='--',
-                         zorder=2.8, label=_COST2_LABEL + ' Ehlers%d(参考)' % _eh2)
+                # 2026-10-21 用户要求：隐藏 B 参考线与 low~B 之间的红色区域；
+                # 计算保留，后续需要时把 _SHOW_COST2 改回 True。
+                _SHOW_COST2 = False
+                if _SHOW_COST2:
+                    _below2 = lows < _sm2_n
+                    if np.any(_below2):
+                        ax0.fill_between(_x, lows, _sm2_n, where=_below2,
+                                         color='#E53935', alpha=0.30, zorder=1.3,
+                                         label='跌破' + _COST2_LABEL + '(参考红)')
+                    ax0.plot(_x, _sm2_n, color='#B71C1C', lw=1.1, alpha=0.9, linestyle='--',
+                             zorder=2.8, label=_COST2_LABEL + ' Ehlers%d(参考)' % _eh2)
                 # A 主成本线画在 B 之上，保持主线可读
                 ax0.plot(_x, _sm_n, color='#1B5E20', lw=1.3, alpha=0.95, linestyle='--',
                          zorder=3, label=_COST_LABEL + ' Ehlers%d(主)' % _eh)

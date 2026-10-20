@@ -129,9 +129,9 @@ python challenge_scan.py assess 600550 20261016 20260904
   `challenge_scan.compute` 的 c35s 与 gt_p/gt2 统一使用该标准。环境变量可覆盖。已接入
   `challenge_scan` / `price_segmenter_v10` / `concept_chip_scan` / `pages/1_Concept_Chip` / `_compare_k`。
 - **streamlit 滑轨（A/B 仅显示）**：`主成本线 A · 分位` + `主成本线 A · Ehlers 周期`（只改 A 线和填充）；
-  `参考成本线 B · 分位` + `参考成本线 B · Ehlers 周期`（只改 B 线和填充）。v3/v3b/early 固定使用 `SIGNAL_*`。
+  `参考成本线 B · 分位` + `参考成本线 B · Ehlers 周期`（当前 B 线与填色已隐藏，滑轨保留）。v3/v3b/early 固定使用 `SIGNAL_*`。
   拖动后自动重绘；不修改全局默认。
-- **主图颜色**：A 深绿虚线 + 绿色填充 alpha 0.15；B 深红虚线 + 红色填充 alpha 0.30。
+- **主图颜色**：A 深绿虚线 + 绿色填充 alpha 0.15；B 参考线/红色填充当前隐藏（`_SHOW_COST2=False`）。
 - **自动重算**默认开启：拖动滑轨/tail_days 后用上次行情重绘（不重新取数）；改代码/日期仍需点按钮。
 - ⚠️ `dev35` 字段名保留兼容，值已是主成本线偏离；历史回测 CSV 仍是 COST35 口径。
 
