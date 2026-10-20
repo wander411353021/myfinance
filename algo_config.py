@@ -11,11 +11,11 @@
     SIGNAL_COST_EHLERS   默认 60
     SIGNAL_MIN_LEVEL     默认 4（+0% 档）
     SIGNAL_MIN_LEVEL_DOWN 默认 0（下跌段允许 -9%）
-    SIGNAL_DYNAMIC_MIN_LEVEL 默认 True
-    SIGNAL_DOWN_BUFFER  默认 0.02（连续 3 日低于 base×0.98 才进入下跌段）
-    SIGNAL_DYNAMIC_CONFIRM 默认 3（进入/退出确认天数）
-    SIGNAL_DYNAMIC_EXIT 默认 0.01（连续 3 日高于 base×1.01 才退出）
-    SIGNAL_MIN_TARGET_GAP 默认 0.03（目标价至少高于前收 3%，减少来回穿插）
+    SIGNAL_DYNAMIC_MIN_LEVEL 默认 False（已撤销，目标价不能低于基准）
+    SIGNAL_DOWN_BUFFER  默认 0.02（保留，动态下限关闭时不生效）
+    SIGNAL_DYNAMIC_CONFIRM 默认 3（保留，动态下限关闭时不生效）
+    SIGNAL_DYNAMIC_EXIT 默认 0.01（保留，动态下限关闭时不生效）
+    SIGNAL_MIN_TARGET_GAP 默认 0.0（已撤销 3% 最小间距）
     A/B 成本线（COST_PCT / COST2_PCT）仅用于显示，不参与信号判定。
 
 板块/筹码三档（必须保持低<中<高；与主成本线独立）:
@@ -32,7 +32,7 @@ Ehlers SuperSmoother 平滑周期:
     COST_HIGH_EHLERS 默认 20  → COST75 筹码峰上沿
 
 参考成本线 B（仅主图参考，不参与信号判定）:
-    COST2_PCT        默认 0.35 → COST35
+    COST2_PCT        默认 0.40 → COST40
     COST2_EHLERS     默认 50
 
 环境变量可临时覆盖，例如:
@@ -69,7 +69,7 @@ COST_EHLERS = int(_f('COST_EHLERS', '90'))
 COST_HIGH_EHLERS = int(_f('COST_HIGH_EHLERS', '20'))
 
 # 参考成本线 B（2026-10-18 用户要求：独立分位/周期，主图红色线+红色填充，不参与信号）
-COST2_PCT = _f('COST2_PCT', '0.35')
+COST2_PCT = _f('COST2_PCT', '0.40')
 COST2_EHLERS = int(_f('COST2_EHLERS', '50'))
 
 # 信号判定专用标准（2026-10-20 用户定版：v3/v3b/early 全套新标准）
@@ -78,11 +78,11 @@ SIGNAL_COST_PCT = _f('SIGNAL_COST_PCT', '0.35')
 SIGNAL_COST_EHLERS = int(_f('SIGNAL_COST_EHLERS', '60'))
 SIGNAL_MIN_LEVEL = int(_f('SIGNAL_MIN_LEVEL', '4'))
 SIGNAL_MIN_LEVEL_DOWN = int(_f('SIGNAL_MIN_LEVEL_DOWN', '0'))
-SIGNAL_DYNAMIC_MIN_LEVEL = _b('SIGNAL_DYNAMIC_MIN_LEVEL', True)
+SIGNAL_DYNAMIC_MIN_LEVEL = _b('SIGNAL_DYNAMIC_MIN_LEVEL', False)
 SIGNAL_DOWN_BUFFER = _f('SIGNAL_DOWN_BUFFER', '0.02')
 SIGNAL_DYNAMIC_CONFIRM = int(_f('SIGNAL_DYNAMIC_CONFIRM', '3'))
 SIGNAL_DYNAMIC_EXIT = _f('SIGNAL_DYNAMIC_EXIT', '0.01')
-SIGNAL_MIN_TARGET_GAP = _f('SIGNAL_MIN_TARGET_GAP', '0.03')
+SIGNAL_MIN_TARGET_GAP = _f('SIGNAL_MIN_TARGET_GAP', '0.0')
 
 
 def _label(p):
