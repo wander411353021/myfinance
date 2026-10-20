@@ -1009,7 +1009,8 @@ if confirmed:
 - **效果**: 阶梯线随价格变化更紧, 主升段跟随及时(300300/003040验证)
 - **实现**: Grid Target 块先算 COST35 Ehlers60 (`_base35`), 然后 `compute_grid_target_price(closes, _base35, _base35, ...)`; 第二阶梯同理
 - **streamlit**: `streamlit_demo.py` 直接 `from price_segmenter_v10 import run_segmentation`, 改代码自动生效
-- **档位不变**: `levels=(-0.09,-0.06,-0.03,0.00,0.03,0.06,0.09,0.12)`, `max_dev=0.13`, `down_confirm=10`, 第二阶梯 confirm=40 慢速+粉线档+2档
+- **档位不变**: `levels=(-0.09,-0.06,-0.03,0.00,0.03,0.06,0.09,0.12)`, `down_confirm=10`, 第二阶梯 confirm=40 慢速+粉线档+2档
+- **2026-10-20 P0（用户定版）**: `compute_grid_target_price` 的 `max_dev` 默认改为 `levels[-1] + 0.01` 自动推导（当前顶档 +12% → 0.13，不再硬编码）；置空需连续 `void_confirm=2` 天超偏离；恢复需回到 `max_dev - 0.02`（滞回），避免单日闪烁。回归测试：`test_grid_target_p0.py` 4 项（自动推导/两日确认/滞回/无未来函数）。
 
 ## 概念板块筹码验证与迭代(2026-10-09 reasonix, 用户授权"跑验证+迭代修改")
 **背景**: 用户问"筹码用于概念行业的想法怎么样"; 我提出三项质疑(代理换手率/未验证/成分变动), 随后实跑验证。

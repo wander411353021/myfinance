@@ -1649,14 +1649,16 @@ def detect_grid_break(closes, reg120, reg250,
 
 def compute_grid_target_price(closes, reg120, reg250,
                               levels=(-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12),
-                              max_dev=0.13,
+                              max_dev=None,
                               down_confirm=10,
                               up_confirm=5,
                               jump_up=False,
                               follow_price=False,
                               hyst_up=2,
                               hyst_dn=2,
-                              min_level=4):
+                              min_level=4,
+                              void_confirm=2,
+                              void_exit_buffer=0.02):
     """阶梯式分段目标价(2026-09-02 polo4111, 严格无未来函数, 因果)。
 
     以 max(reg120, reg250) 为基准, 档位 levels 形成阶梯目标价。
@@ -1671,10 +1673,11 @@ def compute_grid_target_price(closes, reg120, reg250,
     状态机:
       升档: 连续 up_confirm 天收盘 >= base*(1+levels[cur]) 且未到最高档 -> cur+=1(延迟确认, 防-9~+3横跳抖动, up_confirm=5)
       降档: 连续 down_confirm 天收盘 < base*(1+levels[cur-1]) -> cur-=1(延迟确认, 防急降, down_confirm=10)
-      置空: 收盘偏离 base 超过 max_dev -> 次日目标置NaN, cur重置0;
-            待偏离回到<=max_dev -> 次日从"当前价格上方6%的格栅档位"重新开始
+      置空: 连续 void_confirm 天收盘偏离 base 超过 max_dev -> 次日目标置NaN, cur重置0;
+            待偏离回到 <= max_dev - void_exit_buffer（滞回） -> 次日从"当前价格上方6%的格栅档位"重新开始
             (2026-09-03 polo4111: 目标价作为上方压力位, 高于当前价格约6%, 落在3%间隔格栅线上)。
-            max_dev=0.13 = 顶档(+12%)+1%缓冲, 超顶档即置空(2026-09-03 用户: 消除+12%~+20%无意义横线段)
+            max_dev 默认 = levels[-1] + 1% 缓冲（当前顶档 +12% -> 0.13），
+            不再硬编码；改档位后自动跟随（2026-10-20 P0）。
 
     min_level : int, default 4
         档位下限(**2026-10-14 用户定版**): 降档不得低于该档位索引(4 = +0% 档)。
@@ -1692,6 +1695,12 @@ def compute_grid_target_price(closes, reg120, reg250,
     closes = np.asarray(closes, dtype=float)
     base = np.maximum(np.asarray(reg120, dtype=float), np.asarray(reg250, dtype=float))
     n = len(closes)
+    # 2026-10-20 P0: max_dev 不再硬编码 0.13，默认由顶档自动推导。
+    if max_dev is None:
+        max_dev = float(levels[-1]) + 0.01
+    max_dev = float(max_dev)
+    void_confirm = max(1, int(void_confirm))
+    void_exit_buffer = max(0.0, float(void_exit_buffer))
     target = np.full(n, np.nan)
     lvl = np.full(n, -1, dtype=int)
 
@@ -1737,6 +1746,7 @@ def compute_grid_target_price(closes, reg120, reg250,
     #   仍保留原有升/降档确认节奏(不是"跟随价格")。
     cur = min(max(int(min_level), 0), len(levels) - 1)   # 档位状态(昨天收盘后确定)
     void = False   # 置空状态(昨天收盘后确定)
+    void_cnt = 0   # 连续超 max_dev 的确认计数
     down_cnt = 0   # 连续降档确认计数
     up_cnt = 0     # 连续升档确认计数
     for t in range(n):
@@ -1754,17 +1764,25 @@ def compute_grid_target_price(closes, reg120, reg250,
             continue
         dev = closes[t] / base[t] - 1
         if dev > max_dev:
-            void = True
-            cur = int(min_level)
-            down_cnt = 0
-            up_cnt = 0
+            # 2026-10-20 P0: 单日超偏离不立即置空，需连续 void_confirm 天确认。
+            void_cnt += 1
+            if void_cnt >= void_confirm:
+                void = True
+                cur = int(min_level)
+                down_cnt = 0
+                up_cnt = 0
             continue
+        void_cnt = 0
         if void:
-            # 回归(偏离回到<=max_dev): 次日从"当前价格上方6%的格栅档位"重新开始
+            # 2026-10-20 P0: 加滞回，回到 max_dev - buffer 才恢复，避免单日来回闪烁。
+            if dev > max_dev - void_exit_buffer:
+                continue
+            # 回归: 次日从"当前价格上方6%的格栅档位"重新开始
             # (2026-09-03 polo4111: 目标价作为上方压力位, 高于当前价格约6%, 落在3%间隔格栅线上)
             # 例: 偏离+8% -> 目标价≈价格*1.06, 取该值最近的格栅档位(≥dev+6%的最小档)
             # 当天价格仅用于初始化, 影响明天, 无未来函数
             void = False
+            void_cnt = 0
             dev_now = closes[t] / base[t] - 1
             req = (1.0 + dev_now) * 1.06 - 1.0  # 目标档位需使 目标价>=价格*1.06
             cur = int(min_level)

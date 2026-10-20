@@ -680,7 +680,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _glv_def = (-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12)
                 _fc_gt = df_ohlc['close'].values.astype(np.float64)
                 _gt, _gl = _prgt.compute_grid_target_price(_fc_gt, _gt120, _gt250,
-                                                           levels=_glv_def, max_dev=0.13, down_confirm=10)
+                                                           levels=_glv_def, max_dev=None, down_confirm=10)
                 _gt_win = _gt[offset:offset + n]
                 if np.any(np.isfinite(_gt_win)):
                     ax0.plot(x, _gt_win, color='#D81B60', lw=1.6, alpha=1.0, zorder=13,
@@ -710,7 +710,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _s3_base = np.maximum(np.asarray(_s3_120), np.asarray(_s3_250))
                 _gt_p, _gl_p = _prgt.compute_grid_target_price(
                     df_ohlc['close'].values.astype(np.float64), _s3_120, _s3_250,
-                    levels=_levs1, max_dev=0.13, down_confirm=10)
+                    levels=_levs1, max_dev=None, down_confirm=10)
                 _gt2 = np.full(len(_s3_base), np.nan)
                 # 2026-10-10 用户: 降低格栅切换次数(实测 60 股 369→107 次, -71%)
                 #   ① 粉线档位**众数平滑**(21 天滚动众数, 平票取较高档)—— 治输入抖动, 因果(只用过去)
