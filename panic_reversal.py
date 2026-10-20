@@ -1660,6 +1660,8 @@ def compute_grid_target_price(closes, reg120, reg250,
                               min_level_downtrend=None,
                               dynamic_min_level=False,
                               down_buffer=0.0,
+                              dynamic_confirm=3,
+                              dynamic_exit_buffer=0.01,
                               void_confirm=2,
                               void_exit_buffer=0.02,
                               base_mode='max'):
@@ -1689,11 +1691,17 @@ def compute_grid_target_price(closes, reg120, reg250,
     min_level_downtrend : int or None, default None
         下跌段档位下限；None = 跟随 min_level。设为 0 表示允许目标价低于基准（最低 -9%）。
     dynamic_min_level : bool, default False
-        2026-10-20: 开启后按**昨日收盘 < 当日 base×(1-down_buffer)** 判定下跌段，
-        下跌段用 min_level_downtrend，否则回到 min_level；用于让下跌段格栅线贴近运行区间。
+        2026-10-20: 开启后按**昨日收盘**判定下跌段，下跌段用 min_level_downtrend，
+        否则回到 min_level；用于让下跌段格栅线贴近运行区间。
+        2026-10-20 修复：进入/退出都需连续 dynamic_confirm 天确认，且用
+        down_buffer / dynamic_exit_buffer 做滞回，避免在基准附近单日横跳。
         只用昨日收盘，状态在收盘后更新，仍严格因果。
     down_buffer : float, default 0.0
-        下跌段判定的缓冲比例（例如 0.02 = 收盘低于 base 2% 才算下跌）。
+        进入下跌段的缓冲比例（例如 0.02 = 收盘低于 base 2% 才算下跌）。
+    dynamic_confirm : int, default 3
+        进入/退出下跌段所需的连续确认天数。
+    dynamic_exit_buffer : float, default 0.01
+        退出下跌段的缓冲（收盘高于 base×(1+该值) 才计入退出确认）。
     follow_price : bool, default False
         档位跟随价格(实验): 线 = 价格上方最近格栅档, 滞回 hyst_up/hyst_dn 档。
         ⚠️ 实测在平缓段反而更差(价在线上 45% vs 原版 22%), 默认 False, 仅保留供实验。
@@ -1775,6 +1783,11 @@ def compute_grid_target_price(closes, reg120, reg250,
     _min_down = (_min_up if min_level_downtrend is None
                  else min(max(int(min_level_downtrend), 0), len(levels) - 1))
     down_buffer = max(0.0, float(down_buffer))
+    dynamic_confirm = max(1, int(dynamic_confirm))
+    dynamic_exit_buffer = max(0.0, float(dynamic_exit_buffer))
+    _dyn_down = False
+    _dyn_down_cnt = 0
+    _dyn_up_cnt = 0
     void = False   # 置空状态(昨天收盘后确定)
     void_cnt = 0   # 连续超 max_dev 的确认计数
     down_cnt = 0   # 连续降档确认计数
@@ -1783,13 +1796,35 @@ def compute_grid_target_price(closes, reg120, reg250,
         if not np.isfinite(base[t]):
             continue
         # 2026-10-20: 动态档位下限。只使用昨日收盘判定下跌段，仍严格因果。
-        _prev_close = closes[t - 1] if t > 0 else np.nan
-        _is_down = (dynamic_min_level and np.isfinite(_prev_close)
-                    and np.isfinite(base[t])
-                    and _prev_close < base[t] * (1.0 - down_buffer))
-        _min_t = _min_down if _is_down else _min_up
-        if not _is_down and cur < _min_up:
-            cur = _min_up
+        # 进入/退出都需连续 dynamic_confirm 天确认，并用 down_buffer / exit_buffer 滞回，
+        # 避免价格在基准附近时 min_level 单日 0/4 来回切换。
+        if dynamic_min_level:
+            _prev_close = closes[t - 1] if t > 0 else np.nan
+            if not _dyn_down:
+                if (np.isfinite(_prev_close) and np.isfinite(base[t])
+                        and _prev_close < base[t] * (1.0 - down_buffer)):
+                    _dyn_down_cnt += 1
+                    if _dyn_down_cnt >= dynamic_confirm:
+                        _dyn_down = True
+                        _dyn_down_cnt = 0
+                        _dyn_up_cnt = 0
+                else:
+                    _dyn_down_cnt = 0
+            else:
+                if (np.isfinite(_prev_close) and np.isfinite(base[t])
+                        and _prev_close > base[t] * (1.0 + dynamic_exit_buffer)):
+                    _dyn_up_cnt += 1
+                    if _dyn_up_cnt >= dynamic_confirm:
+                        _dyn_down = False
+                        _dyn_up_cnt = 0
+                        _dyn_down_cnt = 0
+                else:
+                    _dyn_up_cnt = 0
+            _min_t = _min_down if _dyn_down else _min_up
+            if not _dyn_down and cur < _min_up:
+                cur = _min_up
+        else:
+            _min_t = _min_up
         # 1) 用昨天的状态 + 今天的 base 计算今天目标价(当天价格不参与)
         if void:
             target[t] = np.nan

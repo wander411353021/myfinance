@@ -126,7 +126,8 @@ python challenge_scan.py assess 600550 20261016 20260904
 - **全局参数入口**：`algo_config.py`（`COST_PCT=0.70` / `COST_EHLERS=90` 主成本线 A，仅显示；`COST_PCT_LOW/MID/HIGH=0.35/0.50/0.75`
   板块三档；`CHIP_BAND_LO/HI` 带宽；`COST2_PCT=0.35` / `COST2_EHLERS=50` 参考线 B，仅显示）。
   **信号标准**：`SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=60`，`SIGNAL_MIN_LEVEL=4` / `SIGNAL_MIN_LEVEL_DOWN=0` /
-  `SIGNAL_DYNAMIC_MIN_LEVEL=True`；`challenge_scan.compute` 的 c35s 与 gt_p/gt2 统一使用该标准。环境变量可覆盖。已接入
+  `SIGNAL_DYNAMIC_MIN_LEVEL=True`，`SIGNAL_DOWN_BUFFER=0.02` / `SIGNAL_DYNAMIC_CONFIRM=3` / `SIGNAL_DYNAMIC_EXIT=0.01`；
+  `challenge_scan.compute` 的 c35s 与 gt_p/gt2 统一使用该标准。环境变量可覆盖。已接入
   `challenge_scan` / `price_segmenter_v10` / `concept_chip_scan` / `pages/1_Concept_Chip` / `_compare_k`。
 - **streamlit 滑轨（A/B 仅显示）**：`主成本线 A · 分位` + `主成本线 A · Ehlers 周期`（只改 A 线和填充）；
   `参考成本线 B · 分位` + `参考成本线 B · Ehlers 周期`（只改 B 线和填充）。v3/v3b/early 固定使用 `SIGNAL_*`。

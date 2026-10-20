@@ -19,7 +19,8 @@ from chip_panel import cost_series
 from algo_config import (COST_LABEL, CHIP_BAND_LO, CHIP_BAND_HI,
                          SIGNAL_COST_PCT, SIGNAL_COST_EHLERS,
                          SIGNAL_MIN_LEVEL, SIGNAL_MIN_LEVEL_DOWN,
-                         SIGNAL_DYNAMIC_MIN_LEVEL)
+                         SIGNAL_DYNAMIC_MIN_LEVEL, SIGNAL_DOWN_BUFFER,
+                         SIGNAL_DYNAMIC_CONFIRM, SIGNAL_DYNAMIC_EXIT)
 
 LOOKBACK = 60; PRESS_VALID_MIN = 0.70; PRESS_ABOVE_MAX = 10
 PRESS_GAP_MIN = 3.0; PRESS_GAP_MAX = 20.0
@@ -105,7 +106,10 @@ def compute(df, cost_pct=None, ehlers_period=None):
         levels=(-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12),
         max_dev=None, down_confirm=10,
         min_level=SIGNAL_MIN_LEVEL, min_level_downtrend=SIGNAL_MIN_LEVEL_DOWN,
-        dynamic_min_level=SIGNAL_DYNAMIC_MIN_LEVEL)
+        dynamic_min_level=SIGNAL_DYNAMIC_MIN_LEVEL,
+        down_buffer=SIGNAL_DOWN_BUFFER,
+        dynamic_confirm=SIGNAL_DYNAMIC_CONFIRM,
+        dynamic_exit_buffer=SIGNAL_DYNAMIC_EXIT)
     gt2 = second_stair(base_sig, gt_p, gl_p)
     return cl, [_bd(d) for d in df['date'].values], gt_p, gt2, c35s, base_sig
 
