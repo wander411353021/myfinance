@@ -753,7 +753,9 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                         _v2 = _gt_p[_ti]
                     _gt2[_ti] = _v2
                 _gt2_win = _gt2[offset:offset + n]
-                if np.any(np.isfinite(_gt2_win)):
+                # 2026-10-20 用户要求：不显示紫色第二阶梯压制线（计算保留，便于以后恢复）
+                _SHOW_STEP2 = False
+                if _SHOW_STEP2 and np.any(np.isfinite(_gt2_win)):
                     ax0.plot(x, _gt2_win, color='#4A148C', lw=1.4, alpha=0.95, zorder=12,
                              label='第二阶梯 (粉线档众数平滑+2档, 同档连续40天)')
         except Exception as _e:
