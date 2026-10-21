@@ -217,12 +217,12 @@ def v3b_signal_at(cl, gt_p, gt2, c35s, vol, i, gt_p_eff=None, gt2_eff=None):
     return True, feats
 
 
-def v3b_signal_b2(cl, gt_p, cA, vol, i, gt_p_eff=None):
+def v3b_signal_b2(cl, gt_p, cA, vol, i, gt_p_eff=None, gap_min=None, gap_max=None):
     """v3b 二次买点 - 三线制 v3b_B2 (2026-10-21 polo4111 定版, 紫线 gt2 弃用):
     1) 当日站上红压线 close > gt_p, 且 close > 主成本线A(线上确认)
     2) [T-250,T-20] 曾站上红压线(曾经突破动作, touch=1.0)
     3) [T-70,T-5] 曾跌破主成本线A×0.98(深回踩洗盘)
-    4) gap 相对红压线 [5%,20%)
+    4) gap 相对红压线 [gap_min,gap_max) 默认 [5%,20%)
     5) 量能 >=1.2×前20均量
     6) 冷却: [i-20,i) 内无站上红压线
     只用<=i数据, 无未来函数。返回 (ok, 特征dict)"""
@@ -246,9 +246,11 @@ def v3b_signal_b2(cl, gt_p, cA, vol, i, gt_p_eff=None):
     cw = cA[rlo:rhi]
     if not np.any(np.isfinite(cw) & (cw > 0) & (cl[rlo:rhi] < cw * V3B_REC_DIP)):
         return False, None
-    # 4) gap 相对红压线 [5%,20%)
+    # 4) gap 相对红压线
+    gmin = V3B_GAP_MIN if gap_min is None else float(gap_min)
+    gmax = V3B_GAP_MAX if gap_max is None else float(gap_max)
     gap = (cl[i] / p_i - 1) * 100
-    if not (V3B_GAP_MIN <= gap < V3B_GAP_MAX): return False, None
+    if not (gmin <= gap < gmax): return False, None
     # 5) 量能确认
     if vol is not None:
         ma20 = vol[max(0, i - 20):i].mean()
