@@ -218,12 +218,14 @@ def v3b_signal_at(cl, gt_p, gt2, c35s, vol, i, gt_p_eff=None, gt2_eff=None):
     return True, feats
 
 
-def v3b_signal_b2(cl, gt_p, cA, vol, i, gt_p_eff=None, gap_min=None, gap_max=None):
+def v3b_signal_b2(cl, gt_p, cA, vol, i, gt_p_eff=None, gap_min=None, gap_max=None,
+                  strong_gap=False):
     """v3b 二次买点 - 三线制 v3b_B2 (2026-10-21 polo4111 定版, 紫线 gt2 弃用):
     1) 当日站上红压线 close > gt_p, 且 close > 主成本线A(线上确认)
     2) [T-250,T-20] 曾站上红压线(曾经突破动作, touch=1.0)
     3) [T-70,T-5] 曾跌破主成本线A×0.98(深回踩洗盘)
     4) gap 相对红压线 [gap_min,gap_max) 默认 [5%,20%)
+       strong_gap=True 时为 B2-early 强势分支：只保留 gap > gap_max，其他条件不变
     5) 量能 >=1.2×前20均量
     6) 冷却由 scan_series 统一负责(armed/structure 或间隔), 本函数不重复判定
        (2026-10-21 改: 原"逐日站压线事件冷却"会锁死连续站上压线的大牛,
@@ -253,7 +255,10 @@ def v3b_signal_b2(cl, gt_p, cA, vol, i, gt_p_eff=None, gap_min=None, gap_max=Non
     gmin = V3B_GAP_MIN if gap_min is None else float(gap_min)
     gmax = V3B_GAP_MAX if gap_max is None else float(gap_max)
     gap = (cl[i] / p_i - 1) * 100
-    if not (gmin <= gap < gmax): return False, None
+    if strong_gap:
+        if gap <= gmax: return False, None
+    elif not (gmin <= gap < gmax):
+        return False, None
     # 5) 量能确认
     if vol is not None:
         ma20 = vol[max(0, i - 20):i].mean()
@@ -605,6 +610,8 @@ def scan_series(cl, gt_p, gt2, c35s, vol, start_i=MIN_I, end_i=None,
     P0-2: 当日判定优先用 gt_p_eff/gt2_eff；历史窗口仍用原始 gt_p/gt2。
     v3b_B2(2026-10-21): 传入 cA(主成本线A) 时 v3b 用三线制 v3b_signal_b2(紫线弃用);
                         不传时保持旧紫线 v3b_signal_at(历史回溯兼容)。
+    v3b_b2_early(2026-10-21): B2 强势分支，条件同 B2 但 gap>gap_max(默认20%)；
+                              仅输出标记，不替代正式 B2。
     early_E4(2026-10-21): 传入 cB(参考线B) 时 early 用三线制 early_signal_b2(紫线弃用);
                           不传时保持旧紫线 v3b_early_at(历史回溯兼容)。
     """
@@ -632,6 +639,11 @@ def scan_series(cl, gt_p, gt2, c35s, vol, start_i=MIN_I, end_i=None,
                 else:
                     ok, _ = v3b_signal_at(cl, gt_p, gt2, c35s, vol, i,
                                           gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
+            elif t == 'v3b_b2_early':
+                if cA is None:
+                    continue
+                ok, _ = v3b_signal_b2(cl, gt_p, cA, vol, i,
+                                      gt_p_eff=gt_p_eff, strong_gap=True)
             elif t == 'early':
                 if cB is not None:
                     ok, _ = early_signal_b2(cl, gt_p, cA, cB, i,
@@ -687,7 +699,7 @@ def scan_recent(code, end, fresh=10, datalen=1000, df=None, mode=None,
     # P0-1: 统一结构冷却（跌破 COST35×0.98 重新武装；同轮只提示第一次）
     # P1-1: v3/v3b/early 三种类型独立 armed；v3 需要 darr
     sig = scan_series(cl, gt_p, gt2, c35s, vol, start_i=MIN_I,
-                      types=('v3', 'v3b', 'early'), mode=mode, darr=darr,
+                      types=('v3', 'v3b', 'v3b_b2_early', 'early'), mode=mode, darr=darr,
                       gt_p_eff=gt_p_eff, gt2_eff=gt2_eff, cA=cA, cB=cB)
     hits = [(t, i) for t, i in sig if i >= start_i]
 

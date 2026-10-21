@@ -576,6 +576,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 v3b_sig_dates=None,
                                 v3b_profiles=None,
                                 v3b_early_dates=None,
+                                v3b_b2_early_dates=None,
                                 v3_sig_dates=None,
                                 bigline_dates=None,
                                 cost_pct=None,
@@ -994,7 +995,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     if show_chip:
         ax2 = axes[2]
         ax2.set_ylim(0, 1)
-        if v3b_sig_dates or v3b_early_dates or v3_sig_dates:
+        if v3b_sig_dates or v3b_early_dates or v3_sig_dates or v3b_b2_early_dates:
             # 注意: tdx date 为 UTC 存储(交易日 D 存成 D-1 16:00), 必须复用 challenge_scan._bd
             # 的 +8h 转换(2026-10-16 修复: str/strftime 直接取会早一天, 300204 信号面板空白)
             from challenge_scan import _bd as _bd_local
@@ -1010,6 +1011,16 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                              (_xi, 0.45), textcoords='offset points',
                              xytext=(0, 3), ha='center', va='bottom',
                              fontsize=6, color='#FB8C00')
+            for _ds in v3b_b2_early_dates or []:
+                _xi = _dmap.get(_ds)
+                if _xi is None:
+                    continue
+                ax2.axvline(_xi, color='#1565C0', lw=1.2, alpha=0.8, zorder=4, linestyle=':')
+                ax2.scatter([_xi], [0.20], s=16, color='#1565C0', marker='^', zorder=6)
+                ax2.annotate(_ds[-4:] if len(_ds) >= 4 else _ds,
+                             (_xi, 0.20), textcoords='offset points',
+                             xytext=(0, 3), ha='center', va='bottom',
+                             fontsize=6, color='#1565C0', fontweight='bold')
             for _ds in v3_sig_dates or []:
                 _xi = _dmap.get(_ds)
                 if _xi is None:
@@ -1031,7 +1042,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                              xytext=(0, 3), ha='center', va='bottom',
                              fontsize=6, color='#D32F2F', fontweight='bold')
         ax2.set_ylabel('signals', fontsize=9)
-        ax2.set_title('信号 (红=v3b二次买点; 绿=v3首次突破; 橙虚=early提前观察)',
+        ax2.set_title('信号 (红=v3b_B2; 蓝▲=B2-early强势; 绿=v3首次突破; 橙虚=early_E4)',
                       fontsize=9, loc='left', pad=2)
         ax2.grid(True, alpha=0.2)
         ax2.set_yticks([])
@@ -1500,7 +1511,7 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
     #   + 信号画像(2026-10-16): 每个信号日整理量能/回踩/冷却/前高/筹码/gap 指标
     #   + 提前观察(2026-10-16): v3b_early 站上COST35未到紫线, 橙色虚线标记
     v3b_sig_dates = None; v3b_profiles = None; v3b_early_dates = None
-    v3_sig_dates = None; bigline_dates = None
+    v3_sig_dates = None; v3b_b2_early_dates = None; bigline_dates = None
     if show_v3b:
         try:
             from challenge_scan import compute_eff as _cs_compute_eff
@@ -1517,10 +1528,11 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
             _turn = df_ohlc['turnover'].values.astype(float)
             _cB = _cs_early_cB(_hi, _lo, _vol, _turn)
             v3b_sig_dates = []; v3b_profiles = {}; v3b_early_dates = []; v3_sig_dates = []
+            v3b_b2_early_dates = []
             _early_idx = []
             _end = str(end_date).replace('-', '')[:8] if end_date else '99999999'
             _sig = _cs_series(_cl, _gtp, _gt2, _c35, _vol, start_i=400,
-                              types=('v3', 'v3b', 'early'), mode='structure',
+                              types=('v3', 'v3b', 'v3b_b2_early', 'early'), mode='structure',
                               darr=_darr, gt_p_eff=_gtp_e, gt2_eff=_gt2_e,
                               cA=_cA, cB=_cB)
             for _t, _i in _sig:
@@ -1537,6 +1549,8 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                         pass
                 elif _t == 'v3':
                     v3_sig_dates.append(_ds)
+                elif _t == 'v3b_b2_early':
+                    v3b_b2_early_dates.append(_ds)
                 else:
                     v3b_early_dates.append(_ds)
                     _early_idx.append(_i)
@@ -1570,6 +1584,7 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                                 v3b_sig_dates=v3b_sig_dates,
                                 v3b_profiles=v3b_profiles,
                                 v3b_early_dates=v3b_early_dates,
+                                v3b_b2_early_dates=v3b_b2_early_dates,
                                 v3_sig_dates=v3_sig_dates,
                                 bigline_dates=bigline_dates,
                                 cost_pct=cost_pct,

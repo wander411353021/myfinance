@@ -128,6 +128,9 @@ python challenge_scan.py assess 600550 20261016 20260904
   **信号标准**：`SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=60`，`SIGNAL_MIN_LEVEL=4`（目标价不能低于基准）；
   `challenge_scan.compute` 的 c35s 与 gt_p/gt2 统一使用该标准。环境变量可覆盖。已接入
   `challenge_scan` / `price_segmenter_v10` / `concept_chip_scan` / `pages/1_Concept_Chip` / `_compare_k`。
+- **B2-early 强势分支（2026-10-21）**：正式 `v3b_B2` 仍要求 `gap∈[5,20)`；`v3b_b2_early` 复用 B2
+  全部结构/放量条件，仅允许 `gap>20%`，仅作标记、不替代正式 B2。`scan_recent` 会同时返回；
+  V10 信号面板蓝色 ▲（y=0.20）。600865：early 0828 → B2-early 0904（gap 28.5%）→ 正式 B2 0915（gap 13.3%）。
 - **streamlit 滑轨（A/B 仅显示）**：`主成本线 A · 分位` + `主成本线 A · Ehlers 周期`（只改 A 线和填充）；
   `参考成本线 B · 分位` + `参考成本线 B · Ehlers 周期`（当前 B 线与填色已隐藏，滑轨保留）。v3/v3b/early 固定使用 `SIGNAL_*`。
   拖动后自动重绘；不修改全局默认。
