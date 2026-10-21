@@ -1503,18 +1503,22 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
             from challenge_scan import signal_profile as _cs_prof
             from challenge_scan import scan_series as _cs_series
             from challenge_scan import bigline_hits as _cs_bigline
+            from challenge_scan import early_cB as _cs_early_cB
             # P0-2: raw + eff 两套线；P0-1: scan_series 结构冷却；P1-1: v3 一并显示
+            # 2026-10-21: 传 cA/cB 接入三线制 (v3b_B2 / early_E4, 紫线弃用)
             _cl, _darr, _gtp, _gt2, _gtp_e, _gt2_e, _c35, _, _cA = _cs_compute_eff(df_ohlc)
             _vol = df_ohlc['volume'].values.astype(float)
             _hi = df_ohlc['high'].values.astype(float)
             _lo = df_ohlc['low'].values.astype(float)
             _turn = df_ohlc['turnover'].values.astype(float)
+            _cB = _cs_early_cB(_hi, _lo, _vol, _turn)
             v3b_sig_dates = []; v3b_profiles = {}; v3b_early_dates = []; v3_sig_dates = []
             _early_idx = []
             _end = str(end_date).replace('-', '')[:8] if end_date else '99999999'
             _sig = _cs_series(_cl, _gtp, _gt2, _c35, _vol, start_i=400,
                               types=('v3', 'v3b', 'early'), mode='structure',
-                              darr=_darr, gt_p_eff=_gtp_e, gt2_eff=_gt2_e)
+                              darr=_darr, gt_p_eff=_gtp_e, gt2_eff=_gt2_e,
+                              cA=_cA, cB=_cB)
             for _t, _i in _sig:
                 _ds = str(_darr[_i])[:8]
                 if _ds >= _end:
@@ -1535,7 +1539,8 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
             # bigline 大阳线起点: early 后 20 天内第一根 >=5% 大阳线
             try:
                 _bl_hits = _cs_bigline(_cl, _darr, _gtp, _gt2, _c35, _vol,
-                                       gt_p_eff=_gtp_e, gt2_eff=_gt2_e)
+                                       gt_p_eff=_gtp_e, gt2_eff=_gt2_e,
+                                       cB=_cB)
                 _bl_dates = []
                 for _bi, _ei, _w, _bp, _vr in _bl_hits:
                     _bds = str(_darr[_bi])[:8]

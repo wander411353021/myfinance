@@ -38,7 +38,8 @@ def scan_code(code, end):
             continue
         if cl[i] < cB[i] * MULT:
             continue
-        if cl[i] >= pi * 0.98:
+        # E4 上限: 未站上主成本线A(红压线~A之间归early, 与v3b_B2在A处分界)
+        if cl[i] >= cA[i]:
             continue
         if i - last < COOL:
             continue
@@ -48,14 +49,14 @@ def scan_code(code, end):
             pw = gt_p[lo2:hi2]
             h = bool(np.any(np.isfinite(pw) & (pw > 0) & (cl[lo2:hi2] >= pw)))
         if not h:
-            last = i; continue
+            continue
         rlo, rhi = max(0, i - 70), i - 5
         r = False
         if rlo < rhi:
             cw = cB[rlo:rhi]
             r = bool(np.any(np.isfinite(cw) & (cw > 0) & (cl[rlo:rhi] < cw * V3B_REC_DIP)))
         if not r:
-            last = i; continue
+            continue
         d = darr[i]
         if d < '20211001' or d > end:
             continue

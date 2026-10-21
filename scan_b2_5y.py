@@ -50,43 +50,48 @@ for k,code in enumerate(mine):
     except Exception as e:
         print('ERR',code,e,flush=True); continue
     n=len(cl); ma20=ma20_pre(vol)
-    last_touch=-10**9
+    # 2026-10-21 polo4111: 冷却口径改"结构武装"(对齐旧v3b武装冷却):
+    # 跌破 c35s×0.98 重新武装; 站上期间触发一次后武装失效, 不逐日/间隔卡死连续站上大牛
+    armed=True
     for i in range(MIN_I,n):
         pi=gtp_e[i] if np.isfinite(gtp_e[i]) else gt_p[i]
         if not (np.isfinite(pi) and pi>0 and np.isfinite(cA[i]) and cA[i]>0): continue
-        if cl[i] <= pi: continue          # 站上红压线事件
-        if i-last_touch < V3B_COOL: 
-            last_touch=i; continue
-        if cl[i] <= cA[i]: last_touch=i; continue   # 线上确认
+        if cl[i] < c35s[i]*0.98: armed=True
+        if not armed: continue
+        if cl[i] <= pi: continue          # 非站上红压线日
+        if cl[i] <= cA[i]: continue   # 线上确认
         lo,hi=max(MIN_I,i-V3B_HIST_LO),i-V3B_HIST_HI
         h_touch=False
         if lo<hi:
             pw=gt_p[lo:hi]
             h_touch=bool(np.any(np.isfinite(pw)&(pw>0)&(cl[lo:hi]>=pw)))
-        if not h_touch: last_touch=i; continue
+        if not h_touch: continue
         rlo,rhi=max(0,i-V3B_REC_LO),i-V3B_REC_HI
         r_dip=False
         if rlo<rhi:
             cw=cA[rlo:rhi]
             r_dip=bool(np.any(np.isfinite(cw)&(cw>0)&(cl[rlo:rhi]<cw*V3B_REC_DIP)))
-        if not r_dip: last_touch=i; continue
-        if not (np.isfinite(ma20[i]) and ma20[i]>0 and vol[i]>=ma20[i]*V3B_VOL_MULT): last_touch=i; continue
+        if not r_dip: continue
+        if not (np.isfinite(ma20[i]) and ma20[i]>0 and vol[i]>=ma20[i]*V3B_VOL_MULT): continue
         gap=(cl[i]/pi-1)*100; dev_a=(cl[i]/cA[i]-1)*100
         d=darr[i]
-        if not (WIN_START<=d<=WIN_END): last_touch=i; continue
+        if not (WIN_START<=d<=WIN_END): continue
         # 后验
         f60=cl[i+1:min(i+61,n)]; f120=cl[i+1:min(i+121,n)]
         f60mx=(f60.max()/cl[i]-1)*100 if len(f60)>=20 else np.nan
         f120mx=(f120.max()/cl[i]-1)*100 if len(f120)>=60 else np.nan
         s60=int(np.isfinite(f60mx) and f60mx>=10); s120=int(np.isfinite(f120mx) and f120mx>=50)
         fail=int(np.isfinite(f60mx) and f60mx<5)
+        _matched=False
         for gk,(gmin,gmax) in enumerate(gaps):
             if gmin<=gap<gmax:
                 rows.append((code,d,round(float(cl[i]),2),gk,round(gap,1),round(dev_a,1),
                              round(f60mx,1) if np.isfinite(f60mx) else None,
                              round(f120mx,1) if np.isfinite(f120mx) else None,
                              s60,s120,fail,int(code in WATCH)))
-        last_touch=i
+                _matched=True
+        # 与 challenge_scan.v3b_signal_b2 一致: gap 出档视为判定不成立, 不消耗武装
+        if _matched: armed=False
     if k%200==0:
         el=(__import__('time').time()-t0)/60
         print(f'  [{a.part}] {k}/{len(mine)} {el:.1f}min',flush=True)

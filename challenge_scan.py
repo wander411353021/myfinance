@@ -225,7 +225,9 @@ def v3b_signal_b2(cl, gt_p, cA, vol, i, gt_p_eff=None, gap_min=None, gap_max=Non
     3) [T-70,T-5] 曾跌破主成本线A×0.98(深回踩洗盘)
     4) gap 相对红压线 [gap_min,gap_max) 默认 [5%,20%)
     5) 量能 >=1.2×前20均量
-    6) 冷却: [i-20,i) 内无站上红压线
+    6) 冷却由 scan_series 统一负责(armed/structure 或间隔), 本函数不重复判定
+       (2026-10-21 改: 原"逐日站压线事件冷却"会锁死连续站上压线的大牛,
+       603778@1016 型; 冷却口径与 early_E4 对齐)
     只用<=i数据, 无未来函数。返回 (ok, 特征dict)"""
     if i < MIN_I: return False, None
     p_i = gt_p_eff[i] if gt_p_eff is not None else gt_p[i]
@@ -256,12 +258,6 @@ def v3b_signal_b2(cl, gt_p, cA, vol, i, gt_p_eff=None, gap_min=None, gap_max=Non
     if vol is not None:
         ma20 = vol[max(0, i - 20):i].mean()
         if ma20 > 0 and vol[i] < ma20 * V3B_VOL_MULT: return False, None
-    # 6) 冷却: [i-20,i) 内无站上红压线
-    if i >= V3B_COOL:
-        cwin = gt_p[max(0, i - V3B_COOL):i]
-        ccl = cl[max(0, i - V3B_COOL):i]
-        if np.any(np.isfinite(cwin) & (cwin > 0) & (ccl >= cwin * touch)):
-            return False, None
     feats = dict(gap=round(gap, 1),
                  dev_a=round((cl[i] / cA[i] - 1) * 100, 1))
     return True, feats
@@ -320,21 +316,24 @@ def early_cB(hi, lo, vol, turn):
         return np.full(len(hi), np.nan)
 
 
-def early_signal_b2(cl, gt_p, cB, i, gt_p_eff=None):
+def early_signal_b2(cl, gt_p, cA, cB, i, gt_p_eff=None):
     """early 三线制(E4) 提前观察信号 (2026-10-21 polo4111 定版, 紫线弃用):
-    1) 当日站上参考线B×1.03(脱离底部), 且未到红压线(close < gt_p×0.98, 保证比v3b早)
+    1) 当日站上参考线B×1.03(脱离底部), 且未站上主成本线A(close < cA)
+       —— 覆盖"红压线之上、主成本线A之下"的中间区(300204@0415 型),
+          与 v3b_B2(close>cA) 在 A 处分界互补
     2) [T-250,T-20] 曾站上红压线(曾经突破动作, touch=1.0)
     3) [T-70,T-5] 曾跌破参考线B×0.98(深洗)
-    4) 冷却: [i-20,i) 内无站上B×1.03
-    5) 无量能要求(捕捉首波缩量启动, 002460/603778 型)
+    4) 无量能要求(捕捉首波缩量启动, 002460/603778 型)
+    5) 冷却由 scan_series 统一负责
     只用<=i数据, 无未来函数。返回 (ok, 特征dict)"""
     if i < MIN_I: return False, None
     p_i = gt_p_eff[i] if gt_p_eff is not None else gt_p[i]
-    if not (np.isfinite(p_i) and p_i > 0 and np.isfinite(cB[i]) and cB[i] > 0):
+    if not (np.isfinite(p_i) and p_i > 0 and np.isfinite(cB[i]) and cB[i] > 0
+            and np.isfinite(cA[i]) and cA[i] > 0):
         return False, None
-    # 1) 站上参考线B×1.03, 未到红压线
+    # 1) 站上参考线B×1.03, 未站上主成本线A
     if cl[i] < cB[i] * 1.03: return False, None
-    if cl[i] >= p_i * 0.98: return False, None
+    if cl[i] >= cA[i]: return False, None
     # 2) 历史: [T-250, T-20] 曾站上红压线
     lo, hi = max(MIN_I, i - V3B_HIST_LO), i - V3B_HIST_HI
     if lo >= hi: return False, None
@@ -347,8 +346,6 @@ def early_signal_b2(cl, gt_p, cB, i, gt_p_eff=None):
     cw = cB[rlo:rhi]
     if not np.any(np.isfinite(cw) & (cw > 0) & (cl[rlo:rhi] < cw * V3B_REC_DIP)):
         return False, None
-    # 冷却由 scan_series 统一负责(armed/last 机制), 本函数不重复判定:
-    # 站B是常见事件, 事件冷却会锁死低位横盘票; 间隔/结构武装更贴合 early 定位
     gap = (cl[i] / p_i - 1) * 100
     feats = dict(gap=round(gap, 1),
                  dev_b=round((cl[i] / cB[i] - 1) * 100, 1))
@@ -637,7 +634,7 @@ def scan_series(cl, gt_p, gt2, c35s, vol, start_i=MIN_I, end_i=None,
                                           gt_p_eff=gt_p_eff, gt2_eff=gt2_eff)
             elif t == 'early':
                 if cB is not None:
-                    ok, _ = early_signal_b2(cl, gt_p, cB, i,
+                    ok, _ = early_signal_b2(cl, gt_p, cA, cB, i,
                                             gt_p_eff=gt_p_eff)
                 else:
                     ok, _ = v3b_early_at(cl, gt_p, gt2, c35s, vol, i,
