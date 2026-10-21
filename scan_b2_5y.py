@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
-"""v3b_B2 全市场5年回溯 + gap 多档敏感性 (2026-10-21 polo4111)
-信号判定复用 challenge_scan.v3b_signal_b2 逻辑(自实现循环以支持多gap档+统一冷却链)。
-用法: python3 scan_b2_5y.py --part N --nparts M [--gaps "3,20;5,20;3,25;5,25;0,30"]
-产物: result/b2_scan_shard{part}.csv (每信号一行, 含 gap_band 列)"""
+"""v3b_B2 全市场5年回溯 + B2-early 强势分支 (2026-10-21 polo4111, 合并 reasonix 3a7646a/156ad23)
+信号判定复用 challenge_scan.v3b_signal_b2 逻辑(自实现循环以支持统一冷却链)。
+正式 B2 严格口径: gap∈[5,20) + 史压 + 回踩 + 量能; B2-early 强势分支:
+gap>20%(其余条件与正式B2相同, 对齐 reasonix strong_gap) 独立标记 kind='b2e'。
+冷却: 正式B2 与 b2e 独立武装链 + 30日混合重武装(SIGNAL_REARM_DAYS)。
+用法: python3 scan_b2_5y.py --part N --nparts M [--gaps "5,20"]
+产物: result/b2_scan_shard{part}.csv (每信号一行, 含 gap_band/kind 列)"""
 import sys, os, argparse
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -12,6 +15,7 @@ try:
     import fengwo; fengwo.showMsg(False)
 except Exception: pass
 from challenge_scan import load, compute_eff, MIN_I, V3B_COOL, V3B_HIST_LO, V3B_HIST_HI, V3B_REC_LO, V3B_REC_HI, V3B_REC_DIP, V3B_VOL_MULT
+from algo_config import SIGNAL_REARM_DAYS
 
 END='20261016'; WIN_START='20211001'; WIN_END='20261016'
 CACHE='result/scan_cache_v3b'
@@ -19,7 +23,7 @@ WATCH={'300171','003040','300204','300251','300437','600199','600519','600371','
 
 ap=argparse.ArgumentParser()
 ap.add_argument('--part',type=int,required=True); ap.add_argument('--nparts',type=int,required=True)
-ap.add_argument('--gaps',default='3,20;5,20;3,25;5,25;0,30')
+ap.add_argument('--gaps',default='5,20')
 a=ap.parse_args()
 gaps=[tuple(map(float,g.split(','))) for g in a.gaps.split(';')]
 print('gap档:',gaps,'part',a.part,'/',a.nparts,flush=True)
@@ -50,52 +54,65 @@ for k,code in enumerate(mine):
     except Exception as e:
         print('ERR',code,e,flush=True); continue
     n=len(cl); ma20=ma20_pre(vol)
-    # 2026-10-21 polo4111: 冷却口径改"结构武装"(对齐旧v3b武装冷却):
-    # 跌破 c35s×0.98 重新武装; 站上期间触发一次后武装失效, 不逐日/间隔卡死连续站上大牛
-    armed=True
+    # 冷却口径(2026-10-21 合并 reasonix 156ad23 + 独立链):
+    # 正式 B2 与 B2-early 独立武装链(互不消耗, 对齐 reasonix scan_series 独立类型);
+    # 跌破 c35s×0.98 或距上次同类信号>=SIGNAL_REARM_DAYS(30) 重新武装(混合重武装)
+    armed_b2=True; armed_b2e=True; last_b2=-10**9; last_b2e=-10**9
     for i in range(MIN_I,n):
         pi=gtp_e[i] if np.isfinite(gtp_e[i]) else gt_p[i]
         if not (np.isfinite(pi) and pi>0 and np.isfinite(cA[i]) and cA[i]>0): continue
-        if cl[i] < c35s[i]*0.98: armed=True
-        if not armed: continue
+        if cl[i] < c35s[i]*0.98:
+            armed_b2=True; armed_b2e=True
+        else:
+            if i-last_b2>=SIGNAL_REARM_DAYS: armed_b2=True
+            if i-last_b2e>=SIGNAL_REARM_DAYS: armed_b2e=True
         if cl[i] <= pi: continue          # 非站上红压线日
         if cl[i] <= cA[i]: continue   # 线上确认
+        gap=(cl[i]/pi-1)*100
+        # 史压 [T-250,T-20] 曾站上红压线 (正式 B2 与 b2e 均要求, 对齐 reasonix strong_gap)
         lo,hi=max(MIN_I,i-V3B_HIST_LO),i-V3B_HIST_HI
         h_touch=False
         if lo<hi:
             pw=gt_p[lo:hi]
             h_touch=bool(np.any(np.isfinite(pw)&(pw>0)&(cl[lo:hi]>=pw)))
-        if not h_touch: continue
+        # 回踩 [T-70,T-5] 跌破主成本线A×0.98 (正式 B2 与 b2e 均要求)
         rlo,rhi=max(0,i-V3B_REC_LO),i-V3B_REC_HI
         r_dip=False
         if rlo<rhi:
             cw=cA[rlo:rhi]
             r_dip=bool(np.any(np.isfinite(cw)&(cw>0)&(cl[rlo:rhi]<cw*V3B_REC_DIP)))
-        if not r_dip: continue
+        # 量能确认(两类型均要求)
         if not (np.isfinite(ma20[i]) and ma20[i]>0 and vol[i]>=ma20[i]*V3B_VOL_MULT): continue
-        gap=(cl[i]/pi-1)*100; dev_a=(cl[i]/cA[i]-1)*100
+        dev_a=(cl[i]/cA[i]-1)*100
         d=darr[i]
+        # 命中判定(先消耗武装: 窗口外命中同样消耗, 与 scan_series 全历史推进一致)
+        hit_b2 = armed_b2 and h_touch and r_dip and 5<=gap<20
+        hit_b2e = armed_b2e and h_touch and r_dip and gap>20
+        if hit_b2: armed_b2=False; last_b2=i
+        if hit_b2e: armed_b2e=False; last_b2e=i
         if not (WIN_START<=d<=WIN_END): continue
-        # 后验
+        # 后验(公共计算一次)
         f60=cl[i+1:min(i+61,n)]; f120=cl[i+1:min(i+121,n)]
         f60mx=(f60.max()/cl[i]-1)*100 if len(f60)>=20 else np.nan
         f120mx=(f120.max()/cl[i]-1)*100 if len(f120)>=60 else np.nan
         s60=int(np.isfinite(f60mx) and f60mx>=10); s120=int(np.isfinite(f120mx) and f120mx>=50)
         fail=int(np.isfinite(f60mx) and f60mx<5)
-        _matched=False
-        for gk,(gmin,gmax) in enumerate(gaps):
-            if gmin<=gap<gmax:
-                rows.append((code,d,round(float(cl[i]),2),gk,round(gap,1),round(dev_a,1),
-                             round(f60mx,1) if np.isfinite(f60mx) else None,
-                             round(f120mx,1) if np.isfinite(f120mx) else None,
-                             s60,s120,fail,int(code in WATCH)))
-                _matched=True
-        # 与 challenge_scan.v3b_signal_b2 一致: gap 出档视为判定不成立, 不消耗武装
-        if _matched: armed=False
+        # 正式 B2: gap∈[5,20) + 史压 + 回踩 (独立武装链)
+        if hit_b2:
+            rows.append((code,d,round(float(cl[i]),2),0,round(gap,1),round(dev_a,1),
+                         'b2', round(f60mx,1) if np.isfinite(f60mx) else None,
+                         round(f120mx,1) if np.isfinite(f120mx) else None,
+                         s60,s120,fail,int(code in WATCH)))
+        # B2-early: gap>20 + 史压 + 回踩 (独立武装链, 与正式 B2 不互相消耗)
+        if hit_b2e:
+            rows.append((code,d,round(float(cl[i]),2),-1,round(gap,1),round(dev_a,1),
+                         'b2e', round(f60mx,1) if np.isfinite(f60mx) else None,
+                         round(f120mx,1) if np.isfinite(f120mx) else None,
+                         s60,s120,fail,int(code in WATCH)))
     if k%200==0:
         el=(__import__('time').time()-t0)/60
         print(f'  [{a.part}] {k}/{len(mine)} {el:.1f}min',flush=True)
 
 out=f'result/b2_scan_shard{a.part}.csv'
-pd.DataFrame(rows,columns=['code','sig_date','sig_close','gap_band','gap','dev_a','fut60_max','fut120_max','s60','s120','fail','watch']).to_csv(out,index=False)
+pd.DataFrame(rows,columns=['code','sig_date','sig_close','gap_band','gap','dev_a','kind','fut60_max','fut120_max','s60','s120','fail','watch']).to_csv(out,index=False)
 print(f'[DONE part{a.part}] {len(rows)} signals -> {out}',flush=True)
