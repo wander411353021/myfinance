@@ -126,7 +126,7 @@ python challenge_scan.py assess 600550 20261016 20260904
 - **全局参数入口**：`algo_config.py`（`COST_PCT=0.70` / `COST_EHLERS=90` 主成本线 A，仅显示；`COST_PCT_LOW/MID/HIGH=0.35/0.50/0.75`
   板块三档；`CHIP_BAND_LO/HI` 带宽；`COST2_PCT=0.40` / `COST2_EHLERS=50` 参考线 B，仅显示）。
   **信号标准**：`SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=60`，`SIGNAL_MIN_LEVEL=4`（目标价不能低于基准）；
-  `challenge_scan.compute` 的 c35s 与 gt_p/gt2 统一使用该标准。环境变量可覆盖。已接入
+  `SIGNAL_REARM_DAYS=30`（结构跌破或距上次同类信号 30 日重新武装）；`challenge_scan.compute` 的 c35s 与 gt_p/gt2 统一使用该标准。环境变量可覆盖。已接入
   `challenge_scan` / `price_segmenter_v10` / `concept_chip_scan` / `pages/1_Concept_Chip` / `_compare_k`。
 - **B2-early 强势分支（2026-10-21）**：正式 `v3b_B2` 仍要求 `gap∈[5,20)`；`v3b_b2_early` 复用 B2
   全部结构/放量条件，仅允许 `gap>20%`，仅作标记、不替代正式 B2。`scan_recent` 会同时返回；

@@ -1519,6 +1519,7 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
             from challenge_scan import scan_series as _cs_series
             from challenge_scan import bigline_hits as _cs_bigline
             from challenge_scan import early_cB as _cs_early_cB
+            from algo_config import SIGNAL_REARM_DAYS as _SIGNAL_REARM_DAYS
             # P0-2: raw + eff 两套线；P0-1: scan_series 结构冷却；P1-1: v3 一并显示
             # 2026-10-21: 传 cA/cB 接入三线制 (v3b_B2 / early_E4, 紫线弃用)
             _cl, _darr, _gtp, _gt2, _gtp_e, _gt2_e, _c35, _, _cA = _cs_compute_eff(df_ohlc)
@@ -1534,7 +1535,7 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
             _sig = _cs_series(_cl, _gtp, _gt2, _c35, _vol, start_i=400,
                               types=('v3', 'v3b', 'v3b_b2_early', 'early'), mode='structure',
                               darr=_darr, gt_p_eff=_gtp_e, gt2_eff=_gt2_e,
-                              cA=_cA, cB=_cB)
+                              cA=_cA, cB=_cB, rearm_days=_SIGNAL_REARM_DAYS)
             for _t, _i in _sig:
                 _ds = str(_darr[_i])[:8]
                 if _ds >= _end:

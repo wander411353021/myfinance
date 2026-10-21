@@ -20,7 +20,7 @@ from algo_config import (COST_LABEL, CHIP_BAND_LO, CHIP_BAND_HI,
                          COST_PCT, COST_EHLERS,
                          COST2_PCT, COST2_EHLERS,
                          SIGNAL_COST_PCT, SIGNAL_COST_EHLERS,
-                         SIGNAL_MIN_LEVEL)
+                         SIGNAL_MIN_LEVEL, SIGNAL_REARM_DAYS)
 
 LOOKBACK = 60; PRESS_VALID_MIN = 0.70; PRESS_ABOVE_MAX = 10
 PRESS_GAP_MIN = 3.0; PRESS_GAP_MAX = 20.0
@@ -601,13 +601,15 @@ STRUCT_BREAK = 0.98           # 跌破 COST35×0.98 = 本轮结构结束, 重新
 
 def scan_series(cl, gt_p, gt2, c35s, vol, start_i=MIN_I, end_i=None,
                 types=('v3b', 'early'), mode=None, cool=V3B_COOL, darr=None,
-                gt_p_eff=None, gt2_eff=None, cA=None, cB=None):
+                gt_p_eff=None, gt2_eff=None, cA=None, cB=None,
+                rearm_days=None):
     """统一扫描 v3 / v3b / early 信号序列（严格因果）。返回 [(type, i)] 升序。
 
     mode='structure': 跌破信号成本线 SIGNAL_COST_PCT×0.98 重新武装; 同轮只输出第一次触发。
     mode='days':      同类型信号间隔 >= cool 个交易日（旧口径）。
     v3 需要 darr（signal_at 的日期轴）；不传时 types 中的 v3 会被跳过。
     P0-2: 当日判定优先用 gt_p_eff/gt2_eff；历史窗口仍用原始 gt_p/gt2。
+    rearm_days: 结构模式下，距上次同类信号 >= rearm_days 也重新武装（默认 None=纯结构）。
     v3b_B2(2026-10-21): 传入 cA(主成本线A) 时 v3b 用三线制 v3b_signal_b2(紫线弃用);
                         不传时保持旧紫线 v3b_signal_at(历史回溯兼容)。
     v3b_b2_early(2026-10-21): B2 强势分支，条件同 B2 但 gap>gap_max(默认20%)；
@@ -626,6 +628,10 @@ def scan_series(cl, gt_p, gt2, c35s, vol, start_i=MIN_I, end_i=None,
                 and cl[i] < c35s[i] * STRUCT_BREAK:
             for t in types:
                 armed[t] = True
+        elif mode == 'structure' and rearm_days is not None:
+            for t in types:
+                if i - last[t] >= int(rearm_days):
+                    armed[t] = True
         for t in types:
             if mode == 'days':
                 if i - last[t] < cool:
@@ -700,7 +706,8 @@ def scan_recent(code, end, fresh=10, datalen=1000, df=None, mode=None,
     # P1-1: v3/v3b/early 三种类型独立 armed；v3 需要 darr
     sig = scan_series(cl, gt_p, gt2, c35s, vol, start_i=MIN_I,
                       types=('v3', 'v3b', 'v3b_b2_early', 'early'), mode=mode, darr=darr,
-                      gt_p_eff=gt_p_eff, gt2_eff=gt2_eff, cA=cA, cB=cB)
+                      gt_p_eff=gt_p_eff, gt2_eff=gt2_eff, cA=cA, cB=cB,
+                      rearm_days=SIGNAL_REARM_DAYS)
     hits = [(t, i) for t, i in sig if i >= start_i]
 
     rows = []

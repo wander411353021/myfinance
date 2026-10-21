@@ -10,6 +10,7 @@
     SIGNAL_COST_PCT      默认 0.35 → COST35
     SIGNAL_COST_EHLERS   默认 60
     SIGNAL_MIN_LEVEL     默认 4（+0% 档，目标价不能低于基准）
+    SIGNAL_REARM_DAYS    默认 30（距上次同类信号 ≥30 日可重新武装）
     A/B 成本线（COST_PCT / COST2_PCT）仅用于显示，不参与信号判定。
 
 板块/筹码三档（必须保持低<中<高；与主成本线独立）:
@@ -64,6 +65,7 @@ COST2_EHLERS = int(_f('COST2_EHLERS', '50'))
 SIGNAL_COST_PCT = _f('SIGNAL_COST_PCT', '0.35')
 SIGNAL_COST_EHLERS = int(_f('SIGNAL_COST_EHLERS', '60'))
 SIGNAL_MIN_LEVEL = int(_f('SIGNAL_MIN_LEVEL', '4'))
+SIGNAL_REARM_DAYS = int(_f('SIGNAL_REARM_DAYS', '30'))
 
 
 def _label(p):

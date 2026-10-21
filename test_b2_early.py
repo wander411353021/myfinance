@@ -39,6 +39,27 @@ class TestB2Early(unittest.TestCase):
                            cA=self.cA)
         self.assertIn(('v3b_b2_early', self.i), hits)
 
+    def test_rearm_days(self):
+        n = 520
+        cl = np.full(n, 11.0)
+        cl[440] = 9.5          # 回踩
+        cl[450] = 13.0         # 第一信号
+        cl[480] = 13.0         # 30 日后第二信号
+        gt = np.full(n, 10.0)
+        cA = np.full(n, 10.0)
+        c35 = np.full(n, 10.0)
+        vol = np.full(n, 100.0)
+        vol[450] = 200.0
+        vol[480] = 200.0
+        hits = scan_series(cl, gt, gt, c35, vol, start_i=MIN_I, end_i=481,
+                           types=('v3b_b2_early',), mode='structure', cool=0,
+                           cA=cA, rearm_days=30)
+        self.assertEqual([i for _, i in hits], [450, 480])
+        hits_no = scan_series(cl, gt, gt, c35, vol, start_i=MIN_I, end_i=481,
+                              types=('v3b_b2_early',), mode='structure', cool=0,
+                              cA=cA)
+        self.assertEqual([i for _, i in hits_no], [450])
+
 
 if __name__ == '__main__':
     unittest.main()
