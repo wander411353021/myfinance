@@ -103,7 +103,7 @@ def scan_code(args):
         df = pd.read_csv(fp, parse_dates=['date'])
         if len(df) < MIN_I + 130:
             return None, code
-        cl, darr, gt_p, gt2, c35s, _ = cs.compute(df)
+        cl, darr, gt_p, gt2, c35s, _, _cA = cs.compute(df)
         hi = df['high'].values.astype(float)
         lo = df['low'].values.astype(float)
         vol = df['volume'].values.astype(float)

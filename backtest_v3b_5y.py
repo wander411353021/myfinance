@@ -106,7 +106,7 @@ def process(code, sym, mode=None):
     df = get_df(code)
     if df is None or len(df) < MIN_I + 2:
         return None, 'short'
-    cl, darr, gt_p, gt2, gt_p_eff, gt2_eff, c35s, _ = compute_eff(df)
+    cl, darr, gt_p, gt2, gt_p_eff, gt2_eff, c35s, _, cA = compute_eff(df)
     vol = df['volume'].values.astype(float)
     hi = df['high'].values.astype(float)
     lo = df['low'].values.astype(float)
@@ -140,7 +140,7 @@ def verify(code, date, datalen):
     df = load(code, END, datalen)
     if df is None or len(df) < MIN_I + 5:
         print(f'{code}: 数据不足'); return
-    cl, darr, gt_p, gt2, gt_p_eff, gt2_eff, c35s, _ = compute_eff(df)
+    cl, darr, gt_p, gt2, gt_p_eff, gt2_eff, c35s, _, cA = compute_eff(df)
     vol = df['volume'].values.astype(float)
     hi = df['high'].values.astype(float)
     lo = df['low'].values.astype(float)

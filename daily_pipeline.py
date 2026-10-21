@@ -384,7 +384,7 @@ def track_pool(wl, end_date, quiet=False):
             df = cached_kline(code, end_date)
             if df is None or len(df) < cs.MIN_I + 5:
                 raise RuntimeError('no_data')
-            cl, darr, gt_p, gt2, c35s, _ = cs.compute(df)
+            cl, darr, gt_p, gt2, c35s, _, cA = cs.compute(df)
             vol = df['volume'].values.astype(float)
             sig_i = _idx_of(darr, r.get('sig_date'))
             if sig_i is None:

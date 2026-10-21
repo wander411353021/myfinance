@@ -42,7 +42,7 @@ def code_factors(args):
         df = pd.read_csv(fp, parse_dates=['date'])
         if len(df) < 400:
             return None, code
-        cl, darr, gt_p, gt2, c35s, _ = cs.compute(df)
+        cl, darr, gt_p, gt2, c35s, _, _cA = cs.compute(df)
     except Exception as e:
         return None, code
     vol = df['volume'].values.astype(float)
