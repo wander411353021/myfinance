@@ -63,7 +63,7 @@ COST2_EHLERS = int(_f('COST2_EHLERS', '50'))
 # 信号判定专用标准（2026-10-20 用户定版：v3/v3b/early 全套新标准）
 #   不再跟随 A/B 显示线；A/B 只用于主图。
 SIGNAL_COST_PCT = _f('SIGNAL_COST_PCT', '0.35')
-SIGNAL_COST_EHLERS = int(_f('SIGNAL_COST_EHLERS', '60'))
+SIGNAL_COST_EHLERS = int(_f('SIGNAL_COST_EHLERS', '90'))
 SIGNAL_MIN_LEVEL = int(_f('SIGNAL_MIN_LEVEL', '4'))
 SIGNAL_REARM_DAYS = int(_f('SIGNAL_REARM_DAYS', '30'))
 
