@@ -35,7 +35,7 @@ def main():
     run_segmentation(df, tail_days=tail_days, name=symbol,
                      save_path=out, code=symbol, end_date=end_date,
                      show_chip=True, hide_overlay_lines=True, mark_date=mark_date,
-                     show_v3b=True)
+                     show_v3b=True, show_cost2=True)
     print('已生成:', out)
 
 
