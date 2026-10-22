@@ -24,6 +24,8 @@ WATCH={'300171','003040','300204','300251','300437','600199','600519','600371','
 ap=argparse.ArgumentParser()
 ap.add_argument('--part',type=int,required=True); ap.add_argument('--nparts',type=int,required=True)
 ap.add_argument('--gaps',default='5,20')
+ap.add_argument('--max_pre_gain',type=float,default=999.0,
+                help='信号日前20日低点→信号日收盘涨幅上限%%(超出即剔除), 默认999=不过滤(用户自判)')
 a=ap.parse_args()
 gaps=[tuple(map(float,g.split(','))) for g in a.gaps.split(';')]
 print('gap档:',gaps,'part',a.part,'/',a.nparts,flush=True)
@@ -84,6 +86,7 @@ for k,code in enumerate(mine):
         # 量能确认(两类型均要求)
         if not (np.isfinite(ma20[i]) and ma20[i]>0 and vol[i]>=ma20[i]*V3B_VOL_MULT): continue
         dev_a=(cl[i]/cA[i]-1)*100
+        pre_gain=(cl[i]/cl[max(0,i-20):i].min()-1)*100 if i>=20 and cl[max(0,i-20):i].min()>0 else np.nan
         d=darr[i]
         # 命中判定(先消耗武装: 窗口外命中同样消耗, 与 scan_series 全历史推进一致)
         hit_b2 = armed_b2 and h_touch and r_dip and 5<=gap<20
@@ -91,6 +94,8 @@ for k,code in enumerate(mine):
         if hit_b2: armed_b2=False; last_b2=i
         if hit_b2e: armed_b2e=False; last_b2e=i
         if not (WIN_START<=d<=WIN_END): continue
+        # 涨幅过大剔除(2026-10-22 polo4111: 前20日已涨>max_pre_gain 的信号不列出——追高不可买)
+        if np.isfinite(pre_gain) and pre_gain>a.max_pre_gain: continue
         # 后验(公共计算一次)
         f60=cl[i+1:min(i+61,n)]; f120=cl[i+1:min(i+121,n)]
         f60mx=(f60.max()/cl[i]-1)*100 if len(f60)>=20 else np.nan
@@ -100,12 +105,14 @@ for k,code in enumerate(mine):
         # 正式 B2: gap∈[5,20) + 史压 + 回踩 (独立武装链)
         if hit_b2:
             rows.append((code,d,round(float(cl[i]),2),0,round(gap,1),round(dev_a,1),
+                         round(pre_gain,1) if np.isfinite(pre_gain) else None,
                          'b2', round(f60mx,1) if np.isfinite(f60mx) else None,
                          round(f120mx,1) if np.isfinite(f120mx) else None,
                          s60,s120,fail,int(code in WATCH)))
         # B2-early: gap>20 + 史压 + 回踩 (独立武装链, 与正式 B2 不互相消耗)
         if hit_b2e:
             rows.append((code,d,round(float(cl[i]),2),-1,round(gap,1),round(dev_a,1),
+                         round(pre_gain,1) if np.isfinite(pre_gain) else None,
                          'b2e', round(f60mx,1) if np.isfinite(f60mx) else None,
                          round(f120mx,1) if np.isfinite(f120mx) else None,
                          s60,s120,fail,int(code in WATCH)))
@@ -114,5 +121,5 @@ for k,code in enumerate(mine):
         print(f'  [{a.part}] {k}/{len(mine)} {el:.1f}min',flush=True)
 
 out=f'result/b2_scan_shard{a.part}.csv'
-pd.DataFrame(rows,columns=['code','sig_date','sig_close','gap_band','gap','dev_a','kind','fut60_max','fut120_max','s60','s120','fail','watch']).to_csv(out,index=False)
+pd.DataFrame(rows,columns=['code','sig_date','sig_close','gap_band','gap','dev_a','pre_gain','kind','fut60_max','fut120_max','s60','s120','fail','watch']).to_csv(out,index=False)
 print(f'[DONE part{a.part}] {len(rows)} signals -> {out}',flush=True)
