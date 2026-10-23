@@ -358,7 +358,7 @@ if go or auto_go:
                 % (_ws['total_days'], _ws['warmup_turnover'] * 100,
                    _ws['required_turnover'] * 100, _ws['required_days']))
         st.success(f"已拉取 {len(df_full)} 根，日期 {df_full['date'].iloc[0].date()} ~ {df_full['date'].iloc[-1].date()}（前复权，计算起点已按预热规则确定）")
-        _trigger = ('累计400%' if _ws['warmup_turnover'] >= _ws['required_turnover']
+        _trigger = ('累计200%' if _ws['warmup_turnover'] >= _ws['required_turnover']
                     else '总窗口1800天')
         st.info(
             "预热窗口：计算起点 %s；总窗口 %d 天（显示 %d 天 + 预热 %d 天）；"

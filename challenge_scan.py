@@ -78,11 +78,11 @@ def load(code, end, datalen):
 
 
 def chip_warmup_window(df, display_days, max_days=None, min_turnover=None):
-    """按“总窗口 1800 天 / 显示前累计换手 400%”确定计算起点（只提示，不阻断）。
+    """按“总窗口 1800 天 / 显示前累计换手 200%”确定计算起点（只提示，不阻断）。
 
     规则（2026-10-23 用户定版）：
       - 显示区间为最后 display_days 个交易日；
-      - 从显示窗口起点往前追溯，累计 turnover（只算显示起点之前）达到 400%
+      - 从显示窗口起点往前追溯，累计 turnover（只算显示起点之前）达到 200%
         或总窗口达到 1800 天，二者谁先到就停；
       - 返回的 start 为计算初始日索引，total_days = 初始日到截至日（含显示区间）。
 

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""筹码预热窗口测试：总窗口 1800 天 / 显示前累计换手 400%，二选一先到。"""
+"""筹码预热窗口测试：总窗口 1800 天 / 显示前累计换手 200%，二选一先到。"""
 import unittest
 
 import numpy as np
@@ -16,7 +16,7 @@ class TestChipWarmup(unittest.TestCase):
         })
 
     def test_max_days_ok(self):
-        # 显示 150 天，窗口最多 1800 天：1650 天预热累计 165% < 400%，但总窗口先到 1800 天
+        # 显示 150 天，窗口最多 1800 天：1650 天预热累计 165% < 200%，但总窗口先到 1800 天
         ws = chip_warmup_window(self._df(1800, 0.001), 150)
         self.assertTrue(ws['ok'])
         self.assertEqual(ws['total_days'], 1800)
@@ -24,12 +24,12 @@ class TestChipWarmup(unittest.TestCase):
         self.assertAlmostEqual(ws['warmup_turnover'], 1.65, places=4)
 
     def test_turnover_stops_early(self):
-        # 500 天内 4%/天：显示前 100 天累计 400%，初始日早于显示起点
+        # 500 天内 4%/天：显示前 50 天累计 200%，初始日早于显示起点
         ws = chip_warmup_window(self._df(500, 0.04), 150)
         self.assertTrue(ws['ok'])
-        self.assertEqual(ws['warmup_days'], 100)
-        self.assertEqual(ws['total_days'], 250)
-        self.assertEqual(ws['start'], 250)
+        self.assertEqual(ws['warmup_days'], 50)
+        self.assertEqual(ws['total_days'], 200)
+        self.assertEqual(ws['start'], 300)
 
     def test_insufficient(self):
         ws = chip_warmup_window(self._df(500, 0.001), 150)
