@@ -127,8 +127,8 @@ python challenge_scan.py assess 600550 20261016 20260904
   板块三档；`CHIP_BAND_LO/HI` 带宽；`COST2_PCT=0.40` / `COST2_EHLERS=50` 参考线 B，仅显示）。
   **信号标准**：`SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=90`，`SIGNAL_MIN_LEVEL=4`（目标价不能低于基准）；
   `SIGNAL_REARM_DAYS=30`（结构跌破或距上次同类信号 30 日重新武装）；
-  筹码预热：`CHIP_WARMUP_DAYS=1800`（总窗口，含显示区间）/ `CHIP_WARMUP_TURNOVER=2.0`（初始日→显示起点累计换手 200%），
-  从显示起点往前追溯，200% 或 1800 天先到为准；不足只提示不阻断；
+  筹码预热：`CHIP_WARMUP_DAYS=1800`（总窗口，含显示区间）/ `CHIP_WARMUP_TURNOVER=1.0`（初始日→显示起点累计换手 100%），
+  从显示起点往前追溯，100% 或 1800 天先到为准；不足只提示不阻断；
   数据默认 1800 天。`challenge_scan.compute` 的 c35s 与 gt_p/gt2 统一使用该标准。环境变量可覆盖。已接入
   `challenge_scan` / `price_segmenter_v10` / `concept_chip_scan` / `pages/1_Concept_Chip` / `_compare_k`。
 - **B2-early 强势分支（2026-10-21）**：正式 `v3b_B2` 仍要求 `gap∈[5,20)`；`v3b_b2_early` 复用 B2
