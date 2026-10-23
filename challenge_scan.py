@@ -77,23 +77,41 @@ def load(code, end, datalen):
     return tq.get_daily_kline_from_tdx(code, end, datalen, with_turnover=True)
 
 
-def chip_warmup_status(df, days=None, min_turnover=None):
-    """筹码预热状态（只提示，不阻断）。
+def chip_warmup_window(df, display_days, max_days=None, min_turnover=None):
+    """按“总窗口 1800 天 / 显示前累计换手 500%”确定计算起点（只提示，不阻断）。
 
-    取最近 days 个交易日，累计 turnover（0~1 小数）是否达到 min_turnover。
-    默认 CHIP_WARMUP_DAYS=1800 / CHIP_WARMUP_TURNOVER=4.0（400%）。
+    规则（2026-10-23 用户定版）：
+      - 显示区间为最后 display_days 个交易日；
+      - 从显示窗口起点往前追溯，累计 turnover（只算显示起点之前）达到 500%
+        或总窗口达到 1800 天，二者谁先到就停；
+      - 返回的 start 为计算初始日索引，total_days = 初始日到截至日（含显示区间）。
+
+    不做未来函数：只使用 <= 截至日的数据，且 start 只由历史换手率决定。
     """
-    _days = CHIP_WARMUP_DAYS if days is None else int(days)
+    _max = CHIP_WARMUP_DAYS if max_days is None else int(max_days)
     _req = CHIP_WARMUP_TURNOVER if min_turnover is None else float(min_turnover)
-    out = dict(ok=False, days=0, turnover=0.0,
-               required_days=_days, required_turnover=_req)
-    if df is None or len(df) == 0 or 'turnover' not in df.columns:
+    out = dict(ok=False, start=0, total_days=0, display_days=0,
+               warmup_days=0, warmup_turnover=0.0,
+               required_days=_max, required_turnover=_req)
+    if df is None or len(df) == 0:
         return out
-    d = df.tail(max(1, _days))
-    turn = pd.to_numeric(d['turnover'], errors='coerce').fillna(0).clip(0, 1).values
-    cum = float(np.nansum(turn))
-    out.update(ok=(len(d) >= _days and cum >= _req),
-               days=int(len(d)), turnover=cum)
+    n = len(df)
+    disp = min(max(0, int(display_days)), n)
+    disp_start = max(0, n - disp)
+    out.update(display_days=disp, total_days=n)
+    if 'turnover' not in df.columns:
+        return out
+    t = pd.to_numeric(df['turnover'], errors='coerce').fillna(0).clip(0, 1).values
+    i, cum = disp_start, 0.0
+    while i > 0 and (n - i) < _max:
+        i -= 1
+        cum += t[i]
+        if cum >= _req:
+            break
+    total = n - i
+    warm = disp_start - i
+    out.update(start=i, total_days=total, warmup_days=warm,
+               warmup_turnover=cum, ok=(cum >= _req or total >= _max))
     return out
 
 def compute(df, cost_pct=None, ehlers_period=None):
