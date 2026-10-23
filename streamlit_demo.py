@@ -379,7 +379,6 @@ if go or auto_go:
                 "未达到 %.0f%%（总窗口上限 %d 天）。成本线与信号可能受初始筹码影响。"
                 % (_ws['total_days'], _ws['warmup_turnover'] * 100,
                    _ws['required_turnover'] * 100, _ws['required_days']))
-        st.success(f"已拉取 {len(df_full)} 根，日期 {df_full['date'].iloc[0].date()} ~ {df_full['date'].iloc[-1].date()}（前复权，计算起点已按预热规则确定）")
         _end_str = end_date.strftime("%Y%m%d") if hasattr(end_date, "strftime") else str(end_date).replace("-", "")
         compute_and_store(df_full, tail_days, f"{code}", code=code, end_date=_end_str,
                           cost_pct=cost_pct, ehlers_period=ehlers_period,
