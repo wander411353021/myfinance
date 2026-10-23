@@ -138,7 +138,7 @@ def fetch_tdx_kline(code, end_date, datalen=1800):
 # ── 计算 + 存 session（绘图代码零改动）──
 def compute_and_store(df, tail_days, name, code=None, end_date=None,
                       cost_pct=None, ehlers_period=None,
-                      cost2_pct=None, cost2_ehlers=None):
+                      cost2_pct=None, cost2_ehlers=None, raw_df=None):
     fd, tmp_png = tempfile.mkstemp(suffix=".png")
     os.close(fd)
     out = run_segmentation(df, tail_days=tail_days, name=name, save_path=tmp_png,
@@ -155,6 +155,8 @@ def compute_and_store(df, tail_days, name, code=None, end_date=None,
     st.session_state["last_name"] = name
     # 自动重算所需：保存上次行情与参数，滑轨/窗口变化时不再重新取数
     st.session_state["last_df"] = df
+    if raw_df is not None:
+        st.session_state["last_raw_df"] = raw_df
     st.session_state["last_code"] = code
     st.session_state["last_end"] = end_date
     st.session_state["last_cost_pct"] = cost_pct
@@ -348,9 +350,10 @@ if go or auto_go:
                 st.warning(f"⚠️ 通达信取数失败（代码 {code}）：{e}\n"
                            f"该股票可能已退市 / 停牌 / 无行情数据，已保留上一只股票的图表。")
     if df_full is not None and len(df_full) >= 2:
-        _ws = chip_warmup_window(df_full, tail_days)
+        _raw_df = df_full
+        _ws = chip_warmup_window(_raw_df, tail_days)
         if _ws['start'] > 0:
-            df_full = df_full.iloc[_ws['start']:].reset_index(drop=True)
+            df_full = _raw_df.iloc[_ws['start']:].reset_index(drop=True)
         if not _ws['ok']:
             st.warning(
                 "筹码预热不足（仅提示，不阻断）：计算窗口 %d 天，显示前累计换手 %.0f%%，"
@@ -369,7 +372,8 @@ if go or auto_go:
         _end_str = end_date.strftime("%Y%m%d") if hasattr(end_date, "strftime") else str(end_date).replace("-", "")
         compute_and_store(df_full, tail_days, f"{code}", code=code, end_date=_end_str,
                           cost_pct=cost_pct, ehlers_period=ehlers_period,
-                          cost2_pct=cost2_pct, cost2_ehlers=cost2_ehlers)
+                          cost2_pct=cost2_pct, cost2_ehlers=cost2_ehlers,
+                          raw_df=_raw_df)
         # 注意：同行业列表不再随主图加载自动刷新（避免卡顿与误刷新）。
         # 仅在输入框手动改码 / 板块导航点股票时清空，需用户手动点「刷新同行业个股」按钮重新查询。
     elif df_full is not None:
@@ -392,10 +396,18 @@ if auto_recompute and not go and not auto_go:
                  or _last_ehlers != ehlers_period
                  or _last_c2 != cost2_pct or _last_e2 != cost2_ehlers)):
         with st.spinner("按新参数重算…"):
-            compute_and_store(_last_df, tail_days, str(_last_code),
+            _raw = st.session_state.get("last_raw_df")
+            if _raw is not None:
+                _ws2 = chip_warmup_window(_raw, tail_days)
+                _plot_df = (_raw.iloc[_ws2['start']:].reset_index(drop=True)
+                            if _ws2['start'] > 0 else _raw)
+            else:
+                _plot_df = _last_df
+            compute_and_store(_plot_df, tail_days, str(_last_code),
                               code=_last_code, end_date=_last_end,
                               cost_pct=cost_pct, ehlers_period=ehlers_period,
-                              cost2_pct=cost2_pct, cost2_ehlers=cost2_ehlers)
+                              cost2_pct=cost2_pct, cost2_ehlers=cost2_ehlers,
+                              raw_df=_raw)
 
 # ── 双向组件声明（成分股列表）──
 # 注意：st.components.v1.html 是静态 iframe，不会回传值；必须用 declare_component。
