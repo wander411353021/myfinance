@@ -202,42 +202,6 @@ def display_last():
         st.markdown(_msg)
     st.image(st.session_state["last_png"], width='stretch')
 
-    c_result, bs_signal, bs_reason, bs_strength, all_levels = out
-    tail_days = st.session_state.get("last_tail", 150)
-    off = max(0, len(bs_signal) - tail_days)
-
-    col1, col2, col3 = st.columns(3)
-    col1.metric("窗口买入信号数", int((bs_signal[off:] > 0).sum()))
-    col2.metric("窗口卖出信号数", int((bs_signal[off:] < 0).sum()))
-    col3.metric("阻力/支撑位数（all_levels）", len(all_levels))
-
-    with st.expander("窗口内信号明细", expanded=False):
-        rows = []
-        for i in range(off, len(bs_signal)):
-            if bs_signal[i] != 0:
-                rows.append({
-                    "rel_bar": i - off,
-                    "signal": int(bs_signal[i]),
-                    "reason": str(bs_reason[i]),
-                    "strength": round(float(bs_strength[i]), 3),
-                })
-        if rows:
-            st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
-        else:
-            st.info("窗口内无买卖信号。")
-
-    with st.expander("阻力/支撑位生命周期（all_levels）", expanded=False):
-        lv_rows = [{
-            "price": round(lv["price"], 2),
-            "kind": lv.get("kind"),
-            "form_idx": lv.get("form_idx"),
-            "touch_count": lv.get("touch_count"),
-            "break_idx": lv.get("break_idx"),
-            "break_strength": (round(lv["break_strength"], 3)
-                               if lv.get("break_strength") is not None else None),
-        } for lv in all_levels]
-        st.dataframe(pd.DataFrame(lv_rows), width='stretch', hide_index=True)
-
 
 # ── 页面 ──
 st.title("V10 价格分段 · Streamlit Demo")
