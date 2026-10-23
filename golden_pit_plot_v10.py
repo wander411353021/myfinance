@@ -14,23 +14,25 @@ from tdx_quant import get_daily_kline_from_tdx
 
 
 def fetch_tdx(symbol, end_date='20260928', datalen=1800, min_rows=0):
-    """优先读信号缓存(scan_cache_v3b, 1800天与信号同源), 无缓存/缓存不足回退 tdx 拉取。
-    2026-10-23: datalen 默认 1023→1800, 与信号体系 COST 递推长度统一(用户定版)。"""
+    """缓存策略与 Streamlit 统一(2026-10-23 reasonix 定版口径):
+      信号缓存(锚定最近1800天)仅当 截取后≥1600行 且 末日距画图日≤3天 时使用(近期图完整且新鲜);
+      否则回退 tdx datalen=1800(从画图日往前, COST递推起点由换手预热驱动, 不人为锚定)。
+      历史图(如600550@20200515, 缓存截取仅244行)一律回退 tdx → 与信号实时扫描口径一致。"""
     code6 = symbol[2:] if symbol[:2] in ('sh', 'sz', 'bj') else symbol
     cache = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                          'result', 'scan_cache_v3b', f'{code6}.csv')
     if os.path.exists(cache):
-        df = pd.read_csv(cache)
-        df['date'] = pd.to_datetime(df['date']).dt.tz_localize(None).dt.normalize()
-        end = pd.Timestamp(end_date)
-        df = df[df['date'] <= end].reset_index(drop=True)
-        if len(df) >= max(1, int(min_rows)):
-            print(f'[fetch] 用信号缓存 scan_cache_v3b/{code6}.csv ({len(df)}行 ≤ {end_date}), 与信号同源')
-            return df
-        if len(df) > 0:
-            print(f'[fetch] 缓存不足({len(df)}行 < 窗口{min_rows}), 回退 tdx datalen={datalen}')
-        else:
-            print(f'[fetch] 缓存截取为空(画图日早于缓存起点), 回退 tdx datalen={datalen}')
+        try:
+            df = pd.read_csv(cache)
+            df['date'] = pd.to_datetime(df['date']).dt.tz_localize(None).dt.normalize()
+            end_ts = pd.Timestamp(end_date)
+            df = df[df['date'] <= end_ts].reset_index(drop=True)
+            _fresh = len(df) > 0 and df['date'].max() >= end_ts - pd.Timedelta(days=3)
+            if len(df) >= 1600 and _fresh:
+                print(f'[fetch] 用信号缓存 scan_cache_v3b/{code6}.csv ({len(df)}行, 末日距画图日≤3天)')
+                return df
+        except Exception:
+            pass
     df = get_daily_kline_from_tdx(symbol, end_date, datalen=datalen, with_turnover=True)
     if df is None or len(df) == 0:
         return None
