@@ -28,7 +28,8 @@ ap.add_argument('--max_pre_gain',type=float,default=999.0,
                 help='信号日前20日低点→信号日收盘涨幅上限%%(超出即剔除), 默认999=不过滤(用户自判)')
 a=ap.parse_args()
 gaps=[tuple(map(float,g.split(','))) for g in a.gaps.split(';')]
-print('gap档:',gaps,'part',a.part,'/',a.nparts,flush=True)
+b2e_gap_min=max(20.0, max(gmax for _, gmax in gaps))
+print('gap档:',gaps,'b2e门槛:>%.1f%%'%b2e_gap_min,'part',a.part,'/',a.nparts,flush=True)
 
 allf=[f[:-4] for f in os.listdir(CACHE) if f.endswith('.csv')]
 allf.sort()
@@ -89,8 +90,9 @@ for k,code in enumerate(mine):
         pre_gain=(cl[i]/cl[max(0,i-20):i].min()-1)*100 if i>=20 and cl[max(0,i-20):i].min()>0 else np.nan
         d=darr[i]
         # 命中判定(先消耗武装: 窗口外命中同样消耗, 与 scan_series 全历史推进一致)
-        hit_b2 = armed_b2 and h_touch and r_dip and 5<=gap<20
-        hit_b2e = armed_b2e and h_touch and r_dip and gap>20
+        hit_bands=[gk for gk,(gmin,gmax) in enumerate(gaps) if gmin<=gap<gmax]
+        hit_b2 = armed_b2 and h_touch and r_dip and bool(hit_bands)
+        hit_b2e = armed_b2e and h_touch and r_dip and gap>b2e_gap_min
         if hit_b2: armed_b2=False; last_b2=i
         if hit_b2e: armed_b2e=False; last_b2e=i
         if not (WIN_START<=d<=WIN_END): continue
@@ -102,14 +104,15 @@ for k,code in enumerate(mine):
         f120mx=(f120.max()/cl[i]-1)*100 if len(f120)>=60 else np.nan
         s60=int(np.isfinite(f60mx) and f60mx>=10); s120=int(np.isfinite(f120mx) and f120mx>=50)
         fail=int(np.isfinite(f60mx) and f60mx<5)
-        # 正式 B2: gap∈[5,20) + 史压 + 回踩 (独立武装链)
+        # 正式 B2: 每个命中的 gap 档各输出一行（支持 --gaps 多档敏感性）
         if hit_b2:
-            rows.append((code,d,round(float(cl[i]),2),0,round(gap,1),round(dev_a,1),
-                         round(pre_gain,1) if np.isfinite(pre_gain) else None,
-                         'b2', round(f60mx,1) if np.isfinite(f60mx) else None,
-                         round(f120mx,1) if np.isfinite(f120mx) else None,
-                         s60,s120,fail,int(code in WATCH)))
-        # B2-early: gap>20 + 史压 + 回踩 (独立武装链, 与正式 B2 不互相消耗)
+            for gk in hit_bands:
+                rows.append((code,d,round(float(cl[i]),2),gk,round(gap,1),round(dev_a,1),
+                             round(pre_gain,1) if np.isfinite(pre_gain) else None,
+                             'b2', round(f60mx,1) if np.isfinite(f60mx) else None,
+                             round(f120mx,1) if np.isfinite(f120mx) else None,
+                             s60,s120,fail,int(code in WATCH)))
+        # B2-early: gap>max(20, 最大档上界) + 史压 + 回踩 (独立武装链, 不与正式 B2 重复)
         if hit_b2e:
             rows.append((code,d,round(float(cl[i]),2),-1,round(gap,1),round(dev_a,1),
                          round(pre_gain,1) if np.isfinite(pre_gain) else None,

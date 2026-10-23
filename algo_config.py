@@ -8,7 +8,7 @@
 
 信号判定标准（v3 / v3b / early）:
     SIGNAL_COST_PCT      默认 0.35 → COST35
-    SIGNAL_COST_EHLERS   默认 60
+    SIGNAL_COST_EHLERS   默认 90
     SIGNAL_MIN_LEVEL     默认 4（+0% 档，目标价不能低于基准）
     SIGNAL_REARM_DAYS    默认 30（距上次同类信号 ≥30 日可重新武装）
     A/B 成本线（COST_PCT / COST2_PCT）仅用于显示，不参与信号判定。
