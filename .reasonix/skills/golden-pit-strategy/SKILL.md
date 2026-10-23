@@ -1282,6 +1282,9 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
   - `COST_PCT_LOW=0.35` / `COST_PCT_MID=0.50` / `COST_PCT_HIGH=0.75`：板块/筹码三档
     （与主成本线独立，必须保持 LOW<MID<HIGH）
   - `CHIP_BAND_LO=0.10` / `CHIP_BAND_HI=0.90`：`signal_profile` 的带宽/获利盘
+  - **筹码预热（只提示不阻断）**：`CHIP_WARMUP_DAYS=1800` / `CHIP_WARMUP_TURNOVER=4.0`；
+    近 1800 日累计换手 <400% 时，Streamlit/CLI 画图显示“预热不足”，但仍正常计算；
+    `scan_recent` / `daily_pipeline` / V10 / 回测默认取数统一为 1800 天。
   - `COST_HIGH_EHLERS=20`：COST75 筹码峰上沿的 Ehlers 平滑周期
   - `COST2_PCT=0.40` / `COST2_EHLERS=50`：参考成本线 B 参数（当前已隐藏，`_SHOW_COST2=False`）
   - **2026-10-20 全套新信号标准**：`SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=90`；

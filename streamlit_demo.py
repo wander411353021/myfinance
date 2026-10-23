@@ -22,6 +22,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from price_segmenter_v10 import run_segmentation
+from challenge_scan import chip_warmup_status
 from algo_config import (COST_PCT as DEFAULT_COST_PCT, COST_EHLERS as DEFAULT_COST_EHLERS,
                          COST2_PCT as DEFAULT_COST2_PCT, COST2_EHLERS as DEFAULT_COST2_EHLERS)
 from tdx_quant import (load_block_csvs, load_stock_list, BLOCK_KEYS)
@@ -347,6 +348,13 @@ if go or auto_go:
                 st.warning(f"⚠️ 通达信取数失败（代码 {code}）：{e}\n"
                            f"该股票可能已退市 / 停牌 / 无行情数据，已保留上一只股票的图表。")
     if df_full is not None and len(df_full) >= 2:
+        _ws = chip_warmup_status(df_full)
+        if not _ws['ok']:
+            st.warning(
+                "筹码预热不足（仅提示，不阻断）：最近 %d 日累计换手 %.0f%%，"
+                "低于建议的 %.0f%%（需 %d 日）。成本线与信号可能受初始筹码影响。"
+                % (_ws['days'], _ws['turnover'] * 100,
+                   _ws['required_turnover'] * 100, _ws['required_days']))
         st.success(f"已拉取 {len(df_full)} 根，日期 {df_full['date'].iloc[0].date()} ~ {df_full['date'].iloc[-1].date()}（前复权）")
         _end_str = end_date.strftime("%Y%m%d") if hasattr(end_date, "strftime") else str(end_date).replace("-", "")
         compute_and_store(df_full, tail_days, f"{code}", code=code, end_date=_end_str,

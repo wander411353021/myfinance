@@ -17,6 +17,7 @@ import tdx_quant as tq
 import panic_reversal as pr
 from chip_panel import cost_series
 from algo_config import (COST_LABEL, CHIP_BAND_LO, CHIP_BAND_HI,
+                         CHIP_WARMUP_DAYS, CHIP_WARMUP_TURNOVER,
                          COST_PCT, COST_EHLERS,
                          COST2_PCT, COST2_EHLERS,
                          SIGNAL_COST_PCT, SIGNAL_COST_EHLERS,
@@ -74,6 +75,26 @@ def _bd(d):
 
 def load(code, end, datalen):
     return tq.get_daily_kline_from_tdx(code, end, datalen, with_turnover=True)
+
+
+def chip_warmup_status(df, days=None, min_turnover=None):
+    """筹码预热状态（只提示，不阻断）。
+
+    取最近 days 个交易日，累计 turnover（0~1 小数）是否达到 min_turnover。
+    默认 CHIP_WARMUP_DAYS=1800 / CHIP_WARMUP_TURNOVER=4.0（400%）。
+    """
+    _days = CHIP_WARMUP_DAYS if days is None else int(days)
+    _req = CHIP_WARMUP_TURNOVER if min_turnover is None else float(min_turnover)
+    out = dict(ok=False, days=0, turnover=0.0,
+               required_days=_days, required_turnover=_req)
+    if df is None or len(df) == 0 or 'turnover' not in df.columns:
+        return out
+    d = df.tail(max(1, _days))
+    turn = pd.to_numeric(d['turnover'], errors='coerce').fillna(0).clip(0, 1).values
+    cum = float(np.nansum(turn))
+    out.update(ok=(len(d) >= _days and cum >= _req),
+               days=int(len(d)), turnover=cum)
+    return out
 
 def compute(df, cost_pct=None, ehlers_period=None):
     """全量计算 V10 原始线: 返回 (closes, dates_str, gt_p, gt2, c35s, base)。
@@ -423,7 +444,7 @@ def signal_profile(cl, hi, lo, vol, turn, gt_p, gt2, c35s, i,
         gap=round(gap, 1))
 
 
-def scan_hist_v3b(code, end, datalen=1600, win_start=None, win_end=None, mode=None):
+def scan_hist_v3b(code, end, datalen=1800, win_start=None, win_end=None, mode=None):
     """v3b 历史全信号（结构冷却/旧天数冷却由 mode 决定，无未来函数）"""
     try:
         df = load(code, end, datalen)
@@ -450,7 +471,7 @@ def scan_hist_v3b(code, end, datalen=1600, win_start=None, win_end=None, mode=No
     return hits
 
 
-def scan_daily(code, end, datalen=1000):
+def scan_daily(code, end, datalen=1800):
     """每日候选池: 只检测最新交易日"""
     try:
         df = load(code, end, datalen)
@@ -465,7 +486,7 @@ def scan_daily(code, end, datalen=1000):
     return (code, darr[i], round(float(cl[i]), 2), feats['gap'], feats['abr'],
             feats['dev35'], feats['dist_purple'])
 
-def scan_hist(code, end, datalen=1600, win_start=None, win_end=None, mode=None):
+def scan_hist(code, end, datalen=1800, win_start=None, win_end=None, mode=None):
     """v3 历史全信号（结构冷却/旧天数冷却由 mode 决定，无未来函数）"""
     try:
         df = load(code, end, datalen)
@@ -524,7 +545,7 @@ def bigline_hits(cl, darr, gt_p, gt2, c35s, vol, mode=None,
     return hits
 
 
-def scan_bigline(code, end, datalen=1600, fresh=10, mode=None):
+def scan_bigline(code, end, datalen=1800, fresh=10, mode=None):
     """单只: 全部 bigline 起点信号, 保留 early 日(入池点)在最近 fresh 个交易日内的新鲜信号。
     画像字段(只用<=大阳线日数据, 无未来函数):
       code/big_date/early_date/wait/big_pct/vol_ratio/close/dev35/gap/band/profit/dist_high/rec_depth/cool_days
@@ -671,7 +692,7 @@ def scan_series(cl, gt_p, gt2, c35s, vol, start_i=MIN_I, end_i=None,
     return out
 
 
-def scan_recent(code, end, fresh=10, datalen=1000, df=None, mode=None,
+def scan_recent(code, end, fresh=10, datalen=1800, df=None, mode=None,
                 cost_pct=None, ehlers_period=None):
     """单只: 最近 fresh 个交易日内的 v3 / v3b / early 信号（含画像与事后 big 标签）。
 

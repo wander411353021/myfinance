@@ -9,6 +9,7 @@ import pandas as pd
 import matplotlib; matplotlib.use('Agg')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from price_segmenter_v10 import run_segmentation
+from challenge_scan import chip_warmup_status
 from tdx_quant import get_daily_kline_from_tdx
 
 
@@ -46,6 +47,11 @@ def main():
     df = fetch_tdx(symbol, end_date=end_date, min_rows=tail_days)
     if df is None or len(df) < tail_days:
         print(f'{symbol} 数据不足({0 if df is None else len(df)}行 < 窗口{tail_days})'); return
+    _ws = chip_warmup_status(df)
+    if not _ws['ok']:
+        print(f'[warmup] {symbol} 筹码预热不足(仅提示): 最近{_ws["days"]}日累计换手'
+              f'{_ws["turnover"]*100:.0f}% < {_ws["required_turnover"]*100:.0f}%'
+              f'(需{_ws["required_days"]}日)')
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'result',
                        f'v10_{symbol}_{end_date}.png')
     os.makedirs(os.path.dirname(out), exist_ok=True)

@@ -48,7 +48,7 @@ ARCHIVE = os.path.join(RESULT_DIR, 'watchlist_archive.csv')
 DAILY_CACHE = os.path.join(RESULT_DIR, 'scan_cache_daily')
 V3B_CACHE = os.path.join(RESULT_DIR, 'scan_cache_v3b')
 FRESH_DAYS = 10          # 每日扫描窗口（覆盖周末/短假）
-DATALEN = 1000           # 日更取数长度（reg250 + 摸线 250 + 缓冲）
+DATALEN = 1800           # 日更取数长度（1800 天：reg250 + 摸线 250 + 预热缓冲）
 
 POOL_COLS = [
     'code', 'name', 'signal_type', 'sig_date', 'sig_close', 'entry_date',

@@ -22,6 +22,10 @@
     CHIP_BAND_LO    默认 0.10
     CHIP_BAND_HI    默认 0.90
 
+筹码预热（只提示不阻断）:
+    CHIP_WARMUP_DAYS     默认 1800（取最近 1800 个交易日）
+    CHIP_WARMUP_TURNOVER 默认 4.0（累计换手 ≥400% 才认为预热充分）
+
 Ehlers SuperSmoother 平滑周期:
     COST_EHLERS      默认 90  → 主成本线 A
     COST_HIGH_EHLERS 默认 20  → COST75 筹码峰上沿
@@ -49,6 +53,8 @@ COST_PCT_MID = _f('COST_PCT_MID', '0.50')
 COST_PCT_HIGH = _f('COST_PCT_HIGH', '0.75')
 CHIP_BAND_LO = _f('CHIP_BAND_LO', '0.10')
 CHIP_BAND_HI = _f('CHIP_BAND_HI', '0.90')
+CHIP_WARMUP_DAYS = int(_f('CHIP_WARMUP_DAYS', '1800'))
+CHIP_WARMUP_TURNOVER = _f('CHIP_WARMUP_TURNOVER', '4.0')
 
 # Ehlers SuperSmoother 平滑周期（2026-10-18 可调）
 #   COST_EHLERS        主成本线（COST_PCT）的平滑周期，默认 90
