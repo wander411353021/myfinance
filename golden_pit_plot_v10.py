@@ -12,7 +12,21 @@ from price_segmenter_v10 import run_segmentation
 from tdx_quant import get_daily_kline_from_tdx
 
 
-def fetch_tdx(symbol, end_date='20260928', datalen=1023):
+def fetch_tdx(symbol, end_date='20260928', datalen=1800):
+    """优先读信号缓存(scan_cache_v3b, 1800天与信号同源), 无缓存回退 tdx 拉取。
+    2026-10-23: datalen 默认 1023→1800, 与信号体系 COST 递推长度统一(用户定版)。"""
+    code6 = symbol[2:] if symbol[:2] in ('sh', 'sz', 'bj') else symbol
+    cache = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         'result', 'scan_cache_v3b', f'{code6}.csv')
+    if os.path.exists(cache):
+        df = pd.read_csv(cache)
+        df['date'] = pd.to_datetime(df['date']).dt.tz_localize(None).dt.normalize()
+        end = pd.Timestamp(end_date)
+        df = df[df['date'] <= end].reset_index(drop=True)
+        if len(df) >= 300:
+            print(f'[fetch] 用信号缓存 scan_cache_v3b/{code6}.csv ({len(df)}行 ≤ {end_date}), 与信号同源')
+            return df
+        print(f'[fetch] 缓存 {len(df)} 行不足(需≥300), 回退 tdx datalen={datalen}')
     df = get_daily_kline_from_tdx(symbol, end_date, datalen=datalen, with_turnover=True)
     if df is None or len(df) == 0:
         return None
