@@ -101,9 +101,19 @@ def get_stock_items_cached():
 
 @st.cache_data(show_spinner=False)
 def fetch_tdx_kline(code, end_date, datalen=1800):
-    """通达信直连拉日线（前复权）。end_date 透传给 anchor_date;datalen>800 自动分页(最长10年)。
-    带 with_turnover=True: 返回 turnover/circ_shares 列, 供 V10 筹码带(show_chip)使用。
-    2026-10-23: datalen 800→1800, 与信号/回测/缓存同源(至少1600天预热)。"""
+    """优先读信号缓存(scan_cache_v3b 1800天同源, 递推起点2019-05-16与信号一致), 无缓存回退 tdx。
+    2026-10-23 reasonix: datalen 800→1800; 2026-10-23 豆包补: 缓存优先(仅改datalen仍走tdx从画图日
+    往前1800天=600550@20200515→2015-05起含2016高位套牢盘, 盘踞段COST70仍5.0旧效果; 必须读缓存
+    才能复现信号口径3.85)。"""
+    code6 = code[2:] if code[:2] in ('sh', 'sz', 'bj') else code
+    cache = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         'result', 'scan_cache_v3b', f'{code6}.csv')
+    if os.path.exists(cache):
+        df = pd.read_csv(cache)
+        df['date'] = pd.to_datetime(df['date']).dt.tz_localize(None).dt.normalize()
+        df = df[df['date'] <= pd.Timestamp(end_date)].reset_index(drop=True)
+        if len(df) >= 1:
+            return df
     from tdx_quant import get_daily_kline_from_tdx
     df = get_daily_kline_from_tdx(code, end_date, datalen=datalen, with_turnover=True)
     if df is None or len(df) == 0:
@@ -312,7 +322,7 @@ if go or auto_go:
         st.stop()
     st.session_state["last_tail"] = tail_days
     df_full = None
-    with st.spinner(f"通达信直连拉取 {code} 日线中（截止 {end_date}）…"):
+    with st.spinner(f"加载 {code} 日线中（信号缓存优先, 截止 {end_date}）…"):
         try:
             df_full = fetch_tdx_kline(code, end_date)
         except Exception as e:
