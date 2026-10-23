@@ -100,9 +100,10 @@ def get_stock_items_cached():
 
 
 @st.cache_data(show_spinner=False)
-def fetch_tdx_kline(code, end_date, datalen=800):
+def fetch_tdx_kline(code, end_date, datalen=1800):
     """通达信直连拉日线（前复权）。end_date 透传给 anchor_date;datalen>800 自动分页(最长10年)。
-    带 with_turnover=True: 返回 turnover/circ_shares 列, 供 V10 筹码带(show_chip)使用。"""
+    带 with_turnover=True: 返回 turnover/circ_shares 列, 供 V10 筹码带(show_chip)使用。
+    2026-10-23: datalen 800→1800, 与信号/回测/缓存同源(至少1600天预热)。"""
     from tdx_quant import get_daily_kline_from_tdx
     df = get_daily_kline_from_tdx(code, end_date, datalen=datalen, with_turnover=True)
     if df is None or len(df) == 0:
