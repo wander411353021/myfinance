@@ -23,10 +23,10 @@ def fetch_tdx(symbol, end_date='20260928', datalen=1800):
         df['date'] = pd.to_datetime(df['date']).dt.tz_localize(None).dt.normalize()
         end = pd.Timestamp(end_date)
         df = df[df['date'] <= end].reset_index(drop=True)
-        if len(df) >= 300:
+        if len(df) >= 1:
             print(f'[fetch] 用信号缓存 scan_cache_v3b/{code6}.csv ({len(df)}行 ≤ {end_date}), 与信号同源')
             return df
-        print(f'[fetch] 缓存 {len(df)} 行不足(需≥300), 回退 tdx datalen={datalen}')
+        print(f'[fetch] 缓存截取为空(画图日早于缓存起点), 回退 tdx datalen={datalen}')
     df = get_daily_kline_from_tdx(symbol, end_date, datalen=datalen, with_turnover=True)
     if df is None or len(df) == 0:
         return None
@@ -41,8 +41,8 @@ def main():
     if '--mark' in sys.argv:
         mark_date = sys.argv[sys.argv.index('--mark') + 1]
     df = fetch_tdx(symbol, end_date=end_date)
-    if df is None or len(df) < 300:
-        print(f'{symbol} 数据不足'); return
+    if df is None or len(df) < tail_days:
+        print(f'{symbol} 数据不足({0 if df is None else len(df)}行 < 窗口{tail_days})'); return
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'result',
                        f'v10_{symbol}_{end_date}.png')
     os.makedirs(os.path.dirname(out), exist_ok=True)
