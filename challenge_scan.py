@@ -112,6 +112,11 @@ def chip_warmup_window(df, display_days, max_days=None, min_turnover=None):
     warm = disp_start - i
     out.update(start=i, total_days=total, warmup_days=warm,
                warmup_turnover=cum, ok=(cum >= _req or total >= _max))
+    if 'date' in df.columns:
+        try:
+            out['start_date'] = str(df['date'].iloc[i])[:10]
+        except Exception:
+            pass
     return out
 
 def compute(df, cost_pct=None, ehlers_period=None):

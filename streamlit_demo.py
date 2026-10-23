@@ -24,8 +24,12 @@ import streamlit.components.v1 as components
 from price_segmenter_v10 import run_segmentation
 from challenge_scan import chip_warmup_window
 from algo_config import (COST_PCT as DEFAULT_COST_PCT, COST_EHLERS as DEFAULT_COST_EHLERS,
-                         COST2_PCT as DEFAULT_COST2_PCT, COST2_EHLERS as DEFAULT_COST2_EHLERS)
+                         COST2_PCT as DEFAULT_COST2_PCT, COST2_EHLERS as DEFAULT_COST2_EHLERS,
+                         CHIP_WARMUP_DAYS, CHIP_WARMUP_TURNOVER)
 from tdx_quant import (load_block_csvs, load_stock_list, BLOCK_KEYS)
+
+# 预热参数签名：代码/环境变量改了阈值后，即使页面参数没变也强制重算
+_WARMUP_SIG = (int(CHIP_WARMUP_DAYS), float(CHIP_WARMUP_TURNOVER))
 
 # ── 路径 ──
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -138,7 +142,8 @@ def fetch_tdx_kline(code, end_date, datalen=1800):
 # ── 计算 + 存 session（绘图代码零改动）──
 def compute_and_store(df, tail_days, name, code=None, end_date=None,
                       cost_pct=None, ehlers_period=None,
-                      cost2_pct=None, cost2_ehlers=None, raw_df=None):
+                      cost2_pct=None, cost2_ehlers=None, raw_df=None,
+                      warmup_info=None):
     fd, tmp_png = tempfile.mkstemp(suffix=".png")
     os.close(fd)
     out = run_segmentation(df, tail_days=tail_days, name=name, save_path=tmp_png,
@@ -157,6 +162,8 @@ def compute_and_store(df, tail_days, name, code=None, end_date=None,
     st.session_state["last_df"] = df
     if raw_df is not None:
         st.session_state["last_raw_df"] = raw_df
+    st.session_state["last_warmup_info"] = warmup_info
+    st.session_state["last_warmup_sig"] = _WARMUP_SIG
     st.session_state["last_code"] = code
     st.session_state["last_end"] = end_date
     st.session_state["last_cost_pct"] = cost_pct
@@ -170,6 +177,17 @@ def compute_and_store(df, tail_days, name, code=None, end_date=None,
 # ── 显示（统一在此渲染）──
 def display_last():
     out = st.session_state["last_out"]
+    _wi = st.session_state.get("last_warmup_info")
+    if _wi:
+        _tr = ('累计%d%%' % round(_wi['required_turnover'] * 100)
+               if _wi['warmup_turnover'] >= _wi['required_turnover']
+               else '总窗口%d天' % _wi['required_days'])
+        st.info(
+            "预热窗口：计算起点 %s；总窗口 %d 天（显示 %d 天 + 预热 %d 天）；"
+            "显示前累计换手 %.0f%%（%s先到）"
+            % (_wi.get('start_date', '?'), _wi['total_days'],
+               _wi['display_days'], _wi['warmup_days'],
+               _wi['warmup_turnover'] * 100, _tr))
     _cp = st.session_state.get("last_cost_pct")
     _eh = st.session_state.get("last_ehlers") or DEFAULT_COST_EHLERS
     _cp2 = st.session_state.get("last_cost2_pct")
@@ -361,19 +379,11 @@ if go or auto_go:
                 % (_ws['total_days'], _ws['warmup_turnover'] * 100,
                    _ws['required_turnover'] * 100, _ws['required_days']))
         st.success(f"已拉取 {len(df_full)} 根，日期 {df_full['date'].iloc[0].date()} ~ {df_full['date'].iloc[-1].date()}（前复权，计算起点已按预热规则确定）")
-        _trigger = ('累计200%' if _ws['warmup_turnover'] >= _ws['required_turnover']
-                    else '总窗口1800天')
-        st.info(
-            "预热窗口：计算起点 %s；总窗口 %d 天（显示 %d 天 + 预热 %d 天）；"
-            "显示前累计换手 %.0f%%（%s先到）"
-            % (df_full['date'].iloc[0].date(), _ws['total_days'],
-               _ws['display_days'], _ws['warmup_days'],
-               _ws['warmup_turnover'] * 100, _trigger))
         _end_str = end_date.strftime("%Y%m%d") if hasattr(end_date, "strftime") else str(end_date).replace("-", "")
         compute_and_store(df_full, tail_days, f"{code}", code=code, end_date=_end_str,
                           cost_pct=cost_pct, ehlers_period=ehlers_period,
                           cost2_pct=cost2_pct, cost2_ehlers=cost2_ehlers,
-                          raw_df=_raw_df)
+                          raw_df=_raw_df, warmup_info=_ws)
         # 注意：同行业列表不再随主图加载自动刷新（避免卡顿与误刷新）。
         # 仅在输入框手动改码 / 板块导航点股票时清空，需用户手动点「刷新同行业个股」按钮重新查询。
     elif df_full is not None:
@@ -392,11 +402,13 @@ if auto_recompute and not go and not auto_go:
     _end_now = end_date.strftime("%Y%m%d") if hasattr(end_date, "strftime") else str(end_date).replace("-", "")
     if (_last_df is not None and _last_code
             and str(code) == str(_last_code) and _end_now == str(_last_end)
-            and (_last_cost != cost_pct or _last_tail != tail_days
+            and (st.session_state.get("last_warmup_sig") != _WARMUP_SIG
+                 or _last_cost != cost_pct or _last_tail != tail_days
                  or _last_ehlers != ehlers_period
                  or _last_c2 != cost2_pct or _last_e2 != cost2_ehlers)):
         with st.spinner("按新参数重算…"):
             _raw = st.session_state.get("last_raw_df")
+            _ws2 = None
             if _raw is not None:
                 _ws2 = chip_warmup_window(_raw, tail_days)
                 _plot_df = (_raw.iloc[_ws2['start']:].reset_index(drop=True)
@@ -407,7 +419,7 @@ if auto_recompute and not go and not auto_go:
                               code=_last_code, end_date=_last_end,
                               cost_pct=cost_pct, ehlers_period=ehlers_period,
                               cost2_pct=cost2_pct, cost2_ehlers=cost2_ehlers,
-                              raw_df=_raw)
+                              raw_df=_raw, warmup_info=_ws2)
 
 # ── 双向组件声明（成分股列表）──
 # 注意：st.components.v1.html 是静态 iframe，不会回传值；必须用 declare_component。
