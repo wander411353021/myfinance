@@ -358,6 +358,14 @@ if go or auto_go:
                 % (_ws['total_days'], _ws['warmup_turnover'] * 100,
                    _ws['required_turnover'] * 100, _ws['required_days']))
         st.success(f"已拉取 {len(df_full)} 根，日期 {df_full['date'].iloc[0].date()} ~ {df_full['date'].iloc[-1].date()}（前复权，计算起点已按预热规则确定）")
+        _trigger = ('累计500%' if _ws['warmup_turnover'] >= _ws['required_turnover']
+                    else '总窗口1800天')
+        st.info(
+            "预热窗口：计算起点 %s；总窗口 %d 天（显示 %d 天 + 预热 %d 天）；"
+            "显示前累计换手 %.0f%%（%s先到）"
+            % (df_full['date'].iloc[0].date(), _ws['total_days'],
+               _ws['display_days'], _ws['warmup_days'],
+               _ws['warmup_turnover'] * 100, _trigger))
         _end_str = end_date.strftime("%Y%m%d") if hasattr(end_date, "strftime") else str(end_date).replace("-", "")
         compute_and_store(df_full, tail_days, f"{code}", code=code, end_date=_end_str,
                           cost_pct=cost_pct, ehlers_period=ehlers_period,
