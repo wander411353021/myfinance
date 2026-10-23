@@ -143,7 +143,7 @@ def fetch_tdx_kline(code, end_date, datalen=1800):
 def compute_and_store(df, tail_days, name, code=None, end_date=None,
                       cost_pct=None, ehlers_period=None,
                       cost2_pct=None, cost2_ehlers=None, raw_df=None,
-                      warmup_info=None):
+                      warmup_info=None, signal_df=None):
     fd, tmp_png = tempfile.mkstemp(suffix=".png")
     os.close(fd)
     out = run_segmentation(df, tail_days=tail_days, name=name, save_path=tmp_png,
@@ -154,7 +154,8 @@ def compute_and_store(df, tail_days, name, code=None, end_date=None,
                            cost_pct=cost_pct,            # 滑轨覆盖成本线 A 分位
                            ehlers_period=ehlers_period,  # 滑轨覆盖成本线 A 平滑
                            cost2_pct=cost2_pct,          # 滑轨覆盖参考线 B 分位
-                           cost2_ehlers=cost2_ehlers)    # 滑轨覆盖参考线 B 平滑
+                           cost2_ehlers=cost2_ehlers,    # 滑轨覆盖参考线 B 平滑
+                           signal_df=signal_df)            # 信号扫描用完整历史
     st.session_state["last_png"] = tmp_png
     st.session_state["last_out"] = out
     st.session_state["last_name"] = name
@@ -383,7 +384,7 @@ if go or auto_go:
         compute_and_store(df_full, tail_days, f"{code}", code=code, end_date=_end_str,
                           cost_pct=cost_pct, ehlers_period=ehlers_period,
                           cost2_pct=cost2_pct, cost2_ehlers=cost2_ehlers,
-                          raw_df=_raw_df, warmup_info=_ws)
+                          raw_df=_raw_df, warmup_info=_ws, signal_df=_raw_df)
         # 注意：同行业列表不再随主图加载自动刷新（避免卡顿与误刷新）。
         # 仅在输入框手动改码 / 板块导航点股票时清空，需用户手动点「刷新同行业个股」按钮重新查询。
     elif df_full is not None:
@@ -419,7 +420,7 @@ if auto_recompute and not go and not auto_go:
                               code=_last_code, end_date=_last_end,
                               cost_pct=cost_pct, ehlers_period=ehlers_period,
                               cost2_pct=cost2_pct, cost2_ehlers=cost2_ehlers,
-                              raw_df=_raw, warmup_info=_ws2)
+                              raw_df=_raw, warmup_info=_ws2, signal_df=_raw)
 
 # ── 双向组件声明（成分股列表）──
 # 注意：st.components.v1.html 是静态 iframe，不会回传值；必须用 declare_component。

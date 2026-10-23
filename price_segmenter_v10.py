@@ -1451,7 +1451,8 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                      enable_panic=False, show_chip=False,
                      hide_overlay_lines=False, show_reg_line=False, mark_date=None,
                      show_v3b=False, cost_pct=None, ehlers_period=None,
-                     cost2_pct=None, cost2_ehlers=None, show_cost2=False):
+                     cost2_pct=None, cost2_ehlers=None, show_cost2=False,
+                     signal_df=None):
     # hide_overlay_lines=True(2026-10-01 用户): 隐藏 MA120/EMA/REG基准/Grid Target 主目标价/第二阶梯 5条线,
     # 仅保留 K线+UP/DOWN zone+Gap+Key candle+Resistance+COST 系列; 恢复=改回 False。
     """fast_mode: True=跳过画图，返回 bool（最后一天有买入信号）。
@@ -1518,11 +1519,12 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
             from algo_config import SIGNAL_REARM_DAYS as _SIGNAL_REARM_DAYS
             # P0-2: raw + eff 两套线；P0-1: scan_series 结构冷却；P1-1: v3 一并显示
             # 2026-10-21: 传 cA/cB 接入三线制 (v3b_B2 / early_E4, 紫线弃用)
-            _cl, _darr, _gtp, _gt2, _gtp_e, _gt2_e, _c35, _, _cA = _cs_compute_eff(df_ohlc)
-            _vol = df_ohlc['volume'].values.astype(float)
-            _hi = df_ohlc['high'].values.astype(float)
-            _lo = df_ohlc['low'].values.astype(float)
-            _turn = df_ohlc['turnover'].values.astype(float)
+            _sig_df = signal_df if signal_df is not None else df_ohlc
+            _cl, _darr, _gtp, _gt2, _gtp_e, _gt2_e, _c35, _, _cA = _cs_compute_eff(_sig_df)
+            _vol = _sig_df['volume'].values.astype(float)
+            _hi = _sig_df['high'].values.astype(float)
+            _lo = _sig_df['low'].values.astype(float)
+            _turn = _sig_df['turnover'].values.astype(float)
             _cB = _cs_early_cB(_hi, _lo, _vol, _turn)
             v3b_sig_dates = []; v3b_profiles = {}; v3b_early_dates = []; v3_sig_dates = []
             v3b_b2_early_dates = []
