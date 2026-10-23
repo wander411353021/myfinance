@@ -246,10 +246,6 @@ st.caption("数据源：通达信直连（tdx_quant.get_daily_kline_from_tdx，�
            "输入代码（+ 结束日期）→ 直连拉日线 → 出图。"
            "板块/成分来自本地 result/blocks/*.csv（GBK），可经左侧『板块导航』一键载入成分股。")
 
-st.caption("信号面板（三线制，2026-10-21 定版）：红=v3b_B2 二次买点（站红压线+线上主成本线A，结构武装冷却）；"
-           "蓝▲=B2-early 强势分支（B2 其余条件相同，gap>20%）；"
-           "绿=v3 首次突破；橙=early_E4 提前观察（站参考线B×1.03 未到A，红压线~A 之间归 early）。紫线体系已弃用。")
-
 # 代码输入框的权威会话值（双向组件的值滞后一帧，故用会话值兜底，避免被旧回传值覆盖）
 if "code_box_value" not in st.session_state:
     st.session_state["code_box_value"] = "300437"
