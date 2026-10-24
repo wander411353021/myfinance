@@ -27,7 +27,7 @@
     CHIP_WARMUP_TURNOVER 默认 4.0（初始日→显示起点累计换手 ≥400%）
 
 Ehlers SuperSmoother 平滑周期:
-    COST_EHLERS      默认 90  → 主成本线 A
+    COST_EHLERS      默认 80  → 主成本线 A
     COST_HIGH_EHLERS 默认 20  → COST75 筹码峰上沿
 
 参考成本线 B（仅主图参考，不参与信号判定）:
@@ -57,9 +57,9 @@ CHIP_WARMUP_DAYS = int(_f('CHIP_WARMUP_DAYS', '1800'))
 CHIP_WARMUP_TURNOVER = _f('CHIP_WARMUP_TURNOVER', '4.0')
 
 # Ehlers SuperSmoother 平滑周期（2026-10-18 可调）
-#   COST_EHLERS        主成本线（COST_PCT）的平滑周期，默认 90
+#   COST_EHLERS        主成本线（COST_PCT）的平滑周期，默认 80
 #   COST_HIGH_EHLERS   COST75 筹码峰上沿的平滑周期，默认 20
-COST_EHLERS = int(_f('COST_EHLERS', '90'))
+COST_EHLERS = int(_f('COST_EHLERS', '80'))
 COST_HIGH_EHLERS = int(_f('COST_HIGH_EHLERS', '20'))
 
 # 参考成本线 B（2026-10-18 用户要求：独立分位/周期，主图红色线+红色填充，不参与信号）

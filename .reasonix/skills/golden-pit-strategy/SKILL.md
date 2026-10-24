@@ -1279,7 +1279,7 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
 
 ### 全局参数入口（2026-10-18 用户定版）
 - **唯一入口 `algo_config.py`**，以后只改这里，不要再散改各脚本：
-  - `COST_PCT=0.70` / `COST_EHLERS=90`：主成本线 A，**仅主图显示**
+  - `COST_PCT=0.70` / `COST_EHLERS=80`：主成本线 A，**仅主图显示**
   - `COST_PCT_LOW=0.35` / `COST_PCT_MID=0.50` / `COST_PCT_HIGH=0.75`：板块/筹码三档
     （与主成本线独立，必须保持 LOW<MID<HIGH）
   - `CHIP_BAND_LO=0.10` / `CHIP_BAND_HI=0.90`：`signal_profile` 的带宽/获利盘
