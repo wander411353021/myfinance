@@ -583,7 +583,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 ehlers_period=None,
                                 cost2_pct=None,
                                 cost2_ehlers=None,
-                                show_cost2=True):
+                                show_cost2=False):
     """5面板: K线 + 成交量 + 买卖信号(柱高=突破分量) + 阻力/支撑位生命周期 + 极速杀跌反转signal。
     panic_info: panic_reversal.signal() 返回的 dict(含 signal 状态与门控明细),None 则面板显示提示。
     show_chip=True(2026-09-29): 精简为 3 面板(K线+量+筹码fengwo色带), 隐藏恐慌反转/黄金坑方波面板,
@@ -1455,7 +1455,7 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                      enable_panic=False, show_chip=False,
                      hide_overlay_lines=False, show_reg_line=False, mark_date=None,
                      show_v3b=False, cost_pct=None, ehlers_period=None,
-                     cost2_pct=None, cost2_ehlers=None, show_cost2=True,
+                     cost2_pct=None, cost2_ehlers=None, show_cost2=False,
                      signal_df=None):
     # hide_overlay_lines=True(2026-10-01 用户): 隐藏 MA120/EMA/REG基准/Grid Target 主目标价/第二阶梯 5条线,
     # 仅保留 K线+UP/DOWN zone+Gap+Key candle+Resistance+COST 系列; 恢复=改回 False。

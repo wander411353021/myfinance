@@ -196,9 +196,6 @@ def display_last():
     if _cp is not None:
         _msg = (f"**主成本线 A：COST{int(round(_cp * 100))} Ehlers{int(_eh)}**"
                 f"（COST_PCT={_cp:.2f}）")
-        if _cp2 is not None:
-            _msg += (f" · **参考线 B：COST{int(round(_cp2 * 100))} Ehlers{int(_eh2)}**"
-                     f"（COST_PCT={_cp2:.2f}，仅参考）")
         st.markdown(_msg)
     st.image(st.session_state["last_png"], width='stretch')
 
