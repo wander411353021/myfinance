@@ -986,7 +986,7 @@ if confirmed:
 | 元素 | 颜色/线型 | 平滑 |
 |---|---|---|
 | COST35(筹码峰下沿) | 深绿虚线 #1B5E20 | Ehlers 60 |
-| COST75(筹码峰上沿) | 橙红虚线 #D0451F | **Ehlers 10**(60→20→10, 用户要求降平滑/延时的结果) |
+| COST85(筹码峰上沿) | 橙红虚线 #D0451F | **Ehlers 10**(60→20→10, 用户要求降平滑/延时的结果) |
 | COST50(峰中线) | 深蓝粗实线 #0D47A1 | Ehlers 60 |
 | **跌破 COST35 区段** | **深绿填充 #2E7D32 alpha 0.30** | 用平滑 COST35 判定 |
 | ~~COST10-90 集中区蓝带~~ | 已隐藏(2026-10-01) | — |
@@ -995,12 +995,12 @@ if confirmed:
 **"跌破 COST35"填充标记**: `fill_between(x, closes, _sm_n, where=closes < _sm_n)` —— 标出所有"股价杀破 65% 筹码区"的区段与击穿厚度(用户用途: 一眼看出杀破大部分筹码区的位置)。
 **Ehlers SuperSmoother 因果性已验**: `out[k] = c1*(x[k]+x[k-1])/2 + c2*out[k-1] + c3*out[k-2]` 只用当根/前一根+历史输出, 无未来函数。
 
-## COST75 主成本上方显示条件(2026-10-24 用户定版)
+## COST85 主成本上方显示条件(2026-10-24 用户定版)
 - **旧方案**: 相对放量 `EMA10(换手) / MA60(换手) > 1.5` 才显示；高换手股全程触发、低换手股不触发，用户认为不符合用途。
 - **现行方案**: 收盘价站上主成本线 A 时显示筹码峰上沿，跌破 A 隐藏：
   `_sm75_show = np.where(_fc > _sm, _sm75, np.nan)`
 - **实现**: `price_segmenter_v10.py` chip 块；`_sm` 是主成本 A，`_fc` 是收盘价。
-- **注意**: COST75 本身仍是 Ehlers20 平滑，无未来函数；图例为“筹码峰上沿(COST75, 主成本上方)”。
+- **注意**: COST85 本身是 Ehlers10 平滑，无未来函数；图例为“筹码峰上沿(COST85, 主成本上方)”。
 
 ## Grid Target 双阶梯基准改成 COST35(2026-10-04 豆包, 已入库)
 > **2026-10-20 用户定版**: Grid Target **主阶梯（洋红）改用 COST35 Ehlers60 基准**；第二阶梯仍保持 REG（已隐藏）。`06b38d6` 曾把双阶梯整体回退 REG，本次只恢复主阶梯，v3/v3b/early 信号完全不变。
@@ -1279,13 +1279,13 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
 ### 全局参数入口（2026-10-18 用户定版）
 - **唯一入口 `algo_config.py`**，以后只改这里，不要再散改各脚本：
   - `COST_PCT=0.70` / `COST_EHLERS=80`：主成本线 A，**仅主图显示**
-  - `COST_PCT_LOW=0.35` / `COST_PCT_MID=0.50` / `COST_PCT_HIGH=0.75`：板块/筹码三档
+  - `COST_PCT_LOW=0.35` / `COST_PCT_MID=0.50` / `COST_PCT_HIGH=0.85`：板块/筹码三档
     （与主成本线独立，必须保持 LOW<MID<HIGH）
   - `CHIP_BAND_LO=0.10` / `CHIP_BAND_HI=0.90`：`signal_profile` 的带宽/获利盘
   - **筹码预热（只提示不阻断）**：`CHIP_WARMUP_DAYS=1800`（总窗口，含显示区间）/ `CHIP_WARMUP_TURNOVER=4.0`（初始日→显示起点累计换手 400%）；
     从显示窗口起点往前追溯，累计换手 400% 或总窗口 1800 天，谁先到就停；Streamlit/CLI 不足时提示但仍计算；
     `scan_recent` / `daily_pipeline` / V10 / 回测默认取数统一为 1800 天。
-  - `COST_HIGH_EHLERS=20`：COST75 筹码峰上沿的 Ehlers 平滑周期
+  - `COST_HIGH_EHLERS=10`：COST85 筹码峰上沿的 Ehlers 平滑周期
   - `COST2_PCT=0.20` / `COST2_EHLERS=90`：参考成本线 B 参数；当前默认显示（浅青虚线，仅参考），同时仍是 Grid Target 主阶梯基准，UI B 滑轨继续控制格栅线。
   - **2026-10-20 全套新信号标准**：`SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=90`；
     `SIGNAL_MIN_LEVEL=4`（目标价不能低于基准）。

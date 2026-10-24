@@ -16,7 +16,7 @@
 板块/筹码三档（必须保持低<中<高；与主成本线独立）:
     COST_PCT_LOW    默认 0.35  → 下沿（受压/跌破）
     COST_PCT_MID    默认 0.50  → 中档（板块页成本中线）
-    COST_PCT_HIGH   默认 0.75  → 上沿（强势/峰上沿）
+    COST_PCT_HIGH   默认 0.85  → 上沿（强势/峰上沿）
 
 筹码带宽/获利盘（signal_profile 的 band/profit）:
     CHIP_BAND_LO    默认 0.10
@@ -28,7 +28,7 @@
 
 Ehlers SuperSmoother 平滑周期:
     COST_EHLERS      默认 80  → 主成本线 A
-    COST_HIGH_EHLERS 默认 20  → COST75 筹码峰上沿
+    COST_HIGH_EHLERS 默认 10  → COST85 筹码峰上沿
 
 参考成本线 B（仅主图参考，不参与信号判定）:
     COST2_PCT        默认 0.20 → COST20
@@ -50,7 +50,7 @@ def _f(name, default):
 COST_PCT = _f('COST_PCT', '0.70')
 COST_PCT_LOW = _f('COST_PCT_LOW', '0.35')
 COST_PCT_MID = _f('COST_PCT_MID', '0.50')
-COST_PCT_HIGH = _f('COST_PCT_HIGH', '0.75')
+COST_PCT_HIGH = _f('COST_PCT_HIGH', '0.85')
 CHIP_BAND_LO = _f('CHIP_BAND_LO', '0.10')
 CHIP_BAND_HI = _f('CHIP_BAND_HI', '0.90')
 CHIP_WARMUP_DAYS = int(_f('CHIP_WARMUP_DAYS', '1800'))
@@ -58,9 +58,9 @@ CHIP_WARMUP_TURNOVER = _f('CHIP_WARMUP_TURNOVER', '4.0')
 
 # Ehlers SuperSmoother 平滑周期（2026-10-18 可调）
 #   COST_EHLERS        主成本线（COST_PCT）的平滑周期，默认 80
-#   COST_HIGH_EHLERS   COST75 筹码峰上沿的平滑周期，默认 20
+#   COST_HIGH_EHLERS   COST85 筹码峰上沿的平滑周期，默认 10
 COST_EHLERS = int(_f('COST_EHLERS', '80'))
-COST_HIGH_EHLERS = int(_f('COST_HIGH_EHLERS', '20'))
+COST_HIGH_EHLERS = int(_f('COST_HIGH_EHLERS', '10'))
 
 # 参考成本线 B（2026-10-18 用户要求：独立分位/周期，主图红色线+红色填充，不参与信号）
 COST2_PCT = _f('COST2_PCT', '0.20')
