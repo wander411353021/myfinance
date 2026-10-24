@@ -1287,7 +1287,7 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
     从显示窗口起点往前追溯，累计换手 400% 或总窗口 1800 天，谁先到就停；Streamlit/CLI 不足时提示但仍计算；
     `scan_recent` / `daily_pipeline` / V10 / 回测默认取数统一为 1800 天。
   - `COST_HIGH_EHLERS=20`：COST75 筹码峰上沿的 Ehlers 平滑周期
-  - `COST2_PCT=0.20` / `COST2_EHLERS=90`：参考成本线 B 参数；当前默认隐藏 B 线（`show_cost2=False`），但 B 仍是 Grid Target 主阶梯基准，UI B 滑轨继续控制格栅线。
+  - `COST2_PCT=0.20` / `COST2_EHLERS=90`：参考成本线 B 参数；当前默认显示（浅青虚线，仅参考），同时仍是 Grid Target 主阶梯基准，UI B 滑轨继续控制格栅线。
   - **2026-10-20 全套新信号标准**：`SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=90`；
     `SIGNAL_MIN_LEVEL=4`（目标价不能低于基准）。
     `challenge_scan.compute` 的 `c35s` 与 `gt_p/gt2` 都用这套标准，**A/B 滑轨只控制显示，不再参与信号**。
