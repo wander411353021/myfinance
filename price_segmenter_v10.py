@@ -1303,27 +1303,13 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                     ax0.fill_between(_x, lows, _sm_n, where=_below,
                                      color='#2E7D32', alpha=0.15, zorder=1.5,
                                      label='跌破' + _COST_LABEL + '(主)')
-                # 2026-10-04 用户: 恢复 COST75 橙色线(Ehlers20, 仅放量段EMA10>3%显示);
-                #   紫色填充暂不恢复(横盘震荡段 lows<COST75 太频繁, 视觉杂乱, 待优化)
-                _alpha_t = 2.0 / 11.0
-                _turn_ema = np.full(len(_turn), np.nan)
-                _turn_ema[0] = _turn[0]
-                for _ti in range(1, len(_turn)):
-                    _turn_ema[_ti] = _alpha_t * _turn[_ti] + (1 - _alpha_t) * _turn_ema[_ti - 1]
-                # 2026-10-04 相对放量: EMA10(换手) / MA60(换手) > 1.5
-                #   解决绝对阈值问题: 高换手票(300437日换手4%+)全程触发, 低换手票(600519日0.27%)永不触发
-                #   改为相对自身历史: 当前EMA10换手是过去60天均值1.5倍以上才算"放量"
-                #   300300验证: 2.0只在11月爆冲触发, 1.5能捕捉6月温和放量/8月二次启动/10月主升
-                import pandas as _pd
-                _ma60 = _pd.Series(_turn).rolling(60, min_periods=20).mean().values
-                _ratio = _turn_ema / _ma60
+                # 2026-10-24 用户: 价格站上主成本 A 时显示筹码峰上沿，跌破 A 隐藏
                 _sm75 = _ehlers_smooth(_c75, max(2, int(_COST_HIGH_EHLERS)))
-                _vol_on = _ratio > 1.5
-                _sm75_show = np.where(_vol_on, _sm75, np.nan)
+                _sm75_show = np.where(_fc > _sm, _sm75, np.nan)
                 _sm75_n = _sm75_show[offset:offset + n]
                 if np.any(np.isfinite(_sm75_n)):
                     ax0.plot(_x, _sm75_n, color='#E65100', lw=1.6, alpha=0.95, linestyle='--',
-                             zorder=4, label='筹码峰上沿(' + _COST_HIGH_LABEL + ',仅放量段)')
+                             zorder=4, label='筹码峰上沿(' + _COST_HIGH_LABEL + ',主成本上方)')
             except Exception as _e2:
                 print(f'[chip 峰带] 失败: {_e2}')
         except Exception as _e:
