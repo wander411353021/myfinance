@@ -573,21 +573,13 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 hide_overlay_lines=False,
                                 show_reg_line=False,
                                 mark_date=None,
-                                v3b_sig_dates=None,
-                                v3b_profiles=None,
-                                v3b_early_dates=None,
-                                v3b_b2_early_dates=None,
-                                v3_sig_dates=None,
-                                bigline_dates=None,
                                 cost_pct=None,
                                 ehlers_period=None,
                                 cost2_pct=None,
                                 cost2_ehlers=None,
                                 show_cost2=True):
-    """5面板: K线 + 成交量 + 买卖信号(柱高=突破分量) + 阻力/支撑位生命周期 + 极速杀跌反转signal。
-    panic_info: panic_reversal.signal() 返回的 dict(含 signal 状态与门控明细),None 则面板显示提示。
-    show_chip=True(2026-09-29): 精简为 3 面板(K线+量+筹码fengwo色带), 隐藏恐慌反转/黄金坑方波面板,
-    K线上保留黄金坑标记(金色高胜率背景/加仓★/reg120紫带)。df_ohlc 需含 turnover 列(来自 tdx_quant)。"""
+    """show_chip=True: 2 面板(K线+筹码色带、成交量)；不再绘制 v3/v3b/early 信号面板。
+    df_ohlc 需含 turnover 列(来自 tdx_quant)。"""
     ohlc = df_ohlc.tail(tail_days).copy().reset_index(drop=True)
     n = len(ohlc); x = np.arange(n); offset = len(df_ohlc) - n  # ohlc 是 df_ohlc 末尾 n 行，offset 为其在原序列中的起始下标（恒 >=0）
 
@@ -601,11 +593,10 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     except Exception as _e:
         print(f'[reg smooth] 失败: {_e}')
 
-    _has_prof = bool(v3b_profiles)
     if show_chip:
-        fig, axes = plt.subplots(3, 1, figsize=(22, 14.4 if _has_prof else 13),
+        fig, axes = plt.subplots(2, 1, figsize=(22, 13),
                                  sharex=True,
-                                 gridspec_kw={'height_ratios': [4, 1.3, 0.55]})
+                                 gridspec_kw={'height_ratios': [4, 1.3]})
     elif hide_mid_panels:
         fig, axes = plt.subplots(4, 1, figsize=(22, 14),
                                  sharex=True,
@@ -934,22 +925,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         Line2D([0], [0], color='#d62728', linewidth=2.0, linestyle='--', label='Regression'),
     ], loc='upper left', fontsize=7, ncol=4)
 
-    # bigline 大阳线起点标记(2026-10-16): 绿▲ 画在K线低点下方 + 日期标注
-    if bigline_dates:
-        from challenge_scan import _bd as _bd_local
-        _dmap = {_bd_local(d): k for k, d in enumerate(df_ohlc['date'].values[offset:offset + n])}
-        for _ds in bigline_dates:
-            _xi = _dmap.get(_ds)
-            if _xi is None:
-                continue
-            _lo = lows[_xi] if _xi < len(lows) else 0.0
-            ax0.scatter([_xi], [_lo * 0.965], marker='^', s=60, color='#00C853', zorder=6, edgecolors='black', linewidths=0.4)
-            ax0.annotate(_ds[-4:] if len(_ds) >= 4 else _ds, (_xi, _lo * 0.955),
-                         textcoords='offset points', xytext=(0, -4), ha='center', va='top',
-                         fontsize=6, color='#00C853', fontweight='bold')
-        ax0.legend(handles=[
-            Line2D([0], [0], marker='^', color='#00C853', linestyle='None', markersize=7, label='BIGLINE 大阳起点')
-        ], loc='lower left', fontsize=7)
+    # V10 已移除 bigline / v3b / early 信号标记
 
     ax1 = axes[1]; vol = ohlc['volume'].values; va = result['vol_annotation'].values[offset:offset + n]
     vc = {"VOL_EXPANDING": "#ef5350", "VOL_SHRINKING": "#26a69a", "NEUTRAL": "#9E9E9E"}
@@ -997,64 +973,11 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
     ax1.set_ylabel('Volume', fontsize=9); ax1.grid(True, alpha=0.2)
     ax1.set_title('Volume (red=expanding, green=shrinking; bg=cluster)', fontsize=9, loc='left', pad=2)
 
-    # show_chip 模式: ax2 = v3/v3b/early 信号面板(2026-10-18 接入结构冷却+置空备用线)
+    # V10: 已移除 v3/v3b/early 信号面板
     if show_chip:
-        ax2 = axes[2]
-        ax2.set_ylim(0, 1)
-        if v3b_sig_dates or v3b_early_dates or v3_sig_dates or v3b_b2_early_dates:
-            # 注意: tdx date 为 UTC 存储(交易日 D 存成 D-1 16:00), 必须复用 challenge_scan._bd
-            # 的 +8h 转换(2026-10-16 修复: str/strftime 直接取会早一天, 300204 信号面板空白)
-            from challenge_scan import _bd as _bd_local
-            _dmap = {_bd_local(d): k for k, d in
-                     enumerate(df_ohlc['date'].values[offset:offset + n])}
-            for _ds in v3b_early_dates or []:
-                _xi = _dmap.get(_ds)
-                if _xi is None:
-                    continue
-                ax2.axvline(_xi, color='#FB8C00', lw=1.2, alpha=0.8, zorder=4, linestyle='--')
-                ax2.scatter([_xi], [0.45], s=14, color='#FB8C00', zorder=5)
-                ax2.annotate(_ds[-4:] if len(_ds) >= 4 else _ds,
-                             (_xi, 0.45), textcoords='offset points',
-                             xytext=(0, 3), ha='center', va='bottom',
-                             fontsize=6, color='#FB8C00')
-            for _ds in v3b_b2_early_dates or []:
-                _xi = _dmap.get(_ds)
-                if _xi is None:
-                    continue
-                ax2.axvline(_xi, color='#1565C0', lw=1.2, alpha=0.8, zorder=4, linestyle=':')
-                ax2.scatter([_xi], [0.20], s=16, color='#1565C0', marker='^', zorder=6)
-                ax2.annotate(_ds[-4:] if len(_ds) >= 4 else _ds,
-                             (_xi, 0.20), textcoords='offset points',
-                             xytext=(0, 3), ha='center', va='bottom',
-                             fontsize=6, color='#1565C0', fontweight='bold')
-            for _ds in v3_sig_dates or []:
-                _xi = _dmap.get(_ds)
-                if _xi is None:
-                    continue
-                ax2.axvline(_xi, color='#2E7D32', lw=1.4, alpha=0.9, zorder=5)
-                ax2.scatter([_xi], [0.75], s=16, color='#2E7D32', marker='D', zorder=6)
-                ax2.annotate(_ds[-4:] if len(_ds) >= 4 else _ds,
-                             (_xi, 0.75), textcoords='offset points',
-                             xytext=(0, 3), ha='center', va='bottom',
-                             fontsize=6, color='#2E7D32', fontweight='bold')
-            for _ds in v3b_sig_dates or []:
-                _xi = _dmap.get(_ds)
-                if _xi is None:
-                    continue
-                ax2.axvline(_xi, color='#D32F2F', lw=1.6, alpha=0.9, zorder=5)
-                ax2.scatter([_xi], [1.0], s=18, color='#D32F2F', zorder=6)
-                ax2.annotate(_ds[-4:] if len(_ds) >= 4 else _ds,
-                             (_xi, 1.0), textcoords='offset points',
-                             xytext=(0, 3), ha='center', va='bottom',
-                             fontsize=6, color='#D32F2F', fontweight='bold')
-        ax2.set_ylabel('signals', fontsize=9)
-        ax2.set_title('信号 (红=v3b_B2; 蓝▲=B2-early强势; 绿=v3首次突破; 橙虚=early_E4)',
-                      fontsize=9, loc='left', pad=2)
-        ax2.grid(True, alpha=0.2)
-        ax2.set_yticks([])
-        ax2 = None  # 信号柱逻辑跳过, 本面板只画 v3b
+        ax2 = None
     else:
-        ax2 = axes[2] if (not hide_mid_panels and not show_chip) else None
+        ax2 = axes[2] if not hide_mid_panels else None
     if ax2 is not None:
         # ── 信号面板（ax2）：柱高编码突破分量；顶端圆点大小随分量增大 ──
         bsl = bs_signal[offset:offset + n]; brl = bs_reason[offset:offset + n]
@@ -1454,9 +1377,8 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                      code=None, end_date=None, panic_index=None,
                      enable_panic=False, show_chip=False,
                      hide_overlay_lines=False, show_reg_line=False, mark_date=None,
-                     show_v3b=False, cost_pct=None, ehlers_period=None,
-                     cost2_pct=None, cost2_ehlers=None, show_cost2=True,
-                     signal_df=None):
+                     cost_pct=None, ehlers_period=None,
+                     cost2_pct=None, cost2_ehlers=None, show_cost2=True):
     # hide_overlay_lines=True(2026-10-01 用户): 隐藏 MA120/EMA/REG基准/Grid Target 主目标价/第二阶梯 5条线,
     # 仅保留 K线+UP/DOWN zone+Gap+Key candle+Resistance+COST 系列; 恢复=改回 False。
     """fast_mode: True=跳过画图，返回 bool（最后一天有买入信号）。
@@ -1508,70 +1430,7 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
             panic_info = {'code': code, 'signal': 'ERR', 'date': str(end_date or ''),
                           'reason': 'signal calc failed: %s' % _e}
 
-    # v3b 二次买点信号(2026-10-16): 全量数据算线, 窗口内取信号日, 画在新增 ax 上
-    #   + 信号画像(2026-10-16): 每个信号日整理量能/回踩/冷却/前高/筹码/gap 指标
-    #   + 提前观察(2026-10-16): v3b_early 站上COST35未到紫线, 橙色虚线标记
-    v3b_sig_dates = None; v3b_profiles = None; v3b_early_dates = None
-    v3_sig_dates = None; v3b_b2_early_dates = None; bigline_dates = None
-    if show_v3b:
-        try:
-            from challenge_scan import compute_eff as _cs_compute_eff
-            from challenge_scan import signal_profile as _cs_prof
-            from challenge_scan import scan_series as _cs_series
-            from challenge_scan import bigline_hits as _cs_bigline
-            from challenge_scan import early_cB as _cs_early_cB
-            from algo_config import SIGNAL_REARM_DAYS as _SIGNAL_REARM_DAYS
-            # P0-2: raw + eff 两套线；P0-1: scan_series 结构冷却；P1-1: v3 一并显示
-            # 2026-10-21: 传 cA/cB 接入三线制 (v3b_B2 / early_E4, 紫线弃用)
-            _sig_df = signal_df if signal_df is not None else df_ohlc
-            _cl, _darr, _gtp, _gt2, _gtp_e, _gt2_e, _c35, _, _cA = _cs_compute_eff(_sig_df)
-            _vol = _sig_df['volume'].values.astype(float)
-            _hi = _sig_df['high'].values.astype(float)
-            _lo = _sig_df['low'].values.astype(float)
-            _turn = _sig_df['turnover'].values.astype(float)
-            _cB = _cs_early_cB(_hi, _lo, _vol, _turn)
-            v3b_sig_dates = []; v3b_profiles = {}; v3b_early_dates = []; v3_sig_dates = []
-            v3b_b2_early_dates = []
-            _early_idx = []
-            _end = str(end_date).replace('-', '')[:8] if end_date else '99999999'
-            _sig = _cs_series(_cl, _gtp, _gt2, _c35, _vol, start_i=400,
-                              types=('v3', 'v3b', 'v3b_b2_early', 'early'), mode='structure',
-                              darr=_darr, gt_p_eff=_gtp_e, gt2_eff=_gt2_e,
-                              cA=_cA, cB=_cB, rearm_days=_SIGNAL_REARM_DAYS)
-            for _t, _i in _sig:
-                _ds = str(_darr[_i])[:8]
-                if _ds >= _end:
-                    continue
-                if _t == 'v3b':
-                    v3b_sig_dates.append(_ds)
-                    try:
-                        v3b_profiles[_ds] = _cs_prof(_cl, _hi, _lo, _vol, _turn,
-                                                     _gtp, _gt2, _c35, _i,
-                                                     gt_p_eff=_gtp_e, gt2_eff=_gt2_e)
-                    except Exception:
-                        pass
-                elif _t == 'v3':
-                    v3_sig_dates.append(_ds)
-                elif _t == 'v3b_b2_early':
-                    v3b_b2_early_dates.append(_ds)
-                else:
-                    v3b_early_dates.append(_ds)
-                    _early_idx.append(_i)
-            # bigline 大阳线起点: early 后 20 天内第一根 >=5% 大阳线
-            try:
-                _bl_hits = _cs_bigline(_cl, _darr, _gtp, _gt2, _c35, _vol,
-                                       gt_p_eff=_gtp_e, gt2_eff=_gt2_e,
-                                       cB=_cB)
-                _bl_dates = []
-                for _bi, _ei, _w, _bp, _vr in _bl_hits:
-                    _bds = str(_darr[_bi])[:8]
-                    if _bds < _end:
-                        _bl_dates.append(_bds)
-                bigline_dates = _bl_dates
-            except Exception:
-                bigline_dates = None
-        except Exception as _e:
-            print(f'[v3b] 计算失败: {_e}')
+    # V10: v3b/early 信号计算已移除（后续重写前不再生成信号标记）
 
     plot_price_segmentation_v10(df_ohlc, c_result, bs_signal, bs_reason,
                                 tail_days=tail_days, name=name, save_path=save_path,
@@ -1584,12 +1443,6 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                                 hide_overlay_lines=hide_overlay_lines,
                                 show_reg_line=show_reg_line,
                                 mark_date=mark_date,
-                                v3b_sig_dates=v3b_sig_dates,
-                                v3b_profiles=v3b_profiles,
-                                v3b_early_dates=v3b_early_dates,
-                                v3b_b2_early_dates=v3b_b2_early_dates,
-                                v3_sig_dates=v3_sig_dates,
-                                bigline_dates=bigline_dates,
                                 cost_pct=cost_pct,
                                 ehlers_period=ehlers_period,
                                 cost2_pct=cost2_pct,
