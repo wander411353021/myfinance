@@ -672,14 +672,18 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         except Exception as _e:
             print(f'[reg base] 绘制失败: {_e}')
 
-    # ── 阶梯分段目标价 Grid Target(2026-10-20 用户选择: COST35 Ehlers60 基准) ──
+    # ── 阶梯分段目标价 Grid Target(2026-10-24 用户要求: 参考成本线 B 基准) ──
     if True:
         try:
             import panic_reversal as _prgt
+            from algo_config import (COST2_PCT as _C2P_DEF,
+                                     COST2_EHLERS as _C2E_DEF)
             _glv_def = (-0.09, -0.06, -0.03, 0.00, 0.03, 0.06, 0.09, 0.12)
             _fc_gt = df_ohlc['close'].values.astype(np.float64)
             _base_gt = None
-            # 优先用 COST35 Ehlers60（因果：只用 ≤当日数据）；失败则回退 REG。
+            _gt_pct = float(cost2_pct) if cost2_pct is not None else float(_C2P_DEF)
+            _gt_eh = max(2, int(cost2_ehlers) if cost2_ehlers is not None else int(_C2E_DEF))
+            # 优先用参考成本线 B（COST2_PCT / COST2_EHLERS，因果：只用 ≤当日数据）；失败则回退 REG。
             try:
                 from chip_panel import cost_series as _cost_series_gt, _ensure_turnover as _ensure_gt
                 from challenge_scan import ehlers_smooth as _ehlers_gt
@@ -688,13 +692,13 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _Lgt = _dgt['low'].values.astype(float)
                 _Vgt = _dgt['volume'].values.astype(float)
                 _Tgt = np.clip(_dgt['turnover'].values.astype(float), 0, 1)
-                _c35gt = _cost_series_gt(_Hgt, _Lgt, _Vgt, _Tgt, 0.35)
-                _base_gt = _ehlers_gt(_c35gt, 60)
+                _c2gt = _cost_series_gt(_Hgt, _Lgt, _Vgt, _Tgt, _gt_pct)
+                _base_gt = _ehlers_gt(_c2gt, _gt_eh)
                 if len(_base_gt) != len(_fc_gt):
-                    print('[grid target] COST35长度不一致，回退REG')
+                    print('[grid target] 参考成本线B长度不一致，回退REG')
                     _base_gt = None
             except Exception as _e:
-                print(f'[grid target] COST35基准失败，回退REG: {_e}')
+                print(f'[grid target] 参考成本线B基准失败，回退REG: {_e}')
                 _base_gt = None
             if _base_gt is None:
                 _gt120 = reg_preds if reg_preds is not None else None
@@ -708,8 +712,9 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                     min_level=4)
                 _gt_win = _gt[offset:offset + n]
                 if np.any(np.isfinite(_gt_win)):
+                    _gt_label = 'COST%d Ehlers%d' % (int(round(_gt_pct * 100)), _gt_eh)
                     ax0.plot(x, _gt_win, color='#D81B60', lw=1.6, alpha=1.0, zorder=13,
-                             label='Grid Target (COST35 E60基准, 偏离>13%置空)')
+                             label='Grid Target (%s基准, 偏离>13%%置空)' % _gt_label)
                     _cur = _gl[-1]
                     if _cur >= 0 and np.isfinite(_gt[-1]):
                         _tgt = _gt[-1]
@@ -719,7 +724,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                      fontsize=9, color='#D81B60', fontweight='bold',
                                      arrowprops=dict(arrowstyle='-', color='#D81B60', lw=0.8))
                     else:
-                        ax0.annotate('目标置空(偏离COST35>13%)', (n - 1, closes[-1]),
+                        ax0.annotate('目标置空(偏离%s基准>13%%)' % _gt_label, (n - 1, closes[-1]),
                                      textcoords='offset points', xytext=(-110, -8),
                                      fontsize=8, color='#888888', fontweight='bold')
         except Exception as _e:
