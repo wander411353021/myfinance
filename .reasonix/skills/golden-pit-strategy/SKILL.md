@@ -1318,7 +1318,7 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
 ### 2026-10-18~19 成本线 A/B 与 V10 布局
 - **2026-10-19 历史**：A = COST70 / Ehlers90；B = COST40 / Ehlers50；当时 A/B 仅显示、信号另定。
 - **2026-10-20 全套新信号标准（用户批准）**：v3 / v3b / early / 结构冷却的 `c35s` 与 `gt_p/gt2` 全部改用
-  `SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=90`，`min_level=4` 固定（目标价不能低于基准）；
+  `SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=90`，`min_level=0`（Grid Target 允许下探到 -9% 档；2026-10-24 用户要求允许负档）；
   A/B 滑轨只控制主图显示，**不再改变信号**。
 - 真实链路：688099 `fresh=120` → 5 个信号（early 0424、v3b 0427、early 0623/0710/1009）；
   600865 → 2 个信号（early 0828、v3b 0901）；测试 12 项通过。
