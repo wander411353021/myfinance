@@ -23,6 +23,11 @@ from scipy.signal import savgol_filter, find_peaks
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
+
+# 2026-10-25 用户: 修复 V10 中文标签乱码
+plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'DejaVu Sans']
+plt.rcParams['axes.unicode_minus'] = False
+
 import warnings
 warnings.filterwarnings("ignore")
 
