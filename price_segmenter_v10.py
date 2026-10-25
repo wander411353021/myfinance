@@ -700,7 +700,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _gt, _gl = _prgt.compute_grid_target_price(
                     _fc_gt, _base_gt, _base_gt,
                     levels=_glv_def, max_dev=None, down_confirm=10,
-                    min_level=0)
+                    min_level=3)
                 _gt_win = _gt[offset:offset + n]
                 if np.any(np.isfinite(_gt_win)):
                     _gt_label = 'COST%d Ehlers%d' % (int(round(_gt_pct * 100)), _gt_eh)

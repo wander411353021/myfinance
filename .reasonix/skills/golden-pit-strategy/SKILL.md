@@ -1010,6 +1010,7 @@ if confirmed:
 - **2026-10-21 动态下限/滞回/最小间距已移除**: 用户要求删除实验代码，Grid Target 回到 `min_level=4`，目标价不能低于基准；后续重写。
 - **实现**: Grid Target 块先算 COST35 Ehlers60 (`_base35`), 然后 `compute_grid_target_price(closes, _base35, _base35, ...)`; 第二阶梯同理
 - **2026-10-24 更新**: Grid Target **主阶梯基准改为参考成本线 B**（`COST2_PCT` / `COST2_EHLERS`，当前默认 COST20/E90，随 Streamlit B 滑轨变化）；第二阶梯仍保持 REG（隐藏）；v3/v3b/early 信号不变。
+- **2026-10-24 最低档**: 主 Grid Target `min_level=3`（0% 档），目标价不得低于参考成本线 B；负档不再用于主阶梯。
 - **streamlit**: `streamlit_demo.py` 直接 `from price_segmenter_v10 import run_segmentation`, 改代码自动生效
 - **档位不变**: `levels=(-0.09,-0.06,-0.03,0.00,0.03,0.06,0.09,0.12)`, `down_confirm=10`, 第二阶梯 confirm=40 慢速+粉线档+2档
 - **2026-10-20 P0（用户定版）**: `compute_grid_target_price` 的 `max_dev` 默认改为 `levels[-1] + 0.01` 自动推导（当前顶档 +12% → 0.13，不再硬编码）；置空需连续 `void_confirm=2` 天超偏离；恢复需回到 `max_dev - 0.02`（滞回），避免单日闪烁。回归测试：`test_grid_target_p0.py` 4 项（自动推导/两日确认/滞回/无未来函数）。
@@ -1317,7 +1318,7 @@ python daily_pipeline.py 20261016 --mark 600865        # 人工标记不关注
 ### 2026-10-18~19 成本线 A/B 与 V10 布局
 - **2026-10-19 历史**：A = COST70 / Ehlers90；B = COST40 / Ehlers50；当时 A/B 仅显示、信号另定。
 - **2026-10-20 全套新信号标准（用户批准）**：v3 / v3b / early / 结构冷却的 `c35s` 与 `gt_p/gt2` 全部改用
-  `SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=90`，`min_level=0`（Grid Target 允许下探到 -9% 档；2026-10-24 用户要求允许负档）；
+  `SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=90`，`min_level=3`（Grid Target 最低 0% 档，不得低于参考线 B；2026-10-24 用户要求）；
   A/B 滑轨只控制主图显示，**不再改变信号**。
 - 真实链路：688099 `fresh=120` → 5 个信号（early 0424、v3b 0427、early 0623/0710/1009）；
   600865 → 2 个信号（early 0828、v3b 0901）；测试 12 项通过。

@@ -72,5 +72,13 @@ class TestGridTargetP0(unittest.TestCase):
         self.assertLess(t_trend[7], t_max[7])
 
 
+    def test_min_level_floor(self):
+        # min_level=3 表示 0% 档，目标价不得低于 base
+        target, _ = _run([9.0] * 6, min_level=3)
+        vals = target[np.isfinite(target)]
+        self.assertGreater(vals.size, 0)
+        self.assertTrue(np.all(vals >= 10.0 - 1e-9))
+
+
 if __name__ == '__main__':
     unittest.main()
