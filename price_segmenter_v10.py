@@ -1319,6 +1319,47 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 if np.any(np.isfinite(_sm75_n)):
                     ax0.plot(_x, _sm75_n, color='#E65100', lw=1.6, alpha=0.95, linestyle='--',
                              zorder=4, label='筹码峰上沿(' + _COST_HIGH_LABEL + ',主成本上方)')
+                # ── 观察信号标记(2026-10-25 polo4111): 主成本线A斜率向上时, 突破格栅线 / 下探主成本线 ──
+                try:
+                    from algo_config import SIGNAL_COST_PCT as _SCP, SIGNAL_COST_EHLERS as _SCE
+                    _cgate = _cs2(_H, _L, _V, _turn, float(_SCP))
+                    _gate = _ehlers_smooth(_cgate, max(2, int(_SCE)))
+                    _gate_n = _gate[offset:offset + n]
+                    ax0.plot(_x, _gate_n, color='#C62828', lw=1.1, alpha=0.80, linestyle=':',
+                             zorder=2.9, label='红格栅线(COST%d/E%d)' % (
+                                 int(round(float(_SCP) * 100)), int(_SCE)))
+                    # 主成本线A 斜率(20日)向上判定
+                    _Awin = 20
+                    _slpA = np.full(n, np.nan)
+                    for _t in range(_Awin, n):
+                        if (np.isfinite(_sm_n[_t]) and np.isfinite(_sm_n[_t - _Awin])
+                                and _sm_n[_t - _Awin] > 0):
+                            _slpA[_t] = _sm_n[_t] / _sm_n[_t - _Awin] - 1.0
+                    # ① 突破格栅线: close 上穿红格栅线 且 A 斜率向上
+                    for _t in range(1, n):
+                        if (np.isfinite(_slpA[_t]) and _slpA[_t] > 0
+                                and np.isfinite(closes[_t]) and np.isfinite(_gate_n[_t])
+                                and np.isfinite(_gate_n[_t - 1])
+                                and closes[_t] > _gate_n[_t] and closes[_t - 1] <= _gate_n[_t - 1]):
+                            ax0.scatter([_t], [closes[_t]], marker='^', s=90, color='#C62828',
+                                        zorder=6, edgecolors='white', linewidths=0.5)
+                            ax0.annotate('破栅', (_t, closes[_t]), textcoords='offset points',
+                                         xytext=(0, 8), ha='center', fontsize=7,
+                                         color='#C62828', fontweight='bold')
+                    # ② 下探主成本线: low < 主成本A 且收盘收回(close>=A) 且 A 斜率向上
+                    #     (仅盘中下探破线但收盘守住才是"回踩", 阴跌破位不标)
+                    for _t in range(n):
+                        if (np.isfinite(_slpA[_t]) and _slpA[_t] > 0
+                                and np.isfinite(lows[_t]) and np.isfinite(closes[_t])
+                                and np.isfinite(_sm_n[_t])
+                                and lows[_t] < _sm_n[_t] and closes[_t] >= _sm_n[_t]):
+                            ax0.scatter([_t], [lows[_t]], marker='v', s=70, color='#1B5E20',
+                                        zorder=6, edgecolors='white', linewidths=0.5)
+                            ax0.annotate('触A', (_t, lows[_t]), textcoords='offset points',
+                                         xytext=(0, -10), ha='center', fontsize=7,
+                                         color='#1B5E20', fontweight='bold')
+                except Exception as _e3:
+                    print(f'[observe sig] 绘制失败: {_e3}')
             except Exception as _e2:
                 print(f'[chip 峰带] 失败: {_e2}')
         except Exception as _e:
