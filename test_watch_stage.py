@@ -83,6 +83,25 @@ class TestWatchStage(unittest.TestCase):
         self.assertFalse(any(st[i] == 3 and st[i - 1] == 1
                              for i in range(1, n)))
 
+    def test_s1_rearm(self):
+        # 首次 S1 失败回到 S0 后，重新站上 B 连续 2 天允许再次 S1
+        n = 100
+        B = np.full(n, 10.0)
+        A = np.full(n, 11.0)
+        closes = np.full(n, 9.5)
+        closes[60] = 10.2
+        closes[61:63] = 9.0
+        closes[63:65] = 10.2
+        highs = closes * 1.01
+        lows = closes * 0.99
+        vol = np.full(n, 100.0)
+        turn = np.full(n, 0.01)
+        st = compute_watch_stages(closes, highs, lows, B, A,
+                                  volume=vol, turnover=turn)
+        self.assertEqual(st[60], 1)
+        self.assertEqual(st[62], 0)
+        self.assertEqual(st[64], 1)
+
 
 if __name__ == '__main__':
     unittest.main()

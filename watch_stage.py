@@ -64,7 +64,8 @@ def compute_watch_stages(closes, highs, lows, B, A, volume=None, turnover=None,
                          suppress_days=60, slope_window=20,
                          a_vol_ratio=1.5, a_turn_sum=0.10,
                          pullback_max_days=30, pullback_vol_ratio=0.7,
-                         support_tol=0.02, invalid_days=2):
+                         support_tol=0.02, invalid_days=2,
+                         allow_s1_rearm=True):
     """返回长度 n 的 stage 数组（0..5）。所有输入按时间升序。"""
     c = np.asarray(closes, dtype=float)
     h = np.asarray(highs, dtype=float)
@@ -89,6 +90,8 @@ def compute_watch_stages(closes, highs, lows, B, A, volume=None, turnover=None,
     stages = np.zeros(n, dtype=int)
     st = 0
     suppress = 0
+    above_b_cnt = 0
+    s1_rearm = False
     above_a_cnt = 0
     below_b_cnt = 0
     s2_idx = None
@@ -102,19 +105,26 @@ def compute_watch_stages(closes, highs, lows, B, A, volume=None, turnover=None,
 
         close_above_b = c[t] > b[t]
         if close_above_b:
-            # 首次上 B：之前必须已经在 B 下方压制足够久，且 B 仍向下/走平
-            if (st == 0 and suppress >= suppress_days
-                    and np.isfinite(slope[t]) and slope[t] <= 0):
-                st = 1
+            above_b_cnt += 1
+            # 首次上 B：此前压制足够久；或 S1 失败后重新站上 B 连续 2 天
+            if st == 0 and np.isfinite(slope[t]) and slope[t] <= 0:
+                if (suppress >= suppress_days
+                        or (allow_s1_rearm and s1_rearm and above_b_cnt >= 2)):
+                    st = 1
+                    s1_rearm = False
             suppress = 0
             below_b_cnt = 0
         else:
+            above_b_cnt = 0
             suppress += 1
             below_b_cnt += 1
 
-        # 失效：进入阶段后连续跌回 B 下方
+        # 失效：进入阶段后连续跌回 B 下方；仅 S1 失败后允许重武装
         if st > 0 and below_b_cnt >= invalid_days:
+            _failed_stage = st
             st = 0
+            s1_rearm = (_failed_stage == 1)
+            above_b_cnt = 0
             s2_idx = None
             s3_idx = None
             s2_high = np.nan
