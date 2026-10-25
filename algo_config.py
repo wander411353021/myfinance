@@ -37,6 +37,7 @@ Ehlers SuperSmoother 平滑周期:
 观察用大趋势线（仅触A/破栅标记，不参与信号）:
     TREND_COST_PCT   默认 0.70
     TREND_EHLERS     默认 120
+    TREND_SLOPE_MIN  默认 -0.05（-5% 以内仍允许触A/破栅）
 
 环境变量可临时覆盖，例如:
     COST_PCT=0.50 python -m streamlit run streamlit_demo.py
@@ -73,6 +74,8 @@ COST2_EHLERS = int(_f('COST2_EHLERS', '90'))
 # 观察用大趋势线（2026-10-25 用户：COST0.70 / Ehlers120）
 TREND_COST_PCT = _f('TREND_COST_PCT', '0.70')
 TREND_EHLERS = int(_f('TREND_EHLERS', '120'))
+# -5% 以内允许触A/破栅；低于该值视为严重下跌
+TREND_SLOPE_MIN = _f('TREND_SLOPE_MIN', '-0.05')
 
 # 信号判定专用标准（2026-10-20 用户定版：v3/v3b/early 全套新标准）
 #   不再跟随 A/B 显示线；A/B 只用于主图。

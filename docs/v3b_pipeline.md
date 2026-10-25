@@ -125,7 +125,7 @@ python challenge_scan.py assess 600550 20261016 20260904
 - 截断一致性必须在 `compute_eff` 口径下重算（raw+eff），不能只截断价格不重算线。
 - **全局参数入口**：`algo_config.py`（`COST_PCT=0.70` / `COST_EHLERS=80` 主成本线 A，仅显示；`COST_PCT_LOW/MID/HIGH=0.35/0.50/0.85`
   板块三档；`CHIP_BAND_LO/HI` 带宽；`COST2_PCT=0.20` / `COST2_EHLERS=90` 参考线 B，仅显示；
-  `TREND_COST_PCT=0.70` / `TREND_EHLERS=120` 大趋势线，仅用于触A/破栅判断）。
+  `TREND_COST_PCT=0.70` / `TREND_EHLERS=120` / `TREND_SLOPE_MIN=-0.05` 大趋势线，仅用于触A/破栅判断）。
   **信号标准**：`SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=90`，`SIGNAL_MIN_LEVEL=4`（目标价不能低于基准）；
   Grid Target 最低档：主 Grid Target `min_level=3`（0% 档），目标价不得低于参考成本线 B；
   观察池阶段：`watch_stage.py` 输出 S0~S5（压制/上B/放量上A/B转正/缩量回踩/再确认）；S1 失败后连续2日重新站上B可重武装；S4 必须经过 S3，且从 S3 起算 30 日；V10 第三 ax 用彩色分段背景+文字标记，不画阶梯线；
