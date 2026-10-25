@@ -1252,7 +1252,9 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                              COST_EHLERS as _COST_EHLERS,
                                              COST_HIGH_EHLERS as _COST_HIGH_EHLERS,
                                              COST2_PCT as _COST2_PCT_DEFAULT,
-                                             COST2_EHLERS as _COST2_EHLERS_DEFAULT)
+                                             COST2_EHLERS as _COST2_EHLERS_DEFAULT,
+                                             TREND_COST_PCT as _TREND_PCT_DEF,
+                                             TREND_EHLERS as _TREND_EH_DEF)
                     if cost_pct is not None:
                         _COST_PCT = float(cost_pct)
                         _COST_LABEL = 'COST%d' % int(round(_COST_PCT * 100))
@@ -1263,6 +1265,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                     _COST_HIGH, _COST_HIGH_LABEL = 0.75, 'COST75'
                     _COST_EHLERS, _COST_HIGH_EHLERS = 10, 20
                     _COST2_PCT_DEFAULT, _COST2_EHLERS_DEFAULT = 0.50, 20
+                    _TREND_PCT_DEF, _TREND_EH_DEF = 0.70, 120
                 _c35 = _cs2(_H, _L, _V, _turn, _COST_PCT)     # 全量长度
                 _c75 = _cs2(_H, _L, _V, _turn, _COST_HIGH)    # 全量长度, 筹码峰上沿
                 def _ehlers_smooth(_x, _period):
@@ -1288,6 +1291,15 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _sm = _ehlers_smooth(_c35, _eh)
                 _sm_n = _sm[offset:offset + n]
                 _x = np.arange(n)
+                # 观察用大趋势线：COST70 / Ehlers120（仅触A/破栅判断，不参与信号）
+                _trend_pct = float(_TREND_PCT_DEF)
+                _trend_eh = max(2, int(_TREND_EH_DEF))
+                _trend = _ehlers_smooth(
+                    _cs2(_H, _L, _V, _turn, _trend_pct), _trend_eh)
+                _trend_n = _trend[offset:offset + n]
+                ax0.plot(_x, _trend_n, color='#37474F', lw=1.5, alpha=0.85,
+                         zorder=2.7, label='大趋势线(COST%d/E%d)' % (
+                             int(round(_trend_pct * 100)), _trend_eh))
                 # B 参考成本线（红；独立分位/周期，仅视觉参考，不参与信号）
                 _COST2_PCT = float(cost2_pct) if cost2_pct is not None else float(_COST2_PCT_DEFAULT)
                 _COST2_LABEL = 'COST%d' % int(round(_COST2_PCT * 100))
@@ -1328,16 +1340,17 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                     ax0.plot(_x, _gate_n, color='#C62828', lw=1.1, alpha=0.80, linestyle=':',
                              zorder=2.9, label='红格栅线(COST%d/E%d)' % (
                                  int(round(float(_SCP) * 100)), int(_SCE)))
-                    # 主成本线A 斜率(20日)向上判定
+                    # 大趋势线（COST70/E120）的 20 日斜率向上判定
                     _Awin = 20
-                    _slpA = np.full(n, np.nan)
-                    for _t in range(_Awin, n):
-                        if (np.isfinite(_sm_n[_t]) and np.isfinite(_sm_n[_t - _Awin])
-                                and _sm_n[_t - _Awin] > 0):
-                            _slpA[_t] = _sm_n[_t] / _sm_n[_t - _Awin] - 1.0
-                    # ① 突破格栅线: close 上穿红格栅线 且 A 斜率向上
+                    _slp_full = np.full(len(_trend), np.nan)
+                    for _t in range(_Awin, len(_trend)):
+                        if (np.isfinite(_trend[_t]) and np.isfinite(_trend[_t - _Awin])
+                                and _trend[_t - _Awin] > 0):
+                            _slp_full[_t] = _trend[_t] / _trend[_t - _Awin] - 1.0
+                    _slp_trend = _slp_full[offset:offset + n]
+                    # ① 突破格栅线: close 上穿红格栅线 且 大趋势线斜率向上
                     for _t in range(1, n):
-                        if (np.isfinite(_slpA[_t]) and _slpA[_t] > 0
+                        if (np.isfinite(_slp_trend[_t]) and _slp_trend[_t] > 0
                                 and np.isfinite(closes[_t]) and np.isfinite(_gate_n[_t])
                                 and np.isfinite(_gate_n[_t - 1])
                                 and closes[_t] > _gate_n[_t] and closes[_t - 1] <= _gate_n[_t - 1]):
@@ -1346,13 +1359,12 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                             ax0.annotate('破栅', (_t, closes[_t]), textcoords='offset points',
                                          xytext=(0, 8), ha='center', fontsize=7,
                                          color='#C62828', fontweight='bold')
-                    # ② 下探主成本线: low < 主成本A 且收盘收回(close>=A) 且 A 斜率向上
-                    #     (仅盘中下探破线但收盘守住才是"回踩", 阴跌破位不标)
+                    # ② 下探主成本线: low < 主成本A 且收盘收回(close>A) 且 大趋势线斜率向上
                     for _t in range(n):
-                        if (np.isfinite(_slpA[_t]) and _slpA[_t] > 0
+                        if (np.isfinite(_slp_trend[_t]) and _slp_trend[_t] > 0
                                 and np.isfinite(lows[_t]) and np.isfinite(closes[_t])
                                 and np.isfinite(_sm_n[_t])
-                                and lows[_t] < _sm_n[_t] and closes[_t] >= _sm_n[_t]):
+                                and lows[_t] < _sm_n[_t] and closes[_t] > _sm_n[_t]):
                             ax0.scatter([_t], [lows[_t]], marker='v', s=70, color='#1B5E20',
                                         zorder=6, edgecolors='white', linewidths=0.5)
                             ax0.annotate('触A', (_t, lows[_t]), textcoords='offset points',
