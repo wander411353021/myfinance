@@ -594,9 +594,9 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         print(f'[reg smooth] 失败: {_e}')
 
     if show_chip:
-        fig, axes = plt.subplots(2, 1, figsize=(22, 13),
+        fig, axes = plt.subplots(3, 1, figsize=(22, 15),
                                  sharex=True,
-                                 gridspec_kw={'height_ratios': [4, 1.3]})
+                                 gridspec_kw={'height_ratios': [4, 1.3, 0.9]})
     elif hide_mid_panels:
         fig, axes = plt.subplots(4, 1, figsize=(22, 14),
                                  sharex=True,
@@ -609,6 +609,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
 
     ax0 = axes[0]; opens = ohlc['open'].values; highs = ohlc['high'].values
     lows = ohlc['low'].values; closes = ohlc['close'].values; vols = ohlc['volume'].values
+    ax_stage = axes[2] if show_chip else None
     bar_w = 0.6
 
     ph = result['phase'].values[offset:offset + n]
@@ -1223,6 +1224,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
         pass
 
     # ── 筹码集中区(show_chip=True): 淡蓝色标记 COST10~COST90 区间带, alpha 0.35, 画在 K 线主图 ax0 上 ──
+    _stage_A = _stage_B = None
     if show_chip:
         try:
             from chip_panel import cost_series as _cost_series, _ensure_turnover as _et
@@ -1289,6 +1291,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _c2line = _cs2(_H, _L, _V, _turn, _COST2_PCT)
                 _sm2 = _ehlers_smooth(_c2line, _eh2)
                 _sm2_n = _sm2[offset:offset + n]
+                _stage_A = _sm
+                _stage_B = _sm2
                 # 2026-10-24 用户要求恢复显示参考线 B（浅青虚线，不画红色填充）
                 _SHOW_COST2 = bool(show_cost2)
                 if _SHOW_COST2:
@@ -1314,6 +1318,41 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 print(f'[chip 峰带] 失败: {_e2}')
         except Exception as _e:
             print(f'[chip 集中区] 失败: {_e}')
+
+    # ── 观察池阶段面板(2026-10-25 第一版，仅标签，不参与交易信号) ──
+    if show_chip and ax_stage is not None and _stage_A is not None and _stage_B is not None:
+        try:
+            from watch_stage import (compute_watch_stages, STAGE_NAMES,
+                                     STAGE_COLORS)
+            _stg = compute_watch_stages(
+                fc,
+                df_ohlc['high'].values.astype(float),
+                df_ohlc['low'].values.astype(float),
+                _stage_B, _stage_A,
+                volume=df_ohlc['volume'].values.astype(float),
+                turnover=(df_ohlc['turnover'].values.astype(float)
+                          if 'turnover' in df_ohlc.columns else None))
+            _stg_win = _stg[offset:offset + n]
+            ax_stage.step(x, _stg_win, where='post', color='#37474F', lw=1.2,
+                          zorder=3)
+            for _k in range(1, n):
+                if _stg_win[_k] != _stg_win[_k - 1]:
+                    _v = int(_stg_win[_k])
+                    _c = STAGE_COLORS.get(_v, '#666666')
+                    ax_stage.scatter(_k, _v, color=_c, s=32, zorder=4)
+                    ax_stage.annotate(STAGE_NAMES.get(_v, str(_v)), (_k, _v),
+                                      textcoords='offset points', xytext=(3, 4),
+                                      fontsize=7, color=_c, fontweight='bold')
+            ax_stage.set_yticks(sorted(STAGE_NAMES.keys()))
+            ax_stage.set_yticklabels([STAGE_NAMES[i] for i in sorted(STAGE_NAMES)],
+                                     fontsize=7)
+            ax_stage.set_ylim(-0.3, 5.6)
+            ax_stage.set_ylabel('stage', fontsize=8)
+            ax_stage.set_title('Watch Stage (S1 B creep → S2 A volume → S3 B turn → S4 pullback → S5 confirm)',
+                                fontsize=8, loc='left', pad=2)
+            ax_stage.grid(axis='y', alpha=0.25)
+        except Exception as _e:
+            print(f'[watch stage] 绘制失败: {_e}')
 
     # ── 日期修正(2026-10-15 豆包): numpy datetime64 存 UTC16:00(=北京次日00:00), str切片会早1天 ──
     def _bd(_d):

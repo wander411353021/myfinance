@@ -127,6 +127,7 @@ python challenge_scan.py assess 600550 20261016 20260904
   板块三档；`CHIP_BAND_LO/HI` 带宽；`COST2_PCT=0.20` / `COST2_EHLERS=90` 参考线 B，仅显示）。
   **信号标准**：`SIGNAL_COST_PCT=0.35` / `SIGNAL_COST_EHLERS=90`，`SIGNAL_MIN_LEVEL=4`（目标价不能低于基准）；
   Grid Target 最低档：主 Grid Target `min_level=3`（0% 档），目标价不得低于参考成本线 B；
+  观察池阶段：`watch_stage.py` 输出 S0~S5（压制/上B/放量上A/B转正/缩量回踩/再确认），V10 第三 ax 绘制，仅标签不产生信号；
   `SIGNAL_REARM_DAYS=30`（结构跌破或距上次同类信号 30 日重新武装）；
   筹码预热：`CHIP_WARMUP_DAYS=1800`（总窗口，含显示区间）/ `CHIP_WARMUP_TURNOVER=4.0`（初始日→显示起点累计换手 400%），
   从显示起点往前追溯，400% 或 1800 天先到为准；不足只提示不阻断；
