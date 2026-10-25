@@ -1334,9 +1334,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                     _cgate = _cs2(_H, _L, _V, _turn, float(_SCP))
                     _gate = _ehlers_smooth(_cgate, max(2, int(_SCE)))
                     _gate_n = _gate[offset:offset + n]
-                    ax0.plot(_x, _gate_n, color='#C62828', lw=1.1, alpha=0.80, linestyle=':',
-                             zorder=2.9, label='红格栅线(COST%d/E%d)' % (
-                                 int(round(float(_SCP) * 100)), int(_SCE)))
+                    # 红格栅线仅用于破栅判断，不显示（2026-10-25 用户要求隐藏）
                     # 大趋势线（COST70/E120）的 20 日斜率向上判定
                     _Awin = 20
                     _slp_full = np.full(len(_trend), np.nan)
