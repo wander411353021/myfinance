@@ -1299,10 +1299,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _trend_slope_min = float(_TREND_SLOPE_MIN_DEF)
                 _trend = _ehlers_smooth(
                     _cs2(_H, _L, _V, _turn, _trend_pct), _trend_eh)
-                _trend_n = _trend[offset:offset + n]
-                ax0.plot(_x, _trend_n, color='#37474F', lw=1.5, alpha=0.85,
-                         zorder=2.7, label='大趋势线(COST%d/E%d)' % (
-                             int(round(_trend_pct * 100)), _trend_eh))
+                # 大趋势线仅用于触A/破栅判断，不在图上显示
                 # B 参考成本线（红；独立分位/周期，仅视觉参考，不参与信号）
                 _COST2_PCT = float(cost2_pct) if cost2_pct is not None else float(_COST2_PCT_DEFAULT)
                 _COST2_LABEL = 'COST%d' % int(round(_COST2_PCT * 100))
