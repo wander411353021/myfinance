@@ -62,16 +62,18 @@ def analyze(code, end, datalen):
         if not np.array_equal(sp, st[:cut]):
             trunc_bad += 1
 
-    # 状态机结构异常
+    # 状态机结构异常（S6 过热出池是并行出口: 允许从 S3/S4/S5 直接进入）
     advanced = True
     struct_bad = []
     for i in range(1, n):
-        if st[i] > st[i - 1] + 1:
+        if st[i] > st[i - 1] + 1 and not (st[i] == 6 and st[i - 1] in (2, 3, 4, 5)):
             struct_bad.append(('jump', i, int(st[i - 1]), int(st[i])))
         if st[i] == 4 and not np.any(st[:i] == 3):
             struct_bad.append(('s4_before_s3', i, 0, 4))
         if st[i] == 5 and not np.any(st[:i] == 4):
             struct_bad.append(('s5_before_s4', i, 0, 5))
+        if st[i] == 6 and not np.any(st[:i] >= 3):
+            struct_bad.append(('s6_before_s3', i, 0, 6))
 
     # 未来函数 oracle：只看未来 60 天是否继续推进（诊断，不进入生产）
     future = defaultdict(list)
@@ -79,7 +81,7 @@ def analyze(code, end, datalen):
         if st[i] <= st[i - 1]:
             continue
         s = int(st[i])
-        if s in (1, 2, 3, 4):
+        if s in (1, 2, 3, 4, 5):
             fut = st[i + 1:min(n, i + 61)]
             future[s].append(bool(len(fut) and fut.max() > s))
 

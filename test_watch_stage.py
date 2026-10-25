@@ -102,6 +102,48 @@ class TestWatchStage(unittest.TestCase):
         self.assertEqual(st[62], 0)
         self.assertEqual(st[64], 1)
 
+    def test_s6_overheat_exit(self):
+        # S3 后 close 偏离主成本 A >= 40% → S6 过热出池
+        n = 120
+        B = np.full(n, 10.0)
+        B[60:] = 10.0 + 0.02 * np.arange(n - 60)   # B 递增 → 斜率转正(S3)
+        A = np.full(n, 10.5)
+        closes = np.full(n, 9.5)
+        closes[60:70] = 10.2     # 上 B
+        closes[70:85] = 10.8     # 放量上 A (dist +2.9% < 25% ✓)
+        closes[85:] = np.linspace(10.8, 15.5, n - 85)  # 继续涨 → 过热
+        highs = closes * 1.01
+        lows = closes * 0.99
+        vol = np.full(n, 100.0)
+        vol[70:] = 300.0
+        turn = np.full(n, 0.01)
+        turn[70:] = 0.03
+        st = compute_watch_stages(closes, highs, lows, B, A,
+                                  volume=vol, turnover=turn)
+        self.assertIn(3, st.tolist())
+        self.assertEqual(st[-1], 6)
+
+    def test_s6_requires_s3(self):
+        # B 不转正(无 S3)时, 即使 close 偏离 A 过大也不应进 S6
+        n = 100
+        B = np.full(n, 10.0)     # 恒定 → 斜率恒 0, 永不到 S3
+        A = np.full(n, 10.5)
+        closes = np.full(n, 9.5)
+        closes[60:70] = 10.2     # 上 B
+        closes[70:80] = 10.8     # 放量上 A(dist +2.9%) → S2
+        closes[80:] = 15.0       # 快速过热(dist +42.8%) 但无 S3
+        highs = closes * 1.01
+        lows = closes * 0.99
+        vol = np.full(n, 100.0)
+        vol[70:] = 300.0
+        turn = np.full(n, 0.01)
+        turn[70:] = 0.03
+        st = compute_watch_stages(closes, highs, lows, B, A,
+                                  volume=vol, turnover=turn)
+        self.assertIn(2, st.tolist())
+        self.assertNotIn(3, st.tolist())
+        self.assertNotIn(6, st.tolist())
+
 
 if __name__ == '__main__':
     unittest.main()

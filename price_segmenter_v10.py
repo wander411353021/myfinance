@@ -1359,9 +1359,9 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             ax_stage.set_yticks(sorted(STAGE_NAMES.keys()))
             ax_stage.set_yticklabels([STAGE_NAMES[i] for i in sorted(STAGE_NAMES)],
                                      fontsize=7)
-            ax_stage.set_ylim(-0.3, 5.6)
+            ax_stage.set_ylim(-0.3, 6.6)
             ax_stage.set_ylabel('stage', fontsize=8)
-            ax_stage.set_title('Watch Stage (S1 B creep → S2 A volume → S3 B turn → S4 pullback → S5 confirm)',
+            ax_stage.set_title('Watch Stage (S1 B creep → S2 A volume → S3 B turn → S4 pullback → S5 confirm → S6 overheat)',
                                 fontsize=8, loc='left', pad=2)
             ax_stage.grid(axis='y', alpha=0.25)
         except Exception as _e:

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""观察池阶段第一版（2026-10-25）。
+"""观察池阶段第一版（2026-10-25）+ S6 过热出池（2026-10-25 polo4111 补齐）。
 
 只做“阶段标签”，不产生买入信号、不评分。
 严格因果：第 t 天状态只使用 <=t 的收盘/高低/量/换手/B/A。
@@ -11,6 +11,8 @@
   S3 B转正    : S2 之后，B 的 20 日斜率转正
   S4 缩量回踩 : S3 后 30 日内，缩量（量比<0.7）回踩 A 或 B 并收盘守住
   S5 再确认   : S4 之后收盘突破 S2 以来最高价，且量比>=1.2
+  S6 过热出池 : S3/S4/S5 阶段 close 偏离主成本 A >= overheat_dist(默认40%) → 出池,
+                不再产生观察信号(涨幅过大不敢买); 回落跌破参考线 B 后回 S0 重新观察
 
 注意:
   - “放量后必然回踩”不是未来已知信息；S4 必须等回踩实际发生才标记。
@@ -25,6 +27,7 @@ STAGE_NAMES = {
     3: 'S3 B转正',
     4: 'S4 缩量回踩',
     5: 'S5 再确认',
+    6: 'S6 过热出池',
 }
 
 STAGE_COLORS = {
@@ -34,6 +37,7 @@ STAGE_COLORS = {
     3: '#8E24AA',
     4: '#1E88E5',
     5: '#43A047',
+    6: '#FF7043',
 }
 
 
@@ -65,8 +69,12 @@ def compute_watch_stages(closes, highs, lows, B, A, volume=None, turnover=None,
                          a_vol_ratio=1.5, a_turn_sum=0.10,
                          pullback_max_days=30, pullback_vol_ratio=0.7,
                          support_tol=0.02, invalid_days=2,
-                         allow_s1_rearm=True):
-    """返回长度 n 的 stage 数组（0..5）。所有输入按时间升序。"""
+                         allow_s1_rearm=True, overheat_dist=0.40, a_max_dev=0.25):
+    """返回长度 n 的 stage 数组（0..6）。所有输入按时间升序。
+
+    a_max_dev: S2 触发时 close 偏离主成本 A 的上限(默认25%) —
+               S2 语义是"低位放量站上主成本", 高位横盘(close 已远超A)放量不算启动。
+    """
     c = np.asarray(closes, dtype=float)
     h = np.asarray(highs, dtype=float)
     lo = np.asarray(lows, dtype=float)
@@ -136,10 +144,12 @@ def compute_watch_stages(closes, highs, lows, B, A, volume=None, turnover=None,
             else:
                 above_a_cnt = 0
 
-            # S2: 连续 2 日站上 A + 量能/换手确认
+            # S2: 连续 2 日站上 A + 量能/换手确认, 且站上时偏离 A 不超上限(低位启动, 高位横盘不算)
             if (st == 1 and above_a_cnt >= 2
                     and ((np.isfinite(vr[t]) and vr[t] >= a_vol_ratio)
-                         or (np.isfinite(t5[t]) and t5[t] >= a_turn_sum))):
+                         or (np.isfinite(t5[t]) and t5[t] >= a_turn_sum))
+                    and np.isfinite(a[t]) and a[t] > 0
+                    and c[t] / a[t] - 1.0 <= a_max_dev):
                 st = 2
                 s2_idx = t
                 s3_idx = None
@@ -172,6 +182,12 @@ def compute_watch_stages(closes, highs, lows, B, A, volume=None, turnover=None,
                     and c[t] > s2_high
                     and np.isfinite(vr[t]) and vr[t] >= 1.2):
                 st = 5
+
+            # S6: 过热出池 — S3/S4/S5 阶段 close 偏离主成本A >= overheat_dist
+            #     (涨幅过大不敢买, 出池后不再产生观察信号; 回落跌破B由失效判定回S0)
+            if (st in (3, 4, 5) and np.isfinite(a[t]) and a[t] > 0
+                    and c[t] / a[t] - 1.0 >= overheat_dist):
+                st = 6
 
             # 只在 S2/S3（回踩前）更新；S4 后冻结，S5 用回踩前高点判断
             if st in (2, 3) and np.isfinite(h[t]):
