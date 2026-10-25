@@ -61,6 +61,28 @@ class TestWatchStage(unittest.TestCase):
         self.assertNotIn(4, st.tolist())
         self.assertIn(2, st.tolist())
 
+    def test_no_s1_to_s3_jump(self):
+        # S2 与 S3 不能同日连续判定；S2 至少保留一天
+        n = 100
+        B = np.full(n, 10.0)
+        B[60:] = 9.9 + 0.01 * np.arange(n - 60)
+        A = np.full(n, 10.3)
+        closes = np.full(n, 9.5)
+        closes[60:70] = 10.0
+        closes[70:] = 10.5
+        highs = closes * 1.01
+        lows = closes * 0.99
+        vol = np.full(n, 100.0)
+        vol[70:] = 300.0
+        turn = np.full(n, 0.01)
+        turn[70:] = 0.03
+        st = compute_watch_stages(closes, highs, lows, B, A,
+                                  volume=vol, turnover=turn)
+        self.assertEqual(st[71], 2)
+        self.assertEqual(st[72], 3)
+        self.assertFalse(any(st[i] == 3 and st[i - 1] == 1
+                             for i in range(1, n)))
+
 
 if __name__ == '__main__':
     unittest.main()

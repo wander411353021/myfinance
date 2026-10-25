@@ -136,7 +136,8 @@ def compute_watch_stages(closes, highs, lows, B, A, volume=None, turnover=None,
                 s2_high = h[t] if np.isfinite(h[t]) else np.nan
 
             # S3: B 的 20 日斜率转正
-            if st == 2 and np.isfinite(slope[t]) and slope[t] > 0:
+            if (st == 2 and s2_idx is not None and t > s2_idx
+                    and np.isfinite(slope[t]) and slope[t] > 0):
                 st = 3
                 s3_idx = t
 
