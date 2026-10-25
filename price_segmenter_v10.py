@@ -1333,16 +1333,24 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 turnover=(df_ohlc['turnover'].values.astype(float)
                           if 'turnover' in df_ohlc.columns else None))
             _stg_win = _stg[offset:offset + n]
-            ax_stage.step(x, _stg_win, where='post', color='#37474F', lw=1.2,
-                          zorder=3)
-            for _k in range(1, n):
-                if _stg_win[_k] != _stg_win[_k - 1]:
-                    _v = int(_stg_win[_k])
+            # 2026-10-25 用户: 不要阶梯折线；用彩色分段背景 + 转折点颜色点/文字
+            _seg_start = 0
+            for _k in range(1, n + 1):
+                if _k == n or _stg_win[_k] != _stg_win[_seg_start]:
+                    _v = int(_stg_win[_seg_start])
                     _c = STAGE_COLORS.get(_v, '#666666')
-                    ax_stage.scatter(_k, _v, color=_c, s=32, zorder=4)
-                    ax_stage.annotate(STAGE_NAMES.get(_v, str(_v)), (_k, _v),
-                                      textcoords='offset points', xytext=(3, 4),
-                                      fontsize=7, color=_c, fontweight='bold')
+                    if _k - _seg_start >= 1:
+                        ax_stage.axvspan(_seg_start - 0.5, _k - 0.5,
+                                         color=_c,
+                                         alpha=(0.05 if _v == 0 else 0.18),
+                                         zorder=0)
+                    if _v > 0:
+                        ax_stage.scatter(_seg_start, _v, color=_c, s=32, zorder=4)
+                        ax_stage.annotate(STAGE_NAMES.get(_v, str(_v)),
+                                          (_seg_start, _v),
+                                          textcoords='offset points', xytext=(3, 4),
+                                          fontsize=7, color=_c, fontweight='bold')
+                    _seg_start = _k
             ax_stage.set_yticks(sorted(STAGE_NAMES.keys()))
             ax_stage.set_yticklabels([STAGE_NAMES[i] for i in sorted(STAGE_NAMES)],
                                      fontsize=7)
