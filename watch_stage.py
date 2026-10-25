@@ -9,7 +9,7 @@
   S1 小碎步上B: 首次收盘站上 B，且 B 的 20 日斜率仍 <=0
   S2 放量上A  : 连续 2 日收盘站上主成本 A，且量比>=1.5 或 5 日累计换手>=10%
   S3 B转正    : S2 之后，B 的 20 日斜率转正
-  S4 缩量回踩 : S2 后 30 日内，缩量（量比<0.7）回踩 A 或 B 并收盘守住
+  S4 缩量回踩 : S3 后 30 日内，缩量（量比<0.7）回踩 A 或 B 并收盘守住
   S5 再确认   : S4 之后收盘突破 S2 以来最高价，且量比>=1.2
 
 注意:
@@ -92,6 +92,7 @@ def compute_watch_stages(closes, highs, lows, B, A, volume=None, turnover=None,
     above_a_cnt = 0
     below_b_cnt = 0
     s2_idx = None
+    s3_idx = None
     s2_high = np.nan
 
     for t in range(n):
@@ -115,6 +116,7 @@ def compute_watch_stages(closes, highs, lows, B, A, volume=None, turnover=None,
         if st > 0 and below_b_cnt >= invalid_days:
             st = 0
             s2_idx = None
+            s3_idx = None
             s2_high = np.nan
             above_a_cnt = 0
 
@@ -130,15 +132,17 @@ def compute_watch_stages(closes, highs, lows, B, A, volume=None, turnover=None,
                          or (np.isfinite(t5[t]) and t5[t] >= a_turn_sum))):
                 st = 2
                 s2_idx = t
+                s3_idx = None
                 s2_high = h[t] if np.isfinite(h[t]) else np.nan
 
             # S3: B 的 20 日斜率转正
             if st == 2 and np.isfinite(slope[t]) and slope[t] > 0:
                 st = 3
+                s3_idx = t
 
-            # S4: S2 后缩量回踩 A/B，并收盘守住
-            if (st in (2, 3) and s2_idx is not None
-                    and 0 < t - s2_idx <= pullback_max_days
+            # S4: 必须在 S3（B 转正）之后缩量回踩 A/B
+            if (st == 3 and s3_idx is not None
+                    and 0 < t - s3_idx <= pullback_max_days
                     and np.isfinite(vr[t]) and vr[t] < pullback_vol_ratio):
                 support = None
                 if (np.isfinite(lo[t]) and np.isfinite(a[t])
