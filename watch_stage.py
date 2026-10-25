@@ -162,8 +162,8 @@ def compute_watch_stages(closes, highs, lows, B, A, volume=None, turnover=None,
                     and np.isfinite(vr[t]) and vr[t] >= 1.2):
                 st = 5
 
-            # 放在 S5 判断之后：避免当天 high 提前并入，挡住当天的突破
-            if st >= 2 and np.isfinite(h[t]):
+            # 只在 S2/S3（回踩前）更新；S4 后冻结，S5 用回踩前高点判断
+            if st in (2, 3) and np.isfinite(h[t]):
                 if not np.isfinite(s2_high):
                     s2_high = h[t]
                 else:
