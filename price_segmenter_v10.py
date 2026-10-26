@@ -1380,7 +1380,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                         ax0.scatter([_t], [closes[_t]], marker='^', s=110, color='#D81B60',
                                     zorder=6, edgecolors='white', linewidths=0.5)
                         ax0.annotate('破栅', (_t, closes[_t]), textcoords='offset points',
-                                     xytext=(0, 14), ha='center', fontsize=11,
+                                     xytext=(10, 24), ha='left', fontsize=11,
                                      color='#D81B60', fontweight='bold',
                                      arrowprops=dict(arrowstyle='->', color='#D81B60',
                                                      lw=1.4, shrinkA=2, shrinkB=4))
@@ -1394,7 +1394,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                             ax0.scatter([_t], [lows[_t]], marker='v', s=90, color='#1B5E20',
                                         zorder=6, edgecolors='white', linewidths=0.5)
                             ax0.annotate('触A', (_t, lows[_t]), textcoords='offset points',
-                                         xytext=(0, -16), ha='center', fontsize=11,
+                                         xytext=(10, -24), ha='left', fontsize=11,
                                          color='#1B5E20', fontweight='bold',
                                          arrowprops=dict(arrowstyle='->', color='#1B5E20',
                                                          lw=1.4, shrinkA=2, shrinkB=4))
