@@ -1356,7 +1356,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                     #    ⚠️ 去重: 站上后置 done, 回落线下(close<=线)重置 → 同一波只标1次,
                     #      恢复段价格贴线震荡时避免 5 日窗口跨置空边界反复触发(002696 实测5处)
                     _POOK = 5
-                    _SHOW_OBSERVE_MARKS = False  # 2026-10-26 用户: 只去掉破栅/触A三角，保留 PEAK/TROUGH
+                    _SHOW_OBSERVE_TRIANGLES = False  # 2026-10-26 用户: 去掉K线三角，但保留箭头+文字
                     _gate_done = False
                     for _t in range(n):
                         if not (np.isfinite(closes[_t]) and np.isfinite(_gate_n[_t])):
@@ -1375,14 +1375,14 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 break
                         if not _was_below:
                             continue
-                        if _SHOW_OBSERVE_MARKS:
+                        if _SHOW_OBSERVE_TRIANGLES:
                             ax0.scatter([_t], [closes[_t]], marker='^', s=110, color='#D81B60',
                                         zorder=6, edgecolors='white', linewidths=0.5)
-                            ax0.annotate('破栅', (_t, closes[_t]), textcoords='offset points',
-                                         xytext=(10, 24), ha='left', fontsize=11,
-                                         color='#D81B60', fontweight='bold',
-                                         arrowprops=dict(arrowstyle='->', color='#D81B60',
-                                                         lw=1.4, shrinkA=2, shrinkB=4))
+                        ax0.annotate('破栅', (_t, closes[_t]), textcoords='offset points',
+                                     xytext=(10, 24), ha='left', fontsize=11,
+                                     color='#D81B60', fontweight='bold',
+                                     arrowprops=dict(arrowstyle='->', color='#D81B60',
+                                                     lw=1.4, shrinkA=2, shrinkB=4))
                         _gate_done = True
                     # ② 下探主成本线: low < 主成本A 且收盘收回(close>A) 且 大趋势线斜率不低于 -5%
                     for _t in range(n):
@@ -1390,14 +1390,14 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 and np.isfinite(lows[_t]) and np.isfinite(closes[_t])
                                 and np.isfinite(_sm_n[_t])
                                 and lows[_t] < _sm_n[_t] and closes[_t] > _sm_n[_t]):
-                            if _SHOW_OBSERVE_MARKS:
+                            if _SHOW_OBSERVE_TRIANGLES:
                                 ax0.scatter([_t], [lows[_t]], marker='v', s=90, color='#1B5E20',
                                             zorder=6, edgecolors='white', linewidths=0.5)
-                                ax0.annotate('触A', (_t, lows[_t]), textcoords='offset points',
-                                             xytext=(10, -24), ha='left', fontsize=11,
-                                             color='#1B5E20', fontweight='bold',
-                                             arrowprops=dict(arrowstyle='->', color='#1B5E20',
-                                                             lw=1.4, shrinkA=2, shrinkB=4))
+                            ax0.annotate('触A', (_t, lows[_t]), textcoords='offset points',
+                                         xytext=(10, -24), ha='left', fontsize=11,
+                                         color='#1B5E20', fontweight='bold',
+                                         arrowprops=dict(arrowstyle='->', color='#1B5E20',
+                                                         lw=1.4, shrinkA=2, shrinkB=4))
                 except Exception as _e3:
                     print(f'[observe sig] 绘制失败: {_e3}')
             except Exception as _e2:
