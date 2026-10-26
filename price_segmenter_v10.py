@@ -1351,17 +1351,38 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 and _trend[_t - _Awin] > 0):
                             _slp_full[_t] = _trend[_t] / _trend[_t - _Awin] - 1.0
                     _slp_trend = _slp_full[offset:offset + n]
-                    # ① 突破格栅线: close 上穿洋红格栅压制线 且 大趋势线斜率不低于 -5%
-                    for _t in range(1, n):
-                        if (np.isfinite(_slp_trend[_t]) and _slp_trend[_t] >= _trend_slope_min
-                                and np.isfinite(closes[_t]) and np.isfinite(_gate_n[_t])
-                                and np.isfinite(_gate_n[_t - 1])
-                                and closes[_t] > _gate_n[_t] and closes[_t - 1] <= _gate_n[_t - 1]):
-                            ax0.scatter([_t], [closes[_t]], marker='^', s=90, color='#D81B60',
-                                        zorder=6, edgecolors='white', linewidths=0.5)
-                            ax0.annotate('破栅', (_t, closes[_t]), textcoords='offset points',
-                                         xytext=(0, 8), ha='center', fontsize=7,
-                                         color='#D81B60', fontweight='bold')
+                    # ① 突破格栅线(2026-10-26 用户定版: 首次有效站上): close>洋红阶梯线
+                    #    且 前5日内曾低于阶梯线/置空(这一波首次站上) 且 大趋势线斜率≥-5%
+                    #    ⚠️ 严格上穿在动态阶梯线上几乎不触发(002696 窗口仅1次且被斜率滤;
+                    #    阶梯突破即上移/置空恢复后线落在价格下方 → 无上穿动作);
+                    #    首次站上贴合"压制目标价"语义, 只标突破点不刷屏
+                    #    ⚠️ 去重: 站上后置 done, 回落线下(close<=线)重置 → 同一波只标1次,
+                    #      恢复段价格贴线震荡时避免 5 日窗口跨置空边界反复触发(002696 实测5处)
+                    _POOK = 5
+                    _gate_done = False
+                    for _t in range(n):
+                        if not (np.isfinite(closes[_t]) and np.isfinite(_gate_n[_t])):
+                            continue
+                        if closes[_t] <= _gate_n[_t]:
+                            _gate_done = False   # 回落线下: 重置"已标破栅"状态
+                            continue
+                        if not (np.isfinite(_slp_trend[_t]) and _slp_trend[_t] >= _trend_slope_min):
+                            continue
+                        if _gate_done:
+                            continue
+                        _was_below = False
+                        for _k in range(max(0, _t - _POOK), _t):
+                            if not np.isfinite(_gate_n[_k]) or closes[_k] <= _gate_n[_k]:
+                                _was_below = True
+                                break
+                        if not _was_below:
+                            continue
+                        ax0.scatter([_t], [closes[_t]], marker='^', s=90, color='#D81B60',
+                                    zorder=6, edgecolors='white', linewidths=0.5)
+                        ax0.annotate('破栅', (_t, closes[_t]), textcoords='offset points',
+                                     xytext=(0, 8), ha='center', fontsize=7,
+                                     color='#D81B60', fontweight='bold')
+                        _gate_done = True
                     # ② 下探主成本线: low < 主成本A 且收盘收回(close>A) 且 大趋势线斜率不低于 -5%
                     for _t in range(n):
                         if (np.isfinite(_slp_trend[_t]) and _slp_trend[_t] >= _trend_slope_min
