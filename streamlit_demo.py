@@ -17,6 +17,9 @@ import os
 import tempfile
 from datetime import date as dt_date
 
+import matplotlib
+matplotlib.use('Agg')  # 云端/无显示器环境：只保存 PNG，不依赖 GUI 后端
+import numpy as np
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
@@ -52,8 +55,7 @@ st.markdown("""
   /* 手机端:隐藏标题(V10 价格分段)与数据源说明,只留图 */
   [data-testid="stMain"] h1, [data-testid="stMain"] h2, [data-testid="stMain"] h3 { display: none !important; }
   [data-testid="stMain"] [data-testid="stCaptionContainer"] { display: none !important; }
-  /* 隐藏"已拉取"等提示(st.success/error/warning) */
-  [data-testid="stAlert"] { display: none !important; }
+  /* 不再隐藏 stAlert：云端取数失败时必须让用户看到真实报错 */
   /* 图旋转 90°:absolute + translate 严格居中,消除横向滚动与偏移 */
   [data-testid="stImage"] {
     position: relative !important;
@@ -105,6 +107,52 @@ def get_stock_items_cached():
 
 
 @st.cache_data(show_spinner=False)
+def _fetch_http_kline(code6, end_date, datalen=1800):
+    """云端兜底：akshare HTTP 日线（不复权，避免 qfq 未来复权因子）。
+
+    仅在 TDX 直连不可达时使用；只用于页面展示，不改变本地 TDX 指标口径。
+    返回列与 tdx_quant 对齐：date/open/high/low/close/volume/turnover/circ_shares。
+    """
+    try:
+        import akshare as ak
+    except Exception as e:
+        raise RuntimeError(f"akshare 不可用: {e}") from e
+
+    end_ts = pd.Timestamp(str(end_date))
+    start_ts = end_ts - pd.Timedelta(days=max(1200, int(datalen * 2.0)))
+    raw = ak.stock_zh_a_hist(
+        symbol=code6, period='daily',
+        start_date=start_ts.strftime('%Y%m%d'),
+        end_date=end_ts.strftime('%Y%m%d'),
+        adjust='',  # 不复权：历史日期不引入未来复权因子
+    )
+    if raw is None or len(raw) == 0:
+        raise RuntimeError(f"akshare 返回为空（代码 {code6}）")
+    colmap = {'日期': 'date', '开盘': 'open', '收盘': 'close', '最高': 'high',
+              '最低': 'low', '成交量': 'volume', '换手率': 'turnover'}
+    need = [c for c in colmap if c in raw.columns]
+    df = raw.rename(columns=colmap)[list(colmap.values())].copy()
+    if 'turnover' not in df.columns:
+        df['turnover'] = np.nan
+    df['date'] = pd.to_datetime(df['date']).dt.normalize()
+    df = df[df['date'] <= end_ts].copy()
+    for c in ('open', 'high', 'low', 'close', 'volume', 'turnover'):
+        df[c] = pd.to_numeric(df[c], errors='coerce')
+    df = df.dropna(subset=['close']).sort_values('date')
+    df = df.drop_duplicates(subset='date').reset_index(drop=True)
+    df = df[df['date'].dt.weekday < 5].reset_index(drop=True)
+    # 换手率 akshare 给百分数；volume 是手 -> 股；circ_shares 由换手率反推
+    df['turnover'] = df['turnover'] / 100.0
+    df['circ_shares'] = np.where(df['turnover'] > 0,
+                                 df['volume'] * 100.0 / df['turnover'], np.nan)
+    df = df.tail(datalen).reset_index(drop=True)
+    if len(df) < 2:
+        raise RuntimeError(f"akshare 有效日线不足（代码 {code6}）")
+    df.attrs['source'] = 'akshare-raw'
+    return df
+
+
+@st.cache_data(show_spinner=False)
 def fetch_tdx_kline(code, end_date, datalen=1800):
     """通达信直连拉日线（前复权）。end_date 透传给 anchor_date;datalen>800 自动分页(最长10年)。
     带 with_turnover=True: 返回 turnover/circ_shares 列, 供 V10 筹码带(show_chip)使用。
@@ -131,12 +179,22 @@ def fetch_tdx_kline(code, end_date, datalen=1800):
         except Exception:
             pass
     from tdx_quant import get_daily_kline_from_tdx
-    df = get_daily_kline_from_tdx(code, end_date, datalen=datalen, with_turnover=True)
-    if df is None or len(df) == 0:
-        raise RuntimeError(f"通达信返回为空（代码 {code}）")
-    # 标准化：时间升序、剔除空收盘，保证 run_segmentation 的 tail 取到最近 N 根
-    df = df.dropna(subset=["close"]).sort_values("date").reset_index(drop=True)
-    return df
+    tdx_err = None
+    try:
+        df = get_daily_kline_from_tdx(code, end_date, datalen=datalen, with_turnover=True)
+        if df is not None and len(df) > 0:
+            # 标准化：时间升序、剔除空收盘，保证 run_segmentation 的 tail 取到最近 N 根
+            df = df.dropna(subset=["close"]).sort_values("date").reset_index(drop=True)
+            return df
+        tdx_err = '通达信返回为空'
+    except Exception as e:
+        tdx_err = e
+
+    # 云端（Streamlit Cloud / Codespaces）通常连不上通达信 7709：HTTP 兜底
+    try:
+        return _fetch_http_kline(code6, end_date, datalen)
+    except Exception as e_http:
+        raise RuntimeError(f"通达信不可用({tdx_err}); HTTP 备用不可用({e_http})") from e_http
 
 
 # ── 计算 + 存 session（绘图代码零改动）──
