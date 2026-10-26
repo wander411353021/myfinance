@@ -1335,13 +1335,10 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                              zorder=4, label='筹码峰上沿(' + _COST_HIGH_LABEL + ',主成本上方)')
                 # ── 观察信号标记(2026-10-25 polo4111): 主成本线A斜率向上时, 突破格栅线 / 下探主成本线 ──
                 try:
-                    from algo_config import SIGNAL_COST_PCT as _SCP, SIGNAL_COST_EHLERS as _SCE
-                    _cgate = _cs2(_H, _L, _V, _turn, float(_SCP))
-                    _gate = _ehlers_smooth(_cgate, max(2, int(_SCE)))
-                    # 2026-10-26 用户: 破栅基准=洋红 Grid Target 阶梯线(阶段显示那条),
-                    #   SIGNAL_COST35/E90 仅作回退(若无阶梯线)
-                    _gate_full = _gt_gate if _gt_gate is not None else _gate
-                    _gate_n = _gate_full[offset:offset + n]
+                    # 2026-10-26 用户: 破栅只针对洋红 Grid Target 阶梯线;
+                    #   Grid Target 不可用(_gt_gate=None)时不做判断, 不用红格栅线回退.
+                    _gate_n = (_gt_gate[offset:offset + n]
+                               if _gt_gate is not None else np.full(n, np.nan))
                     # 洋红格栅线仅用于破栅判断，不显示
                     # 大趋势线（COST70/E120）的 20 日斜率向上判定
                     _Awin = 20
