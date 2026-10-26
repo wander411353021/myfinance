@@ -1377,11 +1377,13 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 break
                         if not _was_below:
                             continue
-                        ax0.scatter([_t], [closes[_t]], marker='^', s=90, color='#D81B60',
+                        ax0.scatter([_t], [closes[_t]], marker='^', s=110, color='#D81B60',
                                     zorder=6, edgecolors='white', linewidths=0.5)
                         ax0.annotate('破栅', (_t, closes[_t]), textcoords='offset points',
-                                     xytext=(0, 8), ha='center', fontsize=7,
-                                     color='#D81B60', fontweight='bold')
+                                     xytext=(0, 14), ha='center', fontsize=11,
+                                     color='#D81B60', fontweight='bold',
+                                     arrowprops=dict(arrowstyle='->', color='#D81B60',
+                                                     lw=1.4, shrinkA=2, shrinkB=4))
                         _gate_done = True
                     # ② 下探主成本线: low < 主成本A 且收盘收回(close>A) 且 大趋势线斜率不低于 -5%
                     for _t in range(n):
@@ -1389,11 +1391,13 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 and np.isfinite(lows[_t]) and np.isfinite(closes[_t])
                                 and np.isfinite(_sm_n[_t])
                                 and lows[_t] < _sm_n[_t] and closes[_t] > _sm_n[_t]):
-                            ax0.scatter([_t], [lows[_t]], marker='v', s=70, color='#1B5E20',
+                            ax0.scatter([_t], [lows[_t]], marker='v', s=90, color='#1B5E20',
                                         zorder=6, edgecolors='white', linewidths=0.5)
                             ax0.annotate('触A', (_t, lows[_t]), textcoords='offset points',
-                                         xytext=(0, -10), ha='center', fontsize=7,
-                                         color='#1B5E20', fontweight='bold')
+                                         xytext=(0, -16), ha='center', fontsize=11,
+                                         color='#1B5E20', fontweight='bold',
+                                         arrowprops=dict(arrowstyle='->', color='#1B5E20',
+                                                         lw=1.4, shrinkA=2, shrinkB=4))
                 except Exception as _e3:
                     print(f'[observe sig] 绘制失败: {_e3}')
             except Exception as _e2:
