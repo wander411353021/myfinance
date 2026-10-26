@@ -670,6 +670,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
             print(f'[reg base] 绘制失败: {_e}')
 
     # ── 阶梯分段目标价 Grid Target(2026-10-24 用户要求: 参考成本线 B 基准) ──
+    _gt_gate = None  # 洋红格栅压制线(Grid Target阶梯, 2026-10-26 用户: 破栅判断基准)
     if True:
         try:
             import panic_reversal as _prgt
@@ -706,7 +707,8 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                 _gt, _gl = _prgt.compute_grid_target_price(
                     _fc_gt, _base_gt, _base_gt,
                     levels=_glv_def, max_dev=None, down_confirm=10,
-                    min_level=3)
+                    min_level=3, void_exit_dev=0.20)  # 2026-10-26 用户: 回落偏离<20% 即恢复
+                _gt_gate = _gt  # 全量洋红阶梯线, 供破栅判断(2026-10-26)
                 _gt_win = _gt[offset:offset + n]
                 if np.any(np.isfinite(_gt_win)):
                     _gt_label = 'COST%d Ehlers%d' % (int(round(_gt_pct * 100)), _gt_eh)
@@ -1336,8 +1338,11 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                     from algo_config import SIGNAL_COST_PCT as _SCP, SIGNAL_COST_EHLERS as _SCE
                     _cgate = _cs2(_H, _L, _V, _turn, float(_SCP))
                     _gate = _ehlers_smooth(_cgate, max(2, int(_SCE)))
-                    _gate_n = _gate[offset:offset + n]
-                    # 红格栅线仅用于破栅判断，不显示（2026-10-25 用户要求隐藏）
+                    # 2026-10-26 用户: 破栅基准=洋红 Grid Target 阶梯线(阶段显示那条),
+                    #   SIGNAL_COST35/E90 仅作回退(若无阶梯线)
+                    _gate_full = _gt_gate if _gt_gate is not None else _gate
+                    _gate_n = _gate_full[offset:offset + n]
+                    # 洋红格栅线仅用于破栅判断，不显示
                     # 大趋势线（COST70/E120）的 20 日斜率向上判定
                     _Awin = 20
                     _slp_full = np.full(len(_trend), np.nan)
@@ -1346,17 +1351,17 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 and _trend[_t - _Awin] > 0):
                             _slp_full[_t] = _trend[_t] / _trend[_t - _Awin] - 1.0
                     _slp_trend = _slp_full[offset:offset + n]
-                    # ① 突破格栅线: close 上穿红格栅线 且 大趋势线斜率不低于 -5%
+                    # ① 突破格栅线: close 上穿洋红格栅压制线 且 大趋势线斜率不低于 -5%
                     for _t in range(1, n):
                         if (np.isfinite(_slp_trend[_t]) and _slp_trend[_t] >= _trend_slope_min
                                 and np.isfinite(closes[_t]) and np.isfinite(_gate_n[_t])
                                 and np.isfinite(_gate_n[_t - 1])
                                 and closes[_t] > _gate_n[_t] and closes[_t - 1] <= _gate_n[_t - 1]):
-                            ax0.scatter([_t], [closes[_t]], marker='^', s=90, color='#C62828',
+                            ax0.scatter([_t], [closes[_t]], marker='^', s=90, color='#D81B60',
                                         zorder=6, edgecolors='white', linewidths=0.5)
                             ax0.annotate('破栅', (_t, closes[_t]), textcoords='offset points',
                                          xytext=(0, 8), ha='center', fontsize=7,
-                                         color='#C62828', fontweight='bold')
+                                         color='#D81B60', fontweight='bold')
                     # ② 下探主成本线: low < 主成本A 且收盘收回(close>A) 且 大趋势线斜率不低于 -5%
                     for _t in range(n):
                         if (np.isfinite(_slp_trend[_t]) and _slp_trend[_t] >= _trend_slope_min

@@ -1659,6 +1659,7 @@ def compute_grid_target_price(closes, reg120, reg250,
                               min_level=4,
                               void_confirm=2,
                               void_exit_buffer=0.02,
+                              void_exit_dev=None,
                               base_mode='max'):
     """阶梯式分段目标价(2026-09-02 polo4111, 严格无未来函数, 因果)。
 
@@ -1683,6 +1684,10 @@ def compute_grid_target_price(closes, reg120, reg250,
     min_level : int, default 4
         档位下限(**2026-10-14 用户定版**): 降档不得低于该档位索引(4 = +0% 档)。
         治"横盘/缓跌段线塌到价格上被反复上穿"; 0 = 旧行为(可降到 -9% 档)。
+    void_exit_dev : float, default None
+        置空恢复阈值(2026-10-26 用户: "价格回落途中偏离<20%即恢复")。
+        None = 原逻辑 max_dev - void_exit_buffer(11%, 滞回);
+        非 None(如 0.20) = 偏离回到该值以下即恢复画线(主升暴涨后回落途中能提前恢复)。
     follow_price : bool, default False
         档位跟随价格(实验): 线 = 价格上方最近格栅档, 滞回 hyst_up/hyst_dn 档。
         ⚠️ 实测在平缓段反而更差(价在线上 45% vs 原版 22%), 默认 False, 仅保留供实验。
@@ -1716,6 +1721,16 @@ def compute_grid_target_price(closes, reg120, reg250,
     max_dev = float(max_dev)
     void_confirm = max(1, int(void_confirm))
     void_exit_buffer = max(0.0, float(void_exit_buffer))
+    if void_exit_dev is None:
+        _exit_th = max_dev - void_exit_buffer   # 原滞回: 回到 max_dev-2% 才恢复
+        _void_th = max_dev                       # 置空阈值 = max_dev(13%)
+    else:
+        _exit_th = float(void_exit_dev)        # 2026-10-26 用户: 偏离<20% 即恢复
+        # 置空阈值同步放宽到同一值(对称滞回): 若置空仍 13% 而恢复 20%,
+        #   恢复后偏离 13~20% 段会再次累计置空 → 抖动(002696 实测恢复后 4 天又空)
+        _void_th = _exit_th
+    _exit_th = max(_exit_th, 0.0)
+    _void_th = max(_void_th, 0.0)
     target = np.full(n, np.nan)
     lvl = np.full(n, -1, dtype=int)
 
@@ -1780,19 +1795,11 @@ def compute_grid_target_price(closes, reg120, reg250,
         if not np.isfinite(closes[t]):
             continue
         dev = closes[t] / base[t] - 1
-        if dev > max_dev:
-            # 2026-10-20 P0: 单日超偏离不立即置空，需连续 void_confirm 天确认。
-            void_cnt += 1
-            if void_cnt >= void_confirm:
-                void = True
-                cur = _min_up
-                down_cnt = 0
-                up_cnt = 0
-            continue
-        void_cnt = 0
         if void:
-            # 2026-10-20 P0: 加滞回，回到 max_dev - buffer 才恢复，避免单日来回闪烁。
-            if dev > max_dev - void_exit_buffer:
+            # 置空中: 恢复判定**优先**于置空累计(2026-10-26 P0 重构)
+            #   ⚠️ 原代码置空累计在 void 态也执行 → 恢复分支被 max_dev(13%) 阻塞,
+            #      void_exit_dev=0.20 形同虚设(002696 实测整段无法恢复)
+            if dev > _exit_th:
                 continue
             # 回归: 次日从"当前价格上方6%的格栅档位"重新开始
             # (2026-09-03 polo4111: 目标价作为上方压力位, 高于当前价格约6%, 落在3%间隔格栅线上)
@@ -1811,6 +1818,16 @@ def compute_grid_target_price(closes, reg120, reg250,
                 cur = len(levels) - 1  # 目标已超最高档, 取最高档
             down_cnt = 0
             up_cnt = 0
+        elif dev > _void_th:
+            # 2026-10-20 P0: 单日超偏离不立即置空，需连续 void_confirm 天确认。
+            void_cnt += 1
+            if void_cnt >= void_confirm:
+                void = True
+                cur = _min_up
+                down_cnt = 0
+                up_cnt = 0
+            continue
+        void_cnt = 0
         # 升档: 连续 up_confirm 天站上当前目标线才升(延迟确认, 防-9~+3横跳抖动)
         if cur < len(levels) - 1:
             if closes[t] >= base[t] * (1 + levels[cur]):
