@@ -5,8 +5,8 @@
 严格因果：第 t 天状态只使用 <=t 的收盘/高低/量/换手/B/A。
 
 阶段:
-  S0 压制     : 价格在参考成本线 B 下方（默认至少 60 日）
-  S1 小碎步上B: 首次收盘站上 B，且 B 的 20 日斜率仍 <=0
+  S0 压制     : 价格在参考成本线 B 或主成本 A 下方（默认至少 60 日，任一成立）
+  S1 小碎步上B: 首次收盘站上 B，且 B 的 20 日斜率 <= +2%
   S2 放量上A  : 连续 2 日收盘站上主成本 A，且量比>=1.5 或 5 日累计换手>=10%
   S3 B转正    : S2 之后，B 的 20 日斜率转正
   S4 缩量回踩 : S3 后 30 日内，缩量（量比<0.7）回踩 A 或 B 并收盘守住
@@ -69,11 +69,14 @@ def compute_watch_stages(closes, highs, lows, B, A, volume=None, turnover=None,
                          a_vol_ratio=1.5, a_turn_sum=0.10,
                          pullback_max_days=30, pullback_vol_ratio=0.7,
                          support_tol=0.02, invalid_days=2,
-                         allow_s1_rearm=True, overheat_dist=0.40, a_max_dev=0.25):
+                         allow_s1_rearm=True, overheat_dist=0.40, a_max_dev=0.25,
+                         s1_b_slope_max=0.02):
     """返回长度 n 的 stage 数组（0..6）。所有输入按时间升序。
 
     a_max_dev: S2 触发时 close 偏离主成本 A 的上限(默认25%) —
                S2 语义是"低位放量站上主成本", 高位横盘(close 已远超A)放量不算启动。
+    s1_b_slope_max: S1 允许的 B 20日斜率上限(默认 0.02=+2%) —
+               600822 这类 B 已轻微转正的票，不再被 slope<=0 完全挡住。
     """
     c = np.asarray(closes, dtype=float)
     h = np.asarray(highs, dtype=float)
@@ -97,7 +100,8 @@ def compute_watch_stages(closes, highs, lows, B, A, volume=None, turnover=None,
 
     stages = np.zeros(n, dtype=int)
     st = 0
-    suppress = 0
+    suppress_a = 0   # 收盘低于主成本 A 的连续天数
+    suppress_b = 0   # 收盘低于参考成本 B 的连续天数
     above_b_cnt = 0
     s1_rearm = False
     above_a_cnt = 0
@@ -112,20 +116,27 @@ def compute_watch_stages(closes, highs, lows, B, A, volume=None, turnover=None,
             continue
 
         close_above_b = c[t] > b[t]
+        close_above_a = c[t] > a[t]
         if close_above_b:
             above_b_cnt += 1
-            # 首次上 B：此前压制足够久；或 S1 失败后重新站上 B 连续 2 天
-            if st == 0 and np.isfinite(slope[t]) and slope[t] <= 0:
-                if (suppress >= suppress_days
+            # 首次上 B：此前主A或参考B压制足够久；或 S1 失败后重新站上 B 连续 2 天
+            # s1_b_slope_max=0.02：允许 B 的 20 日斜率在 +2% 以内，仍算"B 未明显转强"
+            if st == 0 and np.isfinite(slope[t]) and slope[t] <= s1_b_slope_max:
+                if (suppress_a >= suppress_days or suppress_b >= suppress_days
                         or (allow_s1_rearm and s1_rearm and above_b_cnt >= 2)):
                     st = 1
                     s1_rearm = False
-            suppress = 0
+            suppress_b = 0
             below_b_cnt = 0
         else:
             above_b_cnt = 0
-            suppress += 1
+            suppress_b += 1
             below_b_cnt += 1
+        # 主A压制计数：收盘低于 A 连续天数（与 B 独立）
+        if close_above_a:
+            suppress_a = 0
+        else:
+            suppress_a += 1
 
         # 失效：进入阶段后连续跌回 B 下方；仅 S1 失败后允许重武装
         if st > 0 and below_b_cnt >= invalid_days:

@@ -1349,8 +1349,19 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                 and _trend[_t - _Awin] > 0):
                             _slp_full[_t] = _trend[_t] / _trend[_t - _Awin] - 1.0
                     _slp_trend = _slp_full[offset:offset + n]
-                    # ① 突破格栅线(2026-10-26 用户定版: 首次有效站上): close>洋红阶梯线
-                    #    且 前5日内曾低于阶梯线/置空(这一波首次站上) 且 大趋势线斜率≥-5%
+                    # A/B 的 20 日斜率（用于触A的"任一向上"）
+                    def _slope20(_arr):
+                        _o = np.full(len(_arr), np.nan)
+                        for _i in range(_Awin, len(_arr)):
+                            if (np.isfinite(_arr[_i]) and np.isfinite(_arr[_i - _Awin])
+                                    and _arr[_i - _Awin] > 0):
+                                _o[_i] = _arr[_i] / _arr[_i - _Awin] - 1.0
+                        return _o
+                    _slp_a = _slope20(_sm)[offset:offset + n]
+                    _slp_b = _slope20(_sm2)[offset:offset + n]
+                    # ① 突破格栅线(2026-10-26 用户定版): close 首次有效站上洋红阶梯线
+                    #    只要求: 前5日内曾低于阶梯线/置空 + 当前站上 + 同波去重
+                    #    2026-10-26 用户: 取消破栅的大趋势线斜率条件（很多破栅发生时趋势并未向上）
                     #    ⚠️ 严格上穿在动态阶梯线上几乎不触发(002696 窗口仅1次且被斜率滤;
                     #    阶梯突破即上移/置空恢复后线落在价格下方 → 无上穿动作);
                     #    首次站上贴合"压制目标价"语义, 只标突破点不刷屏
@@ -1360,12 +1371,15 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                     _SHOW_OBSERVE_TRIANGLES = False  # 2026-10-26 用户: 去掉K线三角，但保留箭头+文字
                     _gate_done = False
                     for _t in range(n):
-                        if not (np.isfinite(closes[_t]) and np.isfinite(_gate_n[_t])):
+                        if not np.isfinite(_gate_n[_t]):
+                            # 置空(无线): 中断"已标破栅"状态 → 恢复后再站上算新一波
+                            # (2026-10-27 用户: 置空恢复后的再次站上也标一次)
+                            _gate_done = False
+                            continue
+                        if not np.isfinite(closes[_t]):
                             continue
                         if closes[_t] <= _gate_n[_t]:
                             _gate_done = False   # 回落线下: 重置"已标破栅"状态
-                            continue
-                        if not (np.isfinite(_slp_trend[_t]) and _slp_trend[_t] >= _trend_slope_min):
                             continue
                         if _gate_done:
                             continue
@@ -1379,22 +1393,28 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                         if _SHOW_OBSERVE_TRIANGLES:
                             ax0.scatter([_t], [closes[_t]], marker='^', s=110, color='#D81B60',
                                         zorder=6, edgecolors='white', linewidths=0.5)
-                        ax0.annotate('破栅', (_t, closes[_t]), textcoords='offset points',
+                        ax0.annotate('Break', (_t, closes[_t]), textcoords='offset points',
                                      xytext=(10, 24), ha='left', fontsize=11,
                                      color='#D81B60', fontweight='bold',
                                      arrowprops=dict(arrowstyle='->', color='#D81B60',
                                                      lw=1.4, shrinkA=2, shrinkB=4))
                         _gate_done = True
-                    # ② 下探主成本线: low < 主成本A 且收盘收回(close>A) 且 大趋势线斜率不低于 -5%
+                    # ② 下探主成本线: low < 主成本A 且收盘收回(close>A)
+                    #    且 主趋势/A/B 任意一个向上（主趋势 ≥ -5%，A/B >0）
                     for _t in range(n):
-                        if (np.isfinite(_slp_trend[_t]) and _slp_trend[_t] >= _trend_slope_min
+                        _up_any = (
+                            (np.isfinite(_slp_trend[_t]) and _slp_trend[_t] >= _trend_slope_min)
+                            or (np.isfinite(_slp_a[_t]) and _slp_a[_t] > 0)
+                            or (np.isfinite(_slp_b[_t]) and _slp_b[_t] > 0)
+                        )
+                        if (_up_any
                                 and np.isfinite(lows[_t]) and np.isfinite(closes[_t])
                                 and np.isfinite(_sm_n[_t])
                                 and lows[_t] < _sm_n[_t] and closes[_t] > _sm_n[_t]):
                             if _SHOW_OBSERVE_TRIANGLES:
                                 ax0.scatter([_t], [lows[_t]], marker='v', s=90, color='#1B5E20',
                                             zorder=6, edgecolors='white', linewidths=0.5)
-                            ax0.annotate('触A', (_t, lows[_t]), textcoords='offset points',
+                            ax0.annotate('Touch A', (_t, lows[_t]), textcoords='offset points',
                                          xytext=(10, -24), ha='left', fontsize=11,
                                          color='#1B5E20', fontweight='bold',
                                          arrowprops=dict(arrowstyle='->', color='#1B5E20',
