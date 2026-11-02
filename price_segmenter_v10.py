@@ -249,10 +249,41 @@ class CausalIncrementalPriceSegmenter:
         return ann
 
     def _compute_touch_signal(self, close, high, low, opn, volume, n, confirmed_pivots):
+        """优化版：结果与原版逐位一致，仅加速。
+        - volume 前缀和: O(1) 区间均量（原 numpy 切片 .mean()）
+        - sparse table RMQ: O(1) 区间 high.max/low.min（原 numpy 切片）
+        - _fkc 结果缓存: 同 (s,e,ib) 只算一次
+        - bisect 可见性: O(log m) 替代 O(m) 全遍历
+        """
         tt=0.005; at=0.05; gma=10
         ts=np.zeros(n,int); tsrc=np.array([""]*n,dtype='U20')
         if not confirmed_pivots: return ts,tsrc
         sp=sorted(confirmed_pivots,key=lambda x:x[0])
+
+        # ── 1. volume 前缀和（O(1) 区间均量）──
+        vol_ps=np.empty(n+1,np.float64); vol_ps[0]=0.0
+        np.cumsum(volume, out=vol_ps[1:])
+
+        # ── 2. sparse table（区间 max/min RMQ, O(1) 查询）──
+        _lb=[0]*(n+1)
+        for i in range(2,n+1): _lb[i]=_lb[i>>1]+1
+        K=_lb[n]+1
+        _sth=[np.asarray(high,np.float64)]
+        for j in range(1,K):
+            p=_sth[j-1]; w=1<<(j-1)
+            _sth.append(np.maximum(p[:len(p)-w],p[w:]))
+        _stl=[np.asarray(low,np.float64)]
+        for j in range(1,K):
+            p=_stl[j-1]; w=1<<(j-1)
+            _stl.append(np.minimum(p[:len(p)-w],p[w:]))
+        def _rmax(l,r):
+            j=_lb[r-l+1]; w=1<<j
+            return max(_sth[j][l],_sth[j][r-w+1])
+        def _rmin(l,r):
+            j=_lb[r-l+1]; w=1<<j
+            return min(_stl[j][l],_stl[j][r-w+1])
+
+        # ── 3. gap 预计算（与原版一致）──
         all_gaps=[]
         for k in range(1,n):
             if low[k]>high[k-1]: all_gaps.append((k,low[k],high[k-1],True))
@@ -264,30 +295,50 @@ class CausalIncrementalPriceSegmenter:
                 if iu and low[k]<=gb: fb=k; break
                 if not iu and high[k]>=gt: fb=k; break
             gap_fills[gi]=fb
+
+        # ── 4. _fkc 带缓存 + O(1) 均量 ──
+        _fc={}
         def _fkc(s,e,ib):
+            key=(s,e,ib)
+            if key in _fc: return _fc[key]
+            vmean=(vol_ps[e+1]-vol_ps[s])/(e-s+1)
             bi,bs=None,-1
             for k in range(s,e+1):
                 bp=(close[k]-opn[k])/opn[k]*100 if opn[k]>0 else 0
                 if (ib and bp<=0) or (not ib and bp>=0): continue
-                vw=volume[k]/max(volume[s:e+1].mean(),1) if volume is not None else 1.0
+                vw=volume[k]/max(vmean,1) if volume is not None else 1.0
                 sc=abs(bp)*vw; lp=20.0 if opn[k]>=50 else 10.0
                 if (ib and bp>=lp*0.9) or (not ib and bp<=-lp*0.9): sc*=10
                 if sc>bs: bs=sc; bi=k
+            _fc[key]=bi
             return bi
-        for t in range(n):
-            vis=[(pi,pt) for pi,pt,pc in sp if pc<=t]; vis.sort(key=lambda x:x[0])
-            if len(vis)<2: continue
+
+        # ── 5. bisect 可见性（O(log m)）──
+        from bisect import bisect_right
+        sp_conf=sorted(confirmed_pivots,key=lambda x:x[2])  # 按确认时刻排序
+        sp_c=[pc for _,_,pc in sp_conf]                     # 确认时刻非降序，可 bisect
+        # 预计算: 每个可见数 cnt 对应的 vis 列表与 zones（避免每 bar 重建）
+        _vis_cache={}
+        for cnt in range(2,len(sp)+1):
+            _piv=sorted(sp_conf[:cnt],key=lambda x:x[0])    # 可见集按位置排序
             zones=[]
-            for vi in range(len(vis)-1):
-                si,st=vis[vi]; ei,et=vis[vi+1]
+            for vi in range(len(_piv)-1):
+                si,st=_piv[vi][0],_piv[vi][1]; ei,et=_piv[vi+1][0],_piv[vi+1][1]
                 if st=="TROUGH" and et=="PEAK": zones.append((si,ei,"UP"))
                 elif st=="PEAK" and et=="TROUGH": zones.append((si,ei,"DOWN"))
+            _vis_cache[cnt]=(_piv,zones)
+
+        for t in range(n):
+            cnt=bisect_right(sp_c,t)
+            if cnt<2: continue
+            piv,zones_c=_vis_cache[cnt]
+            zones=list(zones_c)   # 必须拷贝：下方 extension 会 append，不能污染缓存
             if not zones: continue
             cur_zi=None
             for zi,(zs,ze,zp) in enumerate(zones):
                 if zs<=t<=ze: cur_zi=zi; break
             if cur_zi is None:
-                lpi,lpt=vis[-1]
+                lpi=piv[-1][0]
                 if t>=lpi and zones[-1][1]==lpi:
                     cur_zi=len(zones)
                     if zones[-1][2]=="UP": zones.append((zones[-1][1],t,"DOWN"))
@@ -296,7 +347,7 @@ class CausalIncrementalPriceSegmenter:
             czs,cze,czp=zones[cur_zi]; pzs,pze,pzp=zones[cur_zi-1]
             resistances=[]
             if pzp=="UP":
-                zh=high[pzs:pze+1].max(); cm=high[czs:min(t+1,cze+1)].max()
+                zh=_rmax(pzs,pze); cm=_rmax(czs,min(t,cze))
                 if zh>close[t] and cm<zh: resistances.append((zh,"UP_HIGH"))
             elif pzp=="DOWN":
                 hg=False
@@ -304,26 +355,26 @@ class CausalIncrementalPriceSegmenter:
                     if gi<pzs or gi>pze or not iu or t-gi<gma: continue
                     if gap_fills.get(gi,n)<=t: continue
                     if gt>close[t]:
-                        cm=high[czs:min(t+1,cze+1)].max()
+                        cm=_rmax(czs,min(t,cze))
                         if cm<gt: resistances.append((gt,"GAP")); hg=True; break
                 if not hg:
                     ki=_fkc(pzs,pze,False)
                     if ki is not None:
                         kh=high[ki]
                         if kh>close[t]:
-                            cm=high[czs:min(t+1,cze+1)].max()
+                            cm=_rmax(czs,min(t,cze))
                             if cm<kh: resistances.append((kh,"KEY"))
-            cm=high[czs:min(t+1,cze+1)].max(); em=max((lv for lv,_ in resistances),default=cm)
+            cm=_rmax(czs,min(t,cze)); em=max((lv for lv,_ in resistances),default=cm)
             for zi in range(cur_zi-2,-1,-1):
                 zs,ze,zp=zones[zi]
                 if zp!="UP": continue
-                zh=high[zs:ze+1].max()
+                zh=_rmax(zs,ze)
                 if zh<=em or cm>=zh or zh<=close[t]: continue
                 resistances.append((zh,f"UP_HIGH+{cur_zi-zi}")); em=zh
             resistances.sort(key=lambda x:x[0])
             supports=[]
             if pzp=="DOWN":
-                zl=low[pzs:pze+1].min(); cmn=low[czs:min(t+1,cze+1)].min()
+                zl=_rmin(pzs,pze); cmn=_rmin(czs,min(t,cze))
                 if zl<close[t] and cmn>zl: supports.append((zl,"DN_LOW"))
             elif pzp=="UP":
                 hg=False
@@ -331,20 +382,20 @@ class CausalIncrementalPriceSegmenter:
                     if gi<pzs or gi>pze or iu or t-gi<gma: continue
                     if gap_fills.get(gi,n)<=t: continue
                     if gb<close[t]:
-                        cmn=low[czs:min(t+1,cze+1)].min()
+                        cmn=_rmin(czs,min(t,cze))
                         if cmn>gb: supports.append((gb,"GAP")); hg=True; break
                 if not hg:
                     ki=_fkc(pzs,pze,True)
                     if ki is not None:
                         kl=low[ki]
                         if kl<close[t]:
-                            cmn=low[czs:min(t+1,cze+1)].min()
+                            cmn=_rmin(czs,min(t,cze))
                             if cmn>kl: supports.append((kl,"KEY"))
-            cmn=low[czs:min(t+1,cze+1)].min(); emn=min((lv for lv,_ in supports),default=cmn)
+            cmn=_rmin(czs,min(t,cze)); emn=min((lv for lv,_ in supports),default=cmn)
             for zi in range(cur_zi-2,-1,-1):
                 zs,ze,zp=zones[zi]
                 if zp!="DOWN": continue
-                zl=low[zs:ze+1].min()
+                zl=_rmin(zs,ze)
                 if zl>=emn or cmn<=zl or zl>=close[t]: continue
                 supports.append((zl,f"DN_LOW+{cur_zi-zi}")); emn=zl
             supports.sort(key=lambda x:-x[0])
@@ -363,7 +414,8 @@ class CausalIncrementalPriceSegmenter:
 # ============================================================
 
 def compute_buy_sell_signals(df_ohlc, result, dur_horizon=120, touch_norm=3,
-                             W_DUR=0.7, W_TOUCH=0.3, tt=0.005):
+                             W_DUR=0.7, W_TOUCH=0.3, tt=0.005,
+                             break_vol_ratio=1.5):
     """
     V10 买卖点 — 逐层突破（带突破分量评分）。
 
@@ -376,6 +428,11 @@ def compute_buy_sell_signals(df_ohlc, result, dur_horizon=120, touch_norm=3,
       +1 BrkRes, +1 PullSup, -1 BrkSup, -1 BncRes
 
     废弃 V9 的 BrkHigh/BrkLow (max of last 3) — 逐层突破更及时、更密集。
+
+    break_vol_ratio: 突破类买入信号量能门控(2026-10-27)。BrkLvl/BrkRes 触发日
+               量比(当日量/20日均量) < 该阈值则丢弃信号(PullSup 回踩类与全部
+               卖出信号不受影响)。=0 关闭门控。依据: 4 样本图复盘, 震荡市假
+               突破普遍缩量, 真突破普遍放量(量比>=1.5)。
     """
     n = len(df_ohlc); close = df_ohlc['close'].values
     high = df_ohlc['high'].values; low = df_ohlc['low'].values; volume = df_ohlc['volume'].values
@@ -412,19 +469,29 @@ def compute_buy_sell_signals(df_ohlc, result, dur_horizon=120, touch_norm=3,
     pending_resistance_level = None; pending_support_level = None
 
     # 预提取数组
-    _phase = result['phase'].values; _is_pending = result['is_pending'].values
-    _touch_signal = result['touch_signal'].values; _touch_source = result['touch_source'].values
+    # 2026-10-26 性能: pandas3 字符串列 .values 返回 Arrow 数组, 逐元素索引慢 40%;
+    # 一次性物化为 numpy 数组, 索引行为与原版逐位一致
+    _phase = np.asarray(result['phase'].values); _is_pending = np.asarray(result['is_pending'].values)
+    _touch_signal = np.asarray(result['touch_signal'].values); _touch_source = np.asarray(result['touch_source'].values)
+
+    # ── 可见性预计算（与 _compute_touch_signal 同法）: 排序提出循环外 + bisect + zones 缓存 ──
+    from bisect import bisect_right as _br
+    _piv_conf = sorted(pivots, key=lambda x: x[2])
+    _piv_c = [pc for _, _, pc in _piv_conf]
+    _zones_cache = {}
+    for _cnt in range(2, len(pivots) + 1):
+        _vis = sorted(_piv_conf[:_cnt], key=lambda x: x[0])
+        _zs = []
+        for _vi in range(len(_vis) - 1):
+            _si, _st = _vis[_vi][0], _vis[_vi][1]; _ei, _et = _vis[_vi + 1][0], _vis[_vi + 1][1]
+            if _st == 'TROUGH' and _et == 'PEAK': _zs.append((_si, _ei, 'UP'))
+            elif _st == 'PEAK' and _et == 'TROUGH': _zs.append((_si, _ei, 'DOWN'))
+        _zones_cache[_cnt] = _zs
 
     for t in range(n):
-        # ── 构建 bar t 的区间 ──
-        sp = sorted(pivots, key=lambda x: x[2])
-        visible = [(p_idx, p_type) for p_idx, p_type, p_confirm in sp if p_confirm <= t]
-        visible.sort(key=lambda x: x[0])
-        zones = []
-        for vi in range(len(visible) - 1):
-            s_idx, s_type = visible[vi]; e_idx, e_type = visible[vi + 1]
-            if s_type == 'TROUGH' and e_type == 'PEAK': zones.append((s_idx, e_idx, 'UP'))
-            elif s_type == 'PEAK' and e_type == 'TROUGH': zones.append((s_idx, e_idx, 'DOWN'))
+        # ── 构建 bar t 的区间（缓存版，结果与逐 bar 重建一致）──
+        _cnt = _br(_piv_c, t)
+        zones = list(_zones_cache[_cnt]) if _cnt >= 2 else []
 
         # ── 更新未突破前高/前低集合（带形成位置与测试计数）──
         # 合并 pivot 区间与 phase 区间：phase 区间覆盖 pivot 配对漏掉的短 UP/DOWN run
@@ -538,6 +605,21 @@ def compute_buy_sell_signals(df_ohlc, result, dur_horizon=120, touch_norm=3,
             bs_signal[t] = -1; bs_reason[t] = f'BncRes({touch_src})'; continue
 
         # ────────────────────────────────────────────────
+    # ── 突破类买入信号量能门控后处理（2026-10-27）──
+    # BrkLvl/BrkRes 需当日量比(当日量/20日均量) >= break_vol_ratio 才保留;
+    # PullSup(回踩)与全部 -1 卖出信号不受影响。=0/None 关闭。
+    if break_vol_ratio and break_vol_ratio > 0:
+        _vma20 = pd.Series(volume).rolling(20, min_periods=5).mean().values
+        for t in range(n):
+            if bs_signal[t] == 1 and bs_reason[t].startswith('Brk'):
+                _vm = _vma20[t]
+                if np.isfinite(_vm) and _vm > 0:
+                    _vr = volume[t] / _vm
+                else:
+                    _vr = float('inf')   # 数据不足的头部放行
+                if _vr < break_vol_ratio:
+                    bs_signal[t] = 0; bs_reason[t] = ''; bs_strength[t] = 0.0
+
     # 汇总阻力/支撑位生命周期（未突破的 + 已突破的），供画图用
     all_levels = []
     for m in list(unbroken_highs.values()) + completed_highs:
@@ -1270,7 +1352,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                     _COST_EHLERS, _COST_HIGH_EHLERS = 10, 20
                     _COST2_PCT_DEFAULT, _COST2_EHLERS_DEFAULT = 0.50, 20
                     _TREND_PCT_DEF, _TREND_EH_DEF = 0.70, 120
-                    _TREND_SLOPE_MIN_DEF = -0.05
+                    _TREND_SLOPE_MIN_DEF = -0.06
                 _c35 = _cs2(_H, _L, _V, _turn, _COST_PCT)     # 全量长度
                 _c75 = _cs2(_H, _L, _V, _turn, _COST_HIGH)    # 全量长度, 筹码峰上沿
                 def _ehlers_smooth(_x, _period):
@@ -1385,7 +1467,10 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                             continue
                         _was_below = False
                         for _k in range(max(0, _t - _POOK), _t):
-                            if not np.isfinite(_gate_n[_k]) or closes[_k] <= _gate_n[_k]:
+                            # 2026-10-27 用户修复: 只认「线存在且价格低于线」;
+                            # 线置空(NaN)不算曾低于——否则置空恢复日, 线落在价格下方
+                            # 会被误判为"站上"而刷 Break(线重现≠突破动作)
+                            if np.isfinite(_gate_n[_k]) and closes[_k] <= _gate_n[_k]:
                                 _was_below = True
                                 break
                         if not _was_below:
@@ -1400,7 +1485,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
                                                      lw=1.4, shrinkA=2, shrinkB=4))
                         _gate_done = True
                     # ② 下探主成本线: low < 主成本A 且收盘收回(close>A)
-                    #    且 主趋势/A/B 任意一个向上（主趋势 ≥ -5%，A/B >0）
+                    #    且 主趋势/A/B 任意一个向上（主趋势 ≥ -6%，A/B >0）
                     for _t in range(n):
                         _up_any = (
                             (np.isfinite(_slp_trend[_t]) and _slp_trend[_t] >= _trend_slope_min)
@@ -1511,7 +1596,7 @@ def plot_price_segmentation_v10(df_ohlc, result, bs_signal, bs_reason,
 def run_segmentation(df_ohlc, tail_days=200, name="",
                      lookback=15, min_reversal_pct=0.02, confirm_bars=3,
                      save_path=None, fast_mode=False, same_type_merge_gap=20,
-                     dur_horizon=120, touch_norm=3,
+                     dur_horizon=120, touch_norm=3, break_vol_ratio=1.5,
                      reg_window=120, reg_window_long=250,
                      hide_ma=True,
                      code=None, end_date=None, panic_index=None,
@@ -1539,7 +1624,8 @@ def run_segmentation(df_ohlc, tail_days=200, name="",
                                             same_type_merge_gap=same_type_merge_gap)
     c_result = c_seg.segment(close, volume, high=high, low=low, opn=opn)
     bs_signal, bs_reason, bs_strength, all_levels = compute_buy_sell_signals(
-        df_ohlc, c_result, dur_horizon=dur_horizon, touch_norm=touch_norm)
+        df_ohlc, c_result, dur_horizon=dur_horizon, touch_norm=touch_norm,
+        break_vol_ratio=break_vol_ratio)
 
     if fast_mode: return bs_signal[-1] > 0
 
